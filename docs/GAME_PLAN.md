@@ -46,6 +46,8 @@ Every design decision below should reinforce "where do I need to be right now?"
 | Farm / Mill | More XP gems / coin drops | Fewer drops |
 | Houses (x2–3) | Count toward stars only | — |
 
+  Roles are chosen by the player before the level by upgrading houses (decision 29); the table's 'Farm / Mill', 'Tavern' rows are candidates for later.
+
   Roles make "which building do I let burn?" a real choice, and make towns play differently.
 - Buildings can be repaired only by rare pickups / a specific upgrade, never for free.
 - A building at 0 HP is ruined for the level (rubble still blocks movement).
@@ -285,7 +287,8 @@ Built in from the first milestone:
 | 0 | **Look test** | Bake script outputs knight + orc atlases; static scene with Sketch town + characters; decide Sketch vs 3D-baked town |
 | 1 | **Toy** | Knight moves and attacks on an iso map, one monster type swarms from edges, all three input methods work, resizes correctly |
 | 2 | **Core loop** | Buildings with HP, raiders target them, waves escalate, win/lose, star rating screen |
-| 3 | **Army & growth** | Rookies recruit and fight, XP + level-up picks, 15+ upgrades |
+| 3a | **Army & growth** | XP gems, pause-and-pick level-ups, 20 upgrades in knight/army/town pools, swordsman + archer rookies, Rally |
+| 3b | **Town planning** | Before a level, spend coins to upgrade chosen houses into role buildings (barracks, chapel, smithy, watchtower); coins from wave rewards + kills |
 | 4 | **Vertical slice** | Town 1 complete: 6 monster types, boss, 3 attacks, audio, juice (hit-stop, shake, numbers), bots prove it is beatable and losable |
 | 5 | **Meta** | Save data, unlocks, loadout screen, town 2 (proves data-driven towns) |
 | 6 | **Content** | Remaining towns, curses, endless, daily seed, badges |
@@ -347,6 +350,18 @@ Findings:
 - **Bugs caught by tests:** building-targeting monsters idled forever at the centre of the cell next to a building (just outside their reach), so levels couldn't be won; bots walked into buildings (now path with a flow field).
 - **Known gaps:** rubble art is a placeholder (rock tiles); building HP bars are small on phones; balance numbers are bot-derived and need human play.
 
+### Milestone 3a results (2026-11-14)
+
+- **XP:** monsters drop gems (zombie 1, orc 2, brute 6). Gems within the knight's magnet radius fly to him; when the field is clear between waves, all remaining gems fly in. XP curve 5 × 1.3^(level−1).
+- **Level-up pauses the game:** pick 1 of 3 cards (keys 1/2/3, arrows + Enter, D-pad + A, or tap; 300 ms input guard so a held attack can't pick by accident). Several level-ups queue.
+- **20 upgrades in three pools** (src/data/upgrades.ts): knight (damage, swing speed, arc, reach, speed, max HP, regen, gem magnet, knockback, dodge), army (recruit sooner, +cap, rookie HP, rookie damage, veteran/captain starts), town (walls +HP & repair, thorns, arrow slits, repair crews, tar pits). Effects are modifiers recomputed from upgrade levels.
+- **Rookies:** swordsman then archer alternate; earned at kill thresholds 12/30/55/85/…; cap 3 (+upgrades); fallen rookies are replaced after 15 s. They defend buildings first (targets attacking a building), then hunt within 6 cells, then return to their post. Archers keep distance and shoot arrows. Ranks: veteran at 8 kills, captain at 25 (×1.3 / ×1.7 stats, brighter halo).
+- **Rally** (R / LB / ⚑ button): rookies regroup on the knight for 4 s, 15 s cooldown.
+- **Readability:** knight gold halo, rookies blue halo (brighter with rank); floating text for level-ups, recruits, promotions and Rally.
+- **Bot balance (seeds 1–5, bots pick upgrades by pool preference):** idle never wins; fighter wins 5/5 at 1.0 star average; defender wins 5/5 at 2.4 stars average (9.2 of ~10 buildings standing). Level 1 is now comfortable for skilled play; later towns must ramp difficulty.
+- **Bugs caught:** test bots hung because the world pauses for level-ups (helpers now resolve choices); Toughness double-healed; rookies lost track of building attackers between swings.
+- **Known gaps:** archer bow animation is subtle; no sound; touch Rally button has no cooldown display; rookie AI doesn't retreat to heal.
+
 ## 7. Decisions
 
 ### Decided (2026-11-14)
@@ -382,6 +397,12 @@ Findings:
 22. **Milestone 2 monsters:** zombie, orc raider, brute.
 23. **Building roles:** deferred to milestone 3.
 24. **Knight death:** game over for now (open item 13 is still to be revisited in milestone 4).
+25. **Milestone 3 split:** 3a army & growth, 3b town planning.
+26. **Level-up:** pause and pick 1 of 3.
+27. **XP:** gems you pick up (magnet radius; auto-collect when the field is clear).
+28. **Rookies:** swordsman + archer for now; Rally kept as a button.
+29. **Town planning (3b):** every building starts as a house. Before a level starts you spend coins to upgrade chosen houses into role buildings (barracks, chapel, smithy, watchtower). No building during the level — you survive all waves with the plan you made.
+30. **Coins:** from wave rewards plus kills.
 
 ### Open (decide later)
 
@@ -394,3 +415,4 @@ Findings:
 15. **Distribution target:** web only first, or stores/Steam from the start.
     Affects packaging and save storage only.
 16. **Name.**
+31. **Coin persistence (before 3b):** do coins carry over between attempts and levels (a meta wallet), or does each level grant a fixed planning budget?

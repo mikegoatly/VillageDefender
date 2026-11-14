@@ -49,6 +49,16 @@ const modelPacks = [
     files: ['character-male-a', 'character-female-b'],
   },
   {
+    src: '3D assets/Mini Forest/Models/GLB format',
+    dest: 'mini-forest',
+    files: ['character-archer', 'weapon-bow', 'weapon-arrow'],
+  },
+  {
+    src: '3D assets/Mini Arena/Models/GLB format',
+    dest: 'mini-arena',
+    files: ['character-soldier', 'weapon-sword', 'weapon-spear'],
+  },
+  {
     src: '3D assets/Fantasy Town Kit/Models/GLB format',
     dest: 'fantasy-town',
     files: [

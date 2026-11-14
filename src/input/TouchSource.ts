@@ -20,6 +20,7 @@ export class TouchSource {
     s.move = { x: c.move.x, y: c.move.y };
     s.attack = c.attack;
     s.dodge = c.dodge;
+    s.rally = c.rally;
     return s;
   }
 

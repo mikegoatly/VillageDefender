@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { InputManager, mergeInputs } from '../src/input/InputManager';
 import { applyRadialDeadzone } from '../src/input/GamepadSource';
+import { TouchSource } from '../src/input/TouchSource';
 import { emptyInput, type InputState } from '../src/sim/types';
 
 function key(type: 'keydown' | 'keyup', code: string): KeyboardEvent {
@@ -148,5 +149,43 @@ describe('applyRadialDeadzone', () => {
     expect(Math.hypot(v.x, v.y)).toBeCloseTo(1);
     expect(v.x).toBeCloseTo(v.y);
     expect(applyRadialDeadzone(-0.6, 0, 0.2).x).toBeCloseTo(-0.5);
+  });
+});
+
+describe('TouchSource rally button', () => {
+  let root: HTMLElement;
+  let ts: TouchSource;
+  beforeEach(() => {
+    root = document.createElement('div');
+    document.body.appendChild(root);
+    ts = new TouchSource(root);
+  });
+  afterEach(() => {
+    ts.destroy();
+    root.remove();
+  });
+  const fire = (el: Element, type: string, pointerId = 1) => {
+    const e = new Event(type, { bubbles: true, cancelable: true }) as Event & { pointerId: number };
+    e.pointerId = pointerId;
+    el.dispatchEvent(e);
+  };
+
+  it('renders a rally button and holds rally while pressed', () => {
+    const btn = root.querySelector('.vd-touch-rally')!;
+    expect(btn.textContent).toBe('⚑');
+    expect(ts.poll().rally).toBe(false);
+    fire(btn, 'pointerdown');
+    expect(ts.poll().rally).toBe(true);
+    expect(btn.classList.contains('vd-pressed')).toBe(true);
+    expect(ts.hasInput()).toBe(true);
+    fire(btn, 'pointerup');
+    expect(ts.poll().rally).toBe(false);
+    expect(btn.classList.contains('vd-pressed')).toBe(false);
+  });
+
+  it('hiding the overlay releases rally', () => {
+    fire(root.querySelector('.vd-touch-rally')!, 'pointerdown');
+    ts.setVisible(false);
+    expect(ts.poll().rally).toBe(false);
   });
 });

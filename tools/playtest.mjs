@@ -41,6 +41,8 @@ try {
           dodge: Math.floor(time * 60) % 180 < 2,
           ability1: false, ability2: false, rally: false, pause: false,
         };
+        // Level-up choice: pick a pseudo-random card so runs exercise different upgrades.
+        if (w.choosing) vd.choose(Math.floor(time * 7) % w.progression.offers.length);
         vd.setInput(input);
         vd.step(1);
         if (w.status !== 'playing') break;

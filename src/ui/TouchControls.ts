@@ -1,4 +1,4 @@
-// Touch overlay: floating left-half joystick + right-side attack/dodge buttons.
+// Touch overlay: floating left-half joystick + right-side attack/dodge/rally buttons.
 // All styling lives in STYLE below so Phase 2 can swap in Kenney art in one place.
 
 const STYLE = `
@@ -18,6 +18,8 @@ const STYLE = `
   right: calc(24px + env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 .vd-touch-dodge { width: 64px; height: 64px; font-size: 24px;
   right: calc(24px + 88px + 16px + env(safe-area-inset-right, 0px)); bottom: calc(24px + 70px + env(safe-area-inset-bottom, 0px)); }
+.vd-touch-rally { width: 56px; height: 56px; font-size: 22px;
+  right: calc(24px + 88px + 16px + 4px + env(safe-area-inset-right, 0px)); bottom: calc(24px + 70px + 64px + 12px + env(safe-area-inset-bottom, 0px)); }
 `;
 
 export const JOYSTICK_RADIUS = 60;
@@ -26,6 +28,7 @@ export interface TouchState {
   move: { x: number; y: number };
   attack: boolean;
   dodge: boolean;
+  rally: boolean;
 }
 
 function injectStyle(): void {
@@ -37,7 +40,7 @@ function injectStyle(): void {
 }
 
 export class TouchControls {
-  readonly state: TouchState = { move: { x: 0, y: 0 }, attack: false, dodge: false };
+  readonly state: TouchState = { move: { x: 0, y: 0 }, attack: false, dodge: false, rally: false };
   private readonly el: HTMLDivElement;
   private readonly base: HTMLDivElement;
   private readonly knob: HTMLDivElement;
@@ -60,7 +63,11 @@ export class TouchControls {
     this.knob.style.top = '50%';
     const attack = this.div('vd-touch-btn vd-touch-attack', this.el, '⚔');
     const dodge = this.div('vd-touch-btn vd-touch-dodge', this.el, '»');
+    const rally = this.div('vd-touch-btn vd-touch-rally', this.el, '⚑');
     this.bindStick(zone);
+    this.bindButton(rally, (v) => {
+      this.state.rally = v;
+    });
     this.bindButton(attack, (v) => {
       this.state.attack = v;
     });
@@ -180,6 +187,7 @@ export class TouchControls {
     this.state.move = { x: 0, y: 0 };
     this.state.attack = false;
     this.state.dodge = false;
+    this.state.rally = false;
     this.el.querySelectorAll('.vd-pressed').forEach((n) => n.classList.remove('vd-pressed'));
   }
 }

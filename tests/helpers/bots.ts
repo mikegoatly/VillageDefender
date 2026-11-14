@@ -6,6 +6,8 @@ import { groundDirToScreen } from '../../src/sim/iso';
 import { isWalkable } from '../../src/sim/map';
 import { emptyInput, type InputState } from '../../src/sim/types';
 import { World, type Unit } from '../../src/sim/world';
+import type { UpgradeOffer, UpgradePool } from '../../src/data/upgrades';
+import { stepWith, type Chooser } from './worldBuilder';
 
 export type Bot = (world: World) => InputState;
 
@@ -168,6 +170,22 @@ export const defenderBot = (): Bot => {
   };
 };
 
+/** Picks the first offered card whose pool is earliest in `order`; ties keep card order. */
+export const preferPools = (order: UpgradePool[]): Chooser => (offers: UpgradeOffer[]) => {
+  let best = 0;
+  let bestRank = Infinity;
+  offers.forEach((o, k) => {
+    const rank = order.indexOf(o.pool);
+    if (rank >= 0 && rank < bestRank) { best = k; bestRank = rank; }
+  });
+  return best;
+};
+
+/** Upgrade policies matching each bot: idle takes card 0, fighter loves knight cards, defender builds the town up. */
+export const idleChooser: Chooser = () => 0;
+export const fighterChooser: Chooser = preferPools(['knight', 'army', 'town']);
+export const defenderChooser: Chooser = preferPools(['town', 'army', 'knight']);
+
 export interface PlayResult {
   seed: number;
   bot: string;
@@ -179,15 +197,23 @@ export interface PlayResult {
   standing: number;
   total: number;
   stars: number;
+  /** Knight level at the end. */
+  level: number;
+  /** Rookies alive at the end. */
+  rookiesAlive: number;
+  /** Upgrade id → stacks taken. */
+  upgrades: Record<string, number>;
 }
 
 /** Plays a full default level with a bot until it ends or maxSeconds elapses. */
-export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300): PlayResult {
+export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300, choose: Chooser = idleChooser): PlayResult {
   const world = new World({ seed });
   const maxTicks = Math.round(maxSeconds / DT);
-  while (world.status === 'playing' && world.tickCount < maxTicks) world.tick([bot(world)]);
+  while (world.status === 'playing' && world.tickCount < maxTicks) stepWith(world, bot(world), choose);
   return {
     seed, bot: name, status: world.status, lossReason: world.lossReason, time: world.time, wave: world.wave,
     kills: world.kills, standing: world.standingBuildings(), total: world.buildings.length, stars: world.stars,
+    level: world.progression.level, rookiesAlive: world.rookies.filter((r) => r.state !== 'dead').length,
+    upgrades: { ...world.progression.levels },
   };
 }

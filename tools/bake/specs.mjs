@@ -43,9 +43,20 @@ export const specs = [
   { kind: 'character', name: 'skeleton', model: 'graveyard/character-skeleton', anims: STANDARD_ANIMS },
   { kind: 'character', name: 'ghost', model: 'graveyard/character-ghost', anims: STANDARD_ANIMS },
   {
-    kind: 'character', name: 'rookie', model: 'mini-characters/character-male-a',
-    attachments: [{ ...RIGHT_HAND, model: 'mini-dungeon/weapon-sword' }],
+    kind: 'character', name: 'swordsman', model: 'mini-arena/character-soldier',
+    attachments: [
+      { ...RIGHT_HAND, model: 'mini-arena/weapon-sword' },
+      { ...LEFT_HAND, model: 'mini-dungeon/shield-round', scale: 0.6 },
+    ],
     anims: STANDARD_ANIMS,
+  },
+  {
+    kind: 'character', name: 'archer', model: 'mini-forest/character-archer',
+    attachments: [{ ...LEFT_HAND, model: 'mini-forest/weapon-bow' }],
+    anims: [
+      ...STANDARD_ANIMS.filter((a) => a.name !== 'attack'),
+      { name: 'attack', clip: 'holding-both-shoot', frames: 6, fps: 12, loop: false },
+    ],
   },
 
   // --- Look-test alternative: Fantasy Town Kit buildings baked at the same angle/scale ---

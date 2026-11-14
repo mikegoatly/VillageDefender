@@ -7,6 +7,7 @@ function aHudWorld(o: Partial<HudWorld> & { standing?: number; total?: number } 
   const s = standing ?? total;
   return {
     status: 'playing', lossReason: null, wave: 0, totalWaves: 8, time: 0, kills: 0, stars: 0,
+    knightLevel: 1, xp: 0, xpToNext: 10, rookies: 0, rookieCap: 3,
     players: [{ hp: 10, maxHp: 10 }],
     buildings: Array.from({ length: total }, (_, id) => ({ id, hp: 10, maxHp: 10, ruined: id >= s })),
     ...rest,
@@ -91,6 +92,21 @@ describe('Hud', () => {
     hud.update(aHudWorld());
     expect(panelShown()).toBe(false);
     expect(root.querySelector('.star')).toBeNull();
+  });
+
+  it('shows level label and XP bar width', () => {
+    hud.update(aHudWorld({ knightLevel: 4, xp: 5, xpToNext: 20 }));
+    expect(text('.lv')).toBe('Lv 4');
+    expect((root.querySelector('.xp > div') as HTMLElement).style.width).toBe('25%');
+    hud.update(aHudWorld({ xp: 99, xpToNext: 20 }));
+    expect((root.querySelector('.xp > div') as HTMLElement).style.width).toBe('100%');
+    hud.update(aHudWorld({ xp: 5, xpToNext: 0 }));
+    expect((root.querySelector('.xp > div') as HTMLElement).style.width).toBe('0%');
+  });
+
+  it('shows rookie count and cap', () => {
+    hud.update(aHudWorld({ rookies: 2, rookieCap: 4 }));
+    expect(text('.rookies')).toBe('⛑ 2/4');
   });
 
   it('R and N call callbacks only while the panel is visible', () => {

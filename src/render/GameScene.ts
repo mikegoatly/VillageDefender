@@ -8,12 +8,15 @@ import * as Phaser from 'phaser';
 import { DT, MAP } from '../data/balance';
 import { InputManager } from '../input/InputManager';
 import { MONSTERS, type MonsterKind } from '../data/monsters';
+import { ROOKIES, type RookieKind } from '../data/rookies';
 import { groundDirToScreen, groundToScreen } from '../sim/iso';
 import { Ground, type TownMap } from '../sim/map';
 import { emptyInput, type InputState } from '../sim/types';
 import { World, type Unit } from '../sim/world';
 import { installRotateOverlay } from '../ui/RotateOverlay';
-import { Hud } from '../ui/Hud';
+import { Hud, type HudWorld } from '../ui/Hud';
+import { LevelUpPanel } from '../ui/LevelUpPanel';
+import { FxViews } from './FxViews';
 import { BuildingViews, RUBBLE_TILES, type PlacedBlock } from './BuildingViews';
 import { createCharacterAnims, directionFor, preloadSheets, sheetMeta, sheetOrigin } from './sheets';
 
@@ -22,7 +25,10 @@ const CHAR_SCALE_AT_120 = 1.4;
 /** Sketch tiles: height of one stacked block level, and the top-face centre within the image. */
 const SKETCH_LEVEL = 106;
 const SKETCH_ORIGIN = { x: 128 / 256, y: 185 / 352 };
-const SHEETS = ['knight', 'zombie', 'orc'];
+const SHEETS = ['knight', 'zombie', 'orc', 'swordsman', 'archer'];
+/** Halo colours (decision 8): knight gold, rookies army blue by rank. */
+const HALO_KNIGHT = 0xffd75e;
+const HALO_ROOKIE = [0x7fb3e6, 0xb9d6f2, 0xffffff];
 const ROTATE_CLASS = 'vd-rotate-active';
 
 interface UnitView {
@@ -57,6 +63,8 @@ export class GameScene extends Phaser.Scene {
   private params!: Params;
   private input2!: InputManager;
   private hud!: Hud;
+  private levelUp!: LevelUpPanel;
+  private fx!: FxViews;
   private views = new Map<number, UnitView>();
   /** Decor images (trees, well) for occlusion; building blocks live in buildingViews. */
   private decor: Phaser.GameObjects.Image[] = [];
@@ -100,6 +108,11 @@ export class GameScene extends Phaser.Scene {
       onRetry: () => this.restart(this.params.seed),
       onNewTown: () => this.restart(),
     });
+    this.levelUp = new LevelUpPanel(document.body, (i) => {
+      this.world.chooseUpgrade(i);
+      this.handleEvents();
+    });
+    this.fx = new FxViews(this, (x, y) => this.toScreen(x, y));
 
     this.scale.on('resize', this.fitCamera, this);
     this.events.once('shutdown', () => {
@@ -107,6 +120,7 @@ export class GameScene extends Phaser.Scene {
       this.input2.destroy();
       this.uninstallRotate?.();
       this.hud.destroy();
+      this.levelUp.destroy();
     });
     this.fitCamera();
     this.exposeDebug();
@@ -127,7 +141,25 @@ export class GameScene extends Phaser.Scene {
     }
     this.sync(deltaMs / 1000);
     this.buildingViews.update(this.world.buildings, this.time.now / 1000, deltaMs / 1000);
-    this.hud.update(this.world);
+    this.syncUi();
+  }
+
+  /** HUD and the level-up panel (the sim pauses itself while a choice is open). */
+  private syncUi() {
+    this.hud.update(this.hudView());
+    const offers = this.world.progression.offers;
+    if (offers && this.world.status === 'playing') this.levelUp.show(offers, this.world.progression.level);
+    else if (this.levelUp.visible) this.levelUp.hide();
+  }
+
+  private hudView(): HudWorld {
+    const w = this.world;
+    return {
+      status: w.status, lossReason: w.lossReason, wave: w.wave, totalWaves: w.totalWaves, time: w.time,
+      kills: w.kills, stars: w.stars, players: w.players, buildings: w.buildings,
+      knightLevel: w.progression.level, xp: w.progression.xp, xpToNext: w.progression.xpToNext,
+      rookies: w.rookies.filter((r) => r.state !== 'dead').length, rookieCap: w.rookieCap,
+    };
   }
 
   /** Advances the sim by n ticks immediately (debug/automation). */
@@ -138,7 +170,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.sync(0);
     this.buildingViews.update(this.world.buildings, this.time.now / 1000, 0);
-    this.hud.update(this.world);
+    this.syncUi();
   }
 
   restart(seed?: number) {
@@ -217,8 +249,8 @@ export class GameScene extends Phaser.Scene {
   private viewFor(u: Unit): UnitView {
     let v = this.views.get(u.id);
     if (v) return v;
-    const def = u.kind === 'knight' ? null : MONSTERS[u.kind as MonsterKind];
-    const sheet = def ? def.sheet : 'knight';
+    const def = u.team === 'enemy' ? MONSTERS[u.kind as MonsterKind] : null;
+    const sheet = def ? def.sheet : u.kind === 'knight' ? 'knight' : ROOKIES[u.kind as RookieKind].sheet;
     const meta = sheetMeta(this, sheet);
     const [ox, oy] = sheetOrigin(meta);
     const scale = this.charScale(sheet) * (def?.scale ?? 1);
@@ -227,9 +259,12 @@ export class GameScene extends Phaser.Scene {
     v = { sprite, flash: 0, tint };
     if (u.team === 'player') {
       // Friendly halo (decision 8) and see-through silhouette for occlusion (decision 9).
-      v.halo = this.add.ellipse(0, 0, 70 * MAP.tileScale * 1.4, 34 * MAP.tileScale * 1.4)
-        .setStrokeStyle(3, 0xffd75e, 0.95).setFillStyle(0xffd75e, 0.25);
-      v.ghost = this.add.sprite(0, 0, sheet).setOrigin(ox, oy).setScale(scale)
+      const knight = u.kind === 'knight';
+      const col = knight ? HALO_KNIGHT : HALO_ROOKIE[u.rank];
+      const hs = knight ? 1.4 : 1.1;
+      v.halo = this.add.ellipse(0, 0, 70 * MAP.tileScale * hs, 34 * MAP.tileScale * hs)
+        .setStrokeStyle(3, col, 0.95).setFillStyle(col, 0.25);
+      if (knight) v.ghost = this.add.sprite(0, 0, sheet).setOrigin(ox, oy).setScale(scale)
         .setTint(0xffd75e).setTintMode(Phaser.TintModes.FILL).setAlpha(0.4).setDepth(1e6).setVisible(false);
     }
     this.views.set(u.id, v);
@@ -238,7 +273,7 @@ export class GameScene extends Phaser.Scene {
 
   private sync(dt: number) {
     const live = new Set<number>();
-    for (const u of [...this.world.players, ...this.world.monsters]) {
+    for (const u of [...this.world.players, ...this.world.rookies, ...this.world.monsters]) {
       live.add(u.id);
       const v = this.viewFor(u);
       const s = this.toScreen(u.x, u.y);
@@ -266,6 +301,11 @@ export class GameScene extends Phaser.Scene {
       // Fade corpses out.
       v.sprite.setAlpha(u.state === 'dead' ? Math.max(0, 1 - Math.max(0, u.stateTime - 0.7) / 0.5) : u.invuln > 0 && u.team === 'player' && u.state !== 'dodge' ? 0.6 : 1);
 
+      if (v.halo && u.kind !== 'knight') {
+        // Promotions: brighter halo and slightly bigger body.
+        v.halo.setStrokeStyle(3 + u.rank, HALO_ROOKIE[u.rank], 0.95);
+        v.sprite.setScale(this.charScale(v.sprite.texture.key) * (1 + 0.06 * u.rank));
+      }
       if (v.halo) {
         v.halo.setPosition(s.x, s.y + 4 * MAP.tileScale).setDepth(s.y + 0.4).setVisible(u.state !== 'dead');
       }
@@ -274,6 +314,7 @@ export class GameScene extends Phaser.Scene {
         v.ghost.setVisible(u.state !== 'dead' && this.isOccluded(v.sprite));
       }
     }
+    this.fx.sync(this.world.gems, this.world.projectiles, this.time.now / 1000);
     for (const [id, v] of this.views) {
       if (live.has(id)) continue;
       v.sprite.destroy();
@@ -315,6 +356,27 @@ export class GameScene extends Phaser.Scene {
       } else if (e.type === 'buildingDestroyed') {
         this.buildingViews.destroyed(this.world.map.buildings[e.building]);
         this.cameras.main.shake(220, 0.006);
+      } else if (e.type === 'levelUp') {
+        const k = this.world.players[0];
+        const p = this.toScreen(k.x, k.y);
+        this.fx.floatText(p.x, p.y - 90 * MAP.tileScale, `Level ${e.level}!`);
+      } else if (e.type === 'rookieJoined') {
+        const r = this.world.rookies.find((u) => u.id === e.unit);
+        if (r) {
+          const p = this.toScreen(r.x, r.y);
+          this.fx.floatText(p.x, p.y - 80 * MAP.tileScale, e.kind === 'archer' ? 'Archer joins!' : 'Swordsman joins!', '#b9d6f2');
+        }
+      } else if (e.type === 'rookiePromoted') {
+        const r = this.world.rookies.find((u) => u.id === e.unit);
+        if (r) {
+          const p = this.toScreen(r.x, r.y);
+          this.fx.floatText(p.x, p.y - 80 * MAP.tileScale, e.rank === 1 ? 'Veteran!' : 'Captain!', '#ffffff');
+        }
+      } else if (e.type === 'rally') {
+        const k = this.world.players[0];
+        const p = this.toScreen(k.x, k.y);
+        this.fx.pulse(p.x, p.y, 0x7fb3e6);
+        this.fx.floatText(p.x, p.y - 90 * MAP.tileScale, 'Rally!', '#b9d6f2');
       } else if (e.type === 'waveWarning') {
         this.hud.warn(e.wave, e.sides);
       }
@@ -332,6 +394,11 @@ export class GameScene extends Phaser.Scene {
       this.override = s;
     };
     vd.restart = (seed?: number) => this.restart(seed);
+    vd.choose = (i: number) => {
+      this.world.chooseUpgrade(i);
+      this.handleEvents();
+      this.syncUi();
+    };
     vd.stats = () => ({
       seed: this.params.seed,
       time: +this.world.time.toFixed(2),
@@ -342,6 +409,9 @@ export class GameScene extends Phaser.Scene {
       status: this.world.status,
       buildings: `${this.world.standingBuildings()}/${this.world.buildings.length}`,
       stars: this.world.stars,
+      level: this.world.progression.level,
+      choosing: this.world.choosing,
+      rookies: this.world.rookies.filter((r) => r.state !== 'dead').map((r) => `${r.kind}:${r.rank}`).join(','),
       zoom: +this.cameras.main.zoom.toFixed(3),
       charPx: Math.round(80 * (this.charScale('knight') * sheetMeta(this, 'knight').pixelsPerUnit / 120) * this.cameras.main.zoom),
       device: this.input2.activeDevice,

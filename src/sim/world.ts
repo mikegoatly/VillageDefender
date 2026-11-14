@@ -3,15 +3,19 @@
 
 import { BUILDING, DT, KNIGHT, KNOCKBACK_DAMPING, SEPARATION, STARS, WAVES } from '../data/balance';
 import { MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
+import { ARMY, GEMS, RALLY, ROOKIES, TOWN_ARROWS, XP_DROP, type RookieKind } from '../data/rookies';
+import type { UpgradeHost } from '../data/upgrades';
 import { LEVEL1_WAVES, spawnOrder, type WaveDef } from '../data/waves';
 import { FlowField } from './flowField';
 import { screenDirToGround } from './iso';
 import { generateTown, inBounds, isWalkable, type MapOptions, type Side, type TownMap } from './map';
+import { Pather } from './pather';
+import { Progression } from './progression';
 import { Rng } from './rng';
 import { SpatialHash } from './spatialHash';
 import type { InputState, Vec2 } from './types';
 
-export type UnitKind = 'knight' | MonsterKind;
+export type UnitKind = 'knight' | RookieKind | MonsterKind;
 export type UnitState = 'idle' | 'walk' | 'attack' | 'dodge' | 'dead';
 
 export interface Unit {
@@ -32,9 +36,9 @@ export interface Unit {
   state: UnitState;
   stateTime: number;
   attackCooldown: number;
-  /** Swing/bite hit still to be applied in the current attack. */
+  /** Swing/bite/shot still to be applied in the current attack. */
   hitPending: boolean;
-  /** Building being attacked in the current attack, or -1 when attacking a player. */
+  /** Building being attacked in the current attack, or -1 when attacking a unit. */
   attackBuilding: number;
   /** Seconds of invulnerability left (dodge, after being hurt). */
   invuln: number;
@@ -43,16 +47,53 @@ export interface Unit {
   dodgeHeld: boolean;
   /** Whether the unit moved under its own power this tick (for walk/idle animation). */
   moving: boolean;
+  /** Rookies: 0 rookie, 1 veteran, 2 captain. */
+  rank: number;
+  /** Kills credited to this unit (rookie promotions). */
+  unitKills: number;
+  /** AI: current target unit id (-1 none) and time until re-evaluating it. */
+  targetId: number;
+  retargetIn: number;
+  /** AI: where a rookie returns to when idle. */
+  postX: number;
+  postY: number;
 }
 
 export interface BuildingState {
   id: number;
   hp: number;
   maxHp: number;
+  /** HP before town upgrades (maxHp = baseMaxHp × town.maxHpMul). */
+  baseMaxHp: number;
   ruined: boolean;
   cells: [number, number][];
   /** World time of the last hit, for render flashes and HP bar visibility. */
   lastHit: number;
+  /** Arrow-slit cooldown. */
+  shotIn: number;
+}
+
+export interface Projectile {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  damage: number;
+  /** Seconds left before it falls to the ground. */
+  ttl: number;
+  /** Unit id credited with kills (-1 for buildings). */
+  owner: number;
+}
+
+export interface Gem {
+  id: number;
+  x: number;
+  y: number;
+  value: number;
+  /** Flying toward the knight. */
+  magnet: boolean;
+  speed: number;
 }
 
 export type SimEvent =
@@ -65,12 +106,19 @@ export type SimEvent =
   | { type: 'buildingDestroyed'; building: number }
   | { type: 'waveWarning'; wave: number; sides: Side[] }
   | { type: 'waveStart'; wave: number; count: number }
+  | { type: 'gemCollected'; value: number }
+  | { type: 'levelUp'; level: number }
+  | { type: 'upgradeChosen'; id: string }
+  | { type: 'rookieJoined'; unit: number; kind: RookieKind; building: number }
+  | { type: 'rookiePromoted'; unit: number; rank: number }
+  | { type: 'shot'; projectile: number; from: number }
+  | { type: 'rally' }
   | { type: 'levelEnd'; won: boolean; stars: number; reason: 'knight' | 'town' | null };
 
 export interface WorldOptions {
   seed: number;
   mapOptions?: MapOptions;
-  /** Players; milestone 1 wires up one, the sim supports N (decision 3). */
+  /** Players; the sim supports N (decision 3), the game wires up one. */
   players?: number;
   /** Debug: players take no damage. */
   god?: boolean;
@@ -80,6 +128,8 @@ export interface WorldOptions {
   map?: TownMap;
   /** Tests: disable wave spawning (and therefore winning) entirely. */
   noWaves?: boolean;
+  /** Tests: disable rookie recruitment. */
+  noRookies?: boolean;
   /** Wave table; defaults to level 1. */
   waves?: WaveDef[];
 }
@@ -91,12 +141,16 @@ interface PendingWave {
   warned: boolean;
 }
 
-export class World {
+export class World implements UpgradeHost {
   readonly map: TownMap;
   readonly players: Unit[] = [];
+  readonly rookies: Unit[] = [];
   readonly monsters: Unit[] = [];
   readonly buildings: BuildingState[];
-  /** Events produced by the most recent tick. */
+  readonly projectiles: Projectile[] = [];
+  readonly gems: Gem[] = [];
+  readonly progression: Progression;
+  /** Events produced by the most recent tick (or upgrade choice). */
   events: SimEvent[] = [];
   time = 0;
   tickCount = 0;
@@ -107,6 +161,9 @@ export class World {
   wave = 0;
   readonly totalWaves: number;
   kills = 0;
+  /** Rally: seconds left active, and cooldown. */
+  rallyTime = 0;
+  rallyCooldown = 0;
 
   private nextId = 1;
   private readonly rng: Rng;
@@ -117,23 +174,31 @@ export class World {
   private buildingFlowDirty = true;
   /** Building id per cell, -1 for none. Ruined buildings keep their cells (rubble blocks). */
   private readonly cellBuilding: Int32Array;
-  /** Living monsters only, rebuilt at the start of each tick (targeting and swing hits). */
+  /** Living monsters only, rebuilt at the start of each tick (targeting and hits). */
   private readonly enemyHash = new SpatialHash<Unit>(1);
   /** Every living unit, rebuilt before separation (physics only). */
   private readonly bodyHash = new SpatialHash<Unit>(1);
+  private readonly pathers = new Map<number, Pather>();
   private readonly waves: WaveDef[];
   private pending: PendingWave | null;
   private spawnQueue: { at: number; side: Side; kind: MonsterKind }[] = [];
   private readonly god: boolean;
   private readonly noWaves: boolean;
+  private readonly noRookies: boolean;
+  /** Rookies recruited so far (including fallen ones), and the respawn timer. */
+  private recruited = 0;
+  private recruitIn = 0;
+  private rallyHeld = false;
 
   constructor(opts: WorldOptions) {
     this.rng = new Rng(opts.seed * 7919 + 17);
+    this.progression = new Progression(new Rng(opts.seed * 104729 + 3));
     this.map = opts.map ?? generateTown(opts.seed, opts.mapOptions);
     this.knightFlow = new FlowField(this.map);
     this.buildingFlow = new FlowField(this.map);
     this.god = !!opts.god;
     this.noWaves = !!opts.noWaves;
+    this.noRookies = !!opts.noRookies;
     this.waves = opts.waves ?? LEVEL1_WAVES;
     this.totalWaves = this.waves.length;
 
@@ -144,7 +209,7 @@ export class World {
       const wallBlocks = Math.max(1, b.blocks.length - b.cells.length);
       const hp = BUILDING.baseHp + (wallBlocks - 1) * BUILDING.hpPerExtraBlock;
       for (const [i, j] of b.cells) this.cellBuilding[j * this.map.size + i] = b.id;
-      return { id: b.id, hp, maxHp: hp, ruined: false, cells: b.cells, lastHit: -1 };
+      return { id: b.id, hp, maxHp: hp, baseMaxHp: hp, ruined: false, cells: b.cells, lastHit: -1, shotIn: 0 };
     });
 
     const c = this.map.centre;
@@ -180,28 +245,92 @@ export class World {
     return id >= 0 ? this.buildings[id] : null;
   }
 
+  /** True while the game is paused for an upgrade choice. */
+  get choosing(): boolean {
+    return this.progression.offers !== null;
+  }
+
+  get rookieCap(): number {
+    return ARMY.baseCap + this.progression.mods.army.capAdd;
+  }
+
+  /** Kills needed for the next rookie, or null when all thresholds are used. */
+  nextRookieAt(): number | null {
+    const t = ARMY.thresholds[this.recruited];
+    return t === undefined ? null : Math.round(t * this.progression.mods.army.thresholdMul);
+  }
+
+  // ------------------------------------------------------------------ upgrades
+
+  /** Picks one of the offered upgrade cards. Unpauses when no more choices are queued. */
+  chooseUpgrade(index: number) {
+    const id = this.progression.choose(index, this);
+    if (!id) return;
+    this.events.push({ type: 'upgradeChosen', id });
+    this.applyMods();
+  }
+
+  healKnights(amount: number) {
+    for (const p of this.players) if (p.state !== 'dead') p.hp = Math.min(p.maxHp, p.hp + amount);
+  }
+
+  repairBuildings(fraction: number) {
+    for (const b of this.buildings) if (!b.ruined) b.hp = Math.min(b.maxHp, b.hp + b.maxHp * fraction);
+  }
+
+  /** Applies derived stats (max HP of knights, rookies and buildings) after mods change. */
+  private applyMods() {
+    const m = this.progression.mods;
+    for (const p of this.players) {
+      const max = KNIGHT.hp + m.knight.maxHpAdd;
+      if (p.state !== 'dead') p.hp += max - p.maxHp;
+      p.maxHp = max;
+      p.speed = KNIGHT.speed * m.knight.speedMul;
+    }
+    for (const r of this.rookies) this.applyRookieStats(r);
+    for (const b of this.buildings) {
+      const max = b.baseMaxHp * m.town.maxHpMul;
+      if (!b.ruined) b.hp = (b.hp / b.maxHp) * max;
+      b.maxHp = max;
+    }
+  }
+
   // ------------------------------------------------------------------ tick
 
   tick(inputs: InputState[]) {
     this.events = [];
-    if (this.status !== 'playing') return;
+    if (this.status !== 'playing' || this.choosing) return;
     this.time += DT;
     this.tickCount++;
 
     this.rebuildEnemyHash();
     this.players.forEach((p, k) => this.updateKnight(p, inputs[k]));
+    this.updateRally(inputs[0]);
+    this.updateRecruitment();
+    for (const r of this.rookies) this.updateRookie(r);
     this.updateFlowFields();
     this.updateWaves();
     for (const m of this.monsters) this.updateMonster(m);
+    this.updateProjectiles();
+    this.updateTown();
 
     this.separate();
     for (const u of this.players) this.integrate(u);
+    for (const r of this.rookies) this.integrate(r);
     for (const m of this.monsters) this.integrate(m);
+    this.updateGems();
 
     // Remove corpses once their death animation has played.
     for (let k = this.monsters.length - 1; k >= 0; k--) {
       const m = this.monsters[k];
       if (m.state === 'dead' && m.stateTime > MONSTERS[m.kind as MonsterKind].corpseTime) this.monsters.splice(k, 1);
+    }
+    for (let k = this.rookies.length - 1; k >= 0; k--) {
+      const r = this.rookies[k];
+      if (r.state === 'dead' && r.stateTime > 1.4) {
+        this.rookies.splice(k, 1);
+        this.pathers.delete(r.id);
+      }
     }
 
     this.checkEnd();
@@ -227,6 +356,8 @@ export class World {
   private updateKnight(u: Unit, input: InputState | undefined) {
     this.tickTimers(u);
     if (u.state === 'dead') return;
+    const km = this.progression.mods.knight;
+    if (km.regen > 0) u.hp = Math.min(u.maxHp, u.hp + km.regen * DT);
     const inp = input ?? { move: { x: 0, y: 0 }, attack: false, dodge: false } as InputState;
     const move = screenDirToGround(inp.move.x, inp.move.y);
     const moveLen = Math.hypot(move.x, move.y);
@@ -236,7 +367,7 @@ export class World {
       const dir = moveLen > 0.1 ? norm(move) : u.facing;
       u.facing = dir;
       this.setState(u, 'dodge');
-      u.dodgeCooldown = KNIGHT.dodgeCooldown;
+      u.dodgeCooldown = KNIGHT.dodgeCooldown * km.dodgeCooldownMul;
       u.invuln = Math.max(u.invuln, KNIGHT.dodgeDuration);
     }
     u.dodgeHeld = inp.dodge;
@@ -251,19 +382,20 @@ export class World {
 
     // Attack: hold to auto-swing at the nearest enemy (decision 2).
     if (inp.attack && u.attackCooldown <= 0 && u.state !== 'attack') {
-      const target = this.nearestMonster(u.x, u.y, KNIGHT.acquireRange);
+      const target = this.nearestMonster(u.x, u.y, KNIGHT.acquireRange * km.rangeMul);
       if (target) u.facing = norm({ x: target.x - u.x, y: target.y - u.y });
       else if (moveLen > 0.1) u.facing = norm(move);
       this.setState(u, 'attack');
       u.hitPending = true;
-      u.attackCooldown = KNIGHT.attackCooldown;
+      u.attackCooldown = KNIGHT.attackCooldown * km.cooldownMul;
       this.events.push({ type: 'swing', unit: u.id });
     }
 
     if (u.state === 'attack') {
       if (u.hitPending && u.stateTime >= KNIGHT.attackHitTime) {
         u.hitPending = false;
-        this.knightSwingHits(u);
+        this.swingHits(u, KNIGHT.attackRange * km.rangeMul, Math.min(Math.PI, KNIGHT.attackArc * km.arcMul),
+          KNIGHT.attackDamage * km.damageMul, KNIGHT.knockback * km.knockbackMul);
       }
       if (u.stateTime >= KNIGHT.attackDuration) this.setState(u, 'idle');
     }
@@ -278,23 +410,310 @@ export class World {
     if (u.state !== 'attack') this.setState(u, u.moving ? 'walk' : 'idle', true);
   }
 
-  private knightSwingHits(u: Unit) {
-    const reach = KNIGHT.attackRange;
-    const cosArc = Math.cos(KNIGHT.attackArc);
+  /** Melee swing: hits every enemy within reach inside the facing arc. */
+  private swingHits(u: Unit, reach: number, arc: number, damage: number, knockback: number) {
+    const cosArc = Math.cos(arc);
     this.enemyHash.query(u.x, u.y, reach + 0.5, (m) => {
       if (m.state === 'dead' || m.team === u.team) return;
       const dx = m.x - u.x;
       const dy = m.y - u.y;
       const d = Math.hypot(dx, dy);
       if (d - m.radius > reach) return;
-      // Inside the arc (or overlapping the knight, which always counts).
+      // Inside the arc (or overlapping the attacker, which always counts).
       if (d > u.radius + m.radius && (dx * u.facing.x + dy * u.facing.y) / d < cosArc) return;
-      this.damage(m, KNIGHT.attackDamage, u);
+      this.damage(m, damage, u.id);
       const resist = MONSTERS[m.kind as MonsterKind].knockbackResist;
-      const k = d > 1e-4 ? (KNIGHT.knockback * (1 - resist)) / d : 0;
+      const k = d > 1e-4 ? (knockback * (1 - resist)) / d : 0;
       m.vx += dx * k;
       m.vy += dy * k;
     });
+  }
+
+  // ------------------------------------------------------------------ rally
+
+  private updateRally(input: InputState | undefined) {
+    this.rallyTime = Math.max(0, this.rallyTime - DT);
+    this.rallyCooldown = Math.max(0, this.rallyCooldown - DT);
+    const held = !!input?.rally;
+    if (held && !this.rallyHeld && this.rallyCooldown <= 0) {
+      this.rallyTime = RALLY.duration;
+      this.rallyCooldown = RALLY.cooldown;
+      this.events.push({ type: 'rally' });
+    }
+    this.rallyHeld = held;
+  }
+
+  // ------------------------------------------------------------------ rookies
+
+  private updateRecruitment() {
+    if (this.noRookies) return;
+    this.recruitIn = Math.max(0, this.recruitIn - DT);
+    const alive = this.rookies.filter((r) => r.state !== 'dead').length;
+    if (alive >= this.rookieCap || this.recruitIn > 0) return;
+    // A new recruit when the next kill threshold is reached; replacements for fallen rookies
+    // (recruited but no longer alive) once the respawn delay has passed.
+    const next = this.nextRookieAt();
+    const owed = this.recruited - alive;
+    if (owed <= 0 && (next === null || this.kills < next)) return;
+    const standing = this.buildings.filter((b) => !b.ruined);
+    if (!standing.length) return;
+    const home = standing[Math.floor(this.rng.frac() * standing.length)];
+    const door = this.doorOf(home);
+    if (!door) return;
+    if (owed <= 0) this.recruited++;
+    const order = ARMY.order;
+    const kind = order[(this.recruited - 1 + Math.max(0, owed - 1)) % order.length];
+    const r = this.makeRookie(kind, door[0], door[1]);
+    this.rookies.push(r);
+    this.recruitIn = owed > 0 ? ARMY.respawnDelay : 0;
+    this.events.push({ type: 'rookieJoined', unit: r.id, kind, building: home.id });
+  }
+
+  /** A walkable cell next to the building (where a rookie steps out). */
+  private doorOf(b: BuildingState): [number, number] | null {
+    for (const [i, j] of b.cells) {
+      for (const [di, dj] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+        if (isWalkable(this.map, i + di, j + dj)) return [i + di, j + dj];
+      }
+    }
+    return null;
+  }
+
+  private makeRookie(kind: RookieKind, x: number, y: number): Unit {
+    const def = ROOKIES[kind];
+    const r: Unit = {
+      ...this.baseUnit(x, y),
+      kind, team: 'player', radius: def.radius, hp: def.hp, maxHp: def.hp, speed: def.speed,
+      rank: Math.min(2, this.progression.mods.army.startRank), postX: x, postY: y,
+    };
+    this.applyRookieStats(r);
+    r.hp = r.maxHp;
+    return r;
+  }
+
+  private applyRookieStats(r: Unit) {
+    const def = ROOKIES[r.kind as RookieKind];
+    const max = def.hp * this.progression.mods.army.hpMul * ARMY.rankMul[r.rank];
+    if (r.state !== 'dead') r.hp = Math.min(max, r.hp + Math.max(0, max - r.maxHp));
+    r.maxHp = max;
+  }
+
+  private rookieDamage(r: Unit): number {
+    return ROOKIES[r.kind as RookieKind].damage * this.progression.mods.army.damageMul * ARMY.rankMul[r.rank];
+  }
+
+  private pather(u: Unit): Pather {
+    let p = this.pathers.get(u.id);
+    if (!p) {
+      p = new Pather(this.map);
+      this.pathers.set(u.id, p);
+    }
+    return p;
+  }
+
+  /** Rookies defend buildings first, then hunt nearby monsters, then return to their post. */
+  private updateRookie(r: Unit) {
+    this.tickTimers(r);
+    if (r.state === 'dead') return;
+    const def = ROOKIES[r.kind as RookieKind];
+    r.moving = false;
+
+    if (r.state === 'attack') {
+      const target = this.monsterById(r.targetId);
+      if (target && target.state !== 'dead') r.facing = norm({ x: target.x - r.x, y: target.y - r.y });
+      if (r.hitPending && r.stateTime >= def.attackHitTime) {
+        r.hitPending = false;
+        if (def.keepAway > 0) {
+          if (target && target.state !== 'dead') this.shoot(r.x, r.y, target, this.rookieDamage(r), def.projectileSpeed, r.id);
+        } else {
+          this.swingHits(r, def.range, KNIGHT.attackArc, this.rookieDamage(r), KNIGHT.knockback * 0.6);
+        }
+      }
+      if (r.stateTime >= def.attackDuration) this.setState(r, 'idle');
+      return;
+    }
+
+    const knight = this.players.find((p) => p.state !== 'dead');
+    // Rally: regroup on the knight, only fighting once there.
+    if (this.rallyTime > 0 && knight) {
+      const d = Math.hypot(knight.x - r.x, knight.y - r.y);
+      if (d > RALLY.closeEnough) {
+        r.targetId = -1;
+        this.moveRookie(r, knight.x, knight.y, def.speed * 1.25);
+        return;
+      }
+      r.postX = knight.x;
+      r.postY = knight.y;
+    }
+
+    r.retargetIn -= DT;
+    let target = this.monsterById(r.targetId);
+    if (!target || target.state === 'dead' || r.retargetIn <= 0) {
+      target = this.pickRookieTarget(r);
+      r.targetId = target ? target.id : -1;
+      r.retargetIn = ARMY.retargetEvery;
+    }
+
+    if (!target) {
+      // Home building gone? Follow the knight instead.
+      if (knight && this.standingBuildings() === 0) {
+        r.postX = knight.x;
+        r.postY = knight.y;
+      }
+      if (Math.hypot(r.postX - r.x, r.postY - r.y) > 0.6) this.moveRookie(r, r.postX, r.postY, def.speed);
+      else this.setState(r, 'idle', true);
+      return;
+    }
+
+    const dx = target.x - r.x;
+    const dy = target.y - r.y;
+    const d = Math.hypot(dx, dy);
+    if (def.keepAway > 0) {
+      // Archer: back off when crowded, otherwise shoot from range.
+      if (d < def.keepAway) {
+        const away = norm({ x: -dx, y: -dy });
+        this.moveRookie(r, r.x + away.x, r.y + away.y, def.speed);
+        return;
+      }
+      if (d <= def.range) {
+        r.facing = norm({ x: dx, y: dy });
+        if (r.attackCooldown <= 0) this.startRookieAttack(r, def.attackCooldown);
+        else this.setState(r, 'idle', true);
+        return;
+      }
+      this.moveRookie(r, target.x, target.y, def.speed);
+      return;
+    }
+    // Swordsman.
+    if (d - target.radius - r.radius <= def.range * 0.8) {
+      r.facing = norm({ x: dx, y: dy });
+      if (r.attackCooldown <= 0) this.startRookieAttack(r, def.attackCooldown);
+      else this.setState(r, 'idle', true);
+      return;
+    }
+    this.moveRookie(r, target.x, target.y, def.speed);
+  }
+
+  private startRookieAttack(r: Unit, cooldown: number) {
+    this.setState(r, 'attack');
+    r.hitPending = true;
+    r.attackCooldown = cooldown;
+  }
+
+  private moveRookie(r: Unit, tx: number, ty: number, speed: number) {
+    const dir = this.pather(r).dirTo(r.x, r.y, tx, ty, r.radius, this.time);
+    if (dir.x === 0 && dir.y === 0) {
+      this.setState(r, 'idle', true);
+      return;
+    }
+    r.x += dir.x * speed * DT;
+    r.y += dir.y * speed * DT;
+    r.facing = dir;
+    r.moving = true;
+    this.setState(r, 'walk', true);
+  }
+
+  /** Building attackers within defendRange first (nearest to the rookie), else nearest monster in huntRange. */
+  private pickRookieTarget(r: Unit): Unit | null {
+    let best: Unit | null = null;
+    let bestD = ARMY.defendRange;
+    for (const m of this.monsters) {
+      // Building attackers idle between swings; they stay targets until they walk off or the building falls.
+      const wrecking = m.attackBuilding >= 0 && m.state !== 'walk' && !this.buildings[m.attackBuilding].ruined;
+      if (m.state === 'dead' || !wrecking) continue;
+      const d = Math.hypot(m.x - r.x, m.y - r.y);
+      if (d < bestD) {
+        bestD = d;
+        best = m;
+      }
+    }
+    if (best) return best;
+    return this.nearestMonster(r.x, r.y, ARMY.huntRange);
+  }
+
+  private monsterById(id: number): Unit | null {
+    if (id < 0) return null;
+    for (const m of this.monsters) if (m.id === id) return m;
+    return null;
+  }
+
+  // ------------------------------------------------------------------ projectiles and town defences
+
+  /** Fires an arrow at a monster, leading it slightly. */
+  private shoot(x: number, y: number, target: Unit, damage: number, speed: number, owner: number) {
+    const d = Math.hypot(target.x - x, target.y - y);
+    const lead = d / speed;
+    const tx = target.x + (target.moving ? target.facing.x * target.speed * lead : 0);
+    const ty = target.y + (target.moving ? target.facing.y * target.speed * lead : 0);
+    const dir = norm({ x: tx - x, y: ty - y });
+    const p: Projectile = { id: this.nextId++, x, y, vx: dir.x * speed, vy: dir.y * speed, damage, ttl: 1.2 * (d / speed) + 0.3, owner };
+    this.projectiles.push(p);
+    this.events.push({ type: 'shot', projectile: p.id, from: owner });
+  }
+
+  private updateProjectiles() {
+    for (let k = this.projectiles.length - 1; k >= 0; k--) {
+      const p = this.projectiles[k];
+      p.x += p.vx * DT;
+      p.y += p.vy * DT;
+      p.ttl -= DT;
+      let hit: Unit | null = null;
+      this.enemyHash.query(p.x, p.y, 0.6, (m) => {
+        if (hit || m.state === 'dead') return;
+        if (Math.hypot(m.x - p.x, m.y - p.y) <= m.radius + 0.12) hit = m;
+      });
+      if (hit) this.damage(hit, p.damage, p.owner);
+      if (hit || p.ttl <= 0) this.projectiles.splice(k, 1);
+    }
+  }
+
+  /** Building regen and arrow slits. */
+  private updateTown() {
+    const t = this.progression.mods.town;
+    for (const b of this.buildings) {
+      if (b.ruined) continue;
+      if (t.regenFrac > 0) b.hp = Math.min(b.maxHp, b.hp + b.maxHp * t.regenFrac * DT);
+      if (t.arrowSlits <= 0) continue;
+      b.shotIn -= DT;
+      if (b.shotIn > 0) continue;
+      const [ci, cj] = centreOf(b.cells);
+      const target = this.nearestMonster(ci, cj, TOWN_ARROWS.range);
+      if (!target) continue;
+      this.shoot(ci, cj, target, TOWN_ARROWS.damage, TOWN_ARROWS.speed, -1);
+      b.shotIn = Math.max(1.2, TOWN_ARROWS.interval - 0.8 * (t.arrowSlits - 1));
+    }
+  }
+
+  // ------------------------------------------------------------------ gems and XP
+
+  private updateGems() {
+    const knight = this.players.find((p) => p.state !== 'dead');
+    if (!knight) return;
+    // Once the field is clear between waves, everything left flies home.
+    const vacuum = this.spawnQueue.length === 0 && this.monsters.every((m) => m.state === 'dead');
+    const magnet = GEMS.magnetRadius * this.progression.mods.knight.magnetMul;
+    for (let k = this.gems.length - 1; k >= 0; k--) {
+      const g = this.gems[k];
+      const dx = knight.x - g.x;
+      const dy = knight.y - g.y;
+      const d = Math.hypot(dx, dy);
+      if (!g.magnet && (d <= magnet || vacuum)) g.magnet = true;
+      if (g.magnet) {
+        g.speed = Math.min(GEMS.flySpeed * 2.5, g.speed + GEMS.flySpeed * 3 * DT);
+        const step = Math.min(d, g.speed * DT);
+        if (d > 1e-6) {
+          g.x += (dx / d) * step;
+          g.y += (dy / d) * step;
+        }
+      }
+      if (Math.hypot(knight.x - g.x, knight.y - g.y) <= GEMS.collectRadius) {
+        this.gems.splice(k, 1);
+        this.events.push({ type: 'gemCollected', value: g.value });
+        const before = this.progression.level;
+        this.progression.addXp(g.value);
+        for (let l = before + 1; l <= this.progression.level; l++) this.events.push({ type: 'levelUp', level: l });
+      }
+    }
   }
 
   // ------------------------------------------------------------------ monsters
@@ -310,30 +729,31 @@ export class World {
       return;
     }
 
-    // Choose a target: the knight (for 'nearest' types when he's close) or buildings.
-    const knight = this.nearestPlayer(m.x, m.y);
+    // Choose a target: the nearest friendly (for 'nearest' types when one is close) or buildings.
+    const friend = this.nearestFriendly(m.x, m.y);
     const hasBuildings = this.standingBuildings() > 0;
-    const chaseKnight =
-      !!knight && (!hasBuildings || (def.target === 'nearest' && Math.hypot(knight.x - m.x, knight.y - m.y) <= def.aggroRange));
+    const chase =
+      !!friend && (!hasBuildings || (def.target === 'nearest' && Math.hypot(friend.x - m.x, friend.y - m.y) <= def.aggroRange));
 
-    if (chaseKnight && knight) {
-      const dx = knight.x - m.x;
-      const dy = knight.y - m.y;
+    if (chase && friend) {
+      const dx = friend.x - m.x;
+      const dy = friend.y - m.y;
       const d = Math.hypot(dx, dy);
-      const reach = m.radius + knight.radius + def.attackReach;
+      const reach = m.radius + friend.radius + def.attackReach;
       if (d <= reach) {
-        if (m.attackCooldown <= 0) this.startAttack(m, def, { x: dx, y: dy }, -1);
+        if (m.attackCooldown <= 0) this.startAttack(m, def, { x: dx, y: dy }, -1, friend.id);
         else this.setState(m, 'idle', true);
         return;
       }
-      this.steer(m, def, d > 1.5 ? this.knightFlow : null, dx, dy);
+      // The knight field only leads to the knight; rookies are always close, so go straight.
+      this.steer(m, friend.team === 'player' && friend.kind === 'knight' && d > 1.5 ? this.knightFlow : null, dx, dy);
       return;
     }
 
     // Building attack: any standing building cell within reach?
-    const b = this.adjacentBuilding(m, def);
+    const b = this.adjacentBuilding(m, def.attackReach);
     if (b) {
-      if (m.attackCooldown <= 0) this.startAttack(m, def, { x: b.dx, y: b.dy }, b.id);
+      if (m.attackCooldown <= 0) this.startAttack(m, def, { x: b.dx, y: b.dy }, b.id, -1);
       else this.setState(m, 'idle', true);
       return;
     }
@@ -344,7 +764,66 @@ export class World {
     // The field ends on cells next to buildings; from there close the last gap directly,
     // since a cell centre is 0.5 from the building edge, beyond most monsters' reach.
     const near = this.nearestBuildingCell(m);
-    this.steer(m, def, this.buildingFlow, near ? near[0] - m.x : 0, near ? near[1] - m.y : 0);
+    m.attackBuilding = -1;
+    this.steer(m, this.buildingFlow, near ? near[0] - m.x : 0, near ? near[1] - m.y : 0);
+  }
+
+  private startAttack(m: Unit, def: MonsterDef, dir: Vec2, building: number, target: number) {
+    this.setState(m, 'attack');
+    m.hitPending = true;
+    m.attackCooldown = def.attackCooldown;
+    m.attackBuilding = building;
+    m.targetId = target;
+    m.facing = norm(dir);
+  }
+
+  private continueAttack(m: Unit, def: MonsterDef) {
+    if (m.attackBuilding >= 0) {
+      const b = this.buildings[m.attackBuilding];
+      if (m.hitPending && m.stateTime >= def.attackWindup) {
+        m.hitPending = false;
+        if (!b.ruined) {
+          this.damageBuilding(b, def.buildingDamage, m);
+          const thorns = this.progression.mods.town.thorns;
+          if (thorns > 0) this.damage(m, thorns, -1);
+        }
+      }
+    } else {
+      const target = this.friendlyById(m.targetId) ?? this.nearestFriendly(m.x, m.y);
+      if (target && target.state !== 'dead') {
+        const dx = target.x - m.x;
+        const dy = target.y - m.y;
+        m.facing = norm({ x: dx, y: dy });
+        if (m.hitPending && m.stateTime >= def.attackWindup) {
+          m.hitPending = false;
+          const reach = m.radius + target.radius + def.attackReach;
+          if (Math.hypot(dx, dy) <= reach + 0.1) this.hurtFriendly(target, def.damage);
+        }
+      }
+    }
+    if (m.stateTime >= def.attackWindup + 0.25) this.setState(m, 'idle');
+  }
+
+  /** Nearest standing building cell within `reach` of the unit's edge, with the direction toward it. */
+  private adjacentBuilding(m: Unit, reach: number): { id: number; dx: number; dy: number } | null {
+    const ci = Math.round(m.x);
+    const cj = Math.round(m.y);
+    let best: { id: number; dx: number; dy: number } | null = null;
+    let bestD = m.radius + reach + 0.05;
+    for (let j = cj - 1; j <= cj + 1; j++) {
+      for (let i = ci - 1; i <= ci + 1; i++) {
+        const b = this.buildingAt(i, j);
+        if (!b || b.ruined) continue;
+        const nx = clamp(m.x, i - 0.5, i + 0.5);
+        const ny = clamp(m.y, j - 0.5, j + 0.5);
+        const d = Math.hypot(m.x - nx, m.y - ny);
+        if (d <= bestD) {
+          bestD = d;
+          best = { id: b.id, dx: i - m.x, dy: j - m.y };
+        }
+      }
+    }
+    return best;
   }
 
   /** Closest standing building cell within two cells, or null. */
@@ -367,62 +846,8 @@ export class World {
     return best;
   }
 
-  private startAttack(m: Unit, def: MonsterDef, dir: Vec2, building: number) {
-    this.setState(m, 'attack');
-    m.hitPending = true;
-    m.attackCooldown = def.attackCooldown;
-    m.attackBuilding = building;
-    m.facing = norm(dir);
-  }
-
-  private continueAttack(m: Unit, def: MonsterDef) {
-    if (m.attackBuilding >= 0) {
-      const b = this.buildings[m.attackBuilding];
-      if (m.hitPending && m.stateTime >= def.attackWindup) {
-        m.hitPending = false;
-        if (!b.ruined) this.damageBuilding(b, def.buildingDamage, m);
-      }
-    } else {
-      const target = this.nearestPlayer(m.x, m.y);
-      if (target) {
-        const dx = target.x - m.x;
-        const dy = target.y - m.y;
-        m.facing = norm({ x: dx, y: dy });
-        if (m.hitPending && m.stateTime >= def.attackWindup) {
-          m.hitPending = false;
-          const reach = m.radius + target.radius + def.attackReach;
-          if (Math.hypot(dx, dy) <= reach + 0.1) this.hurtPlayer(target, def.damage);
-        }
-      }
-    }
-    if (m.stateTime >= def.attackWindup + 0.25) this.setState(m, 'idle');
-  }
-
-  /** Nearest standing building cell within reach, with the direction toward it. */
-  private adjacentBuilding(m: Unit, def: MonsterDef): { id: number; dx: number; dy: number } | null {
-    const ci = Math.round(m.x);
-    const cj = Math.round(m.y);
-    const reach = m.radius + def.attackReach + 0.05;
-    let best: { id: number; dx: number; dy: number } | null = null;
-    let bestD = reach;
-    for (let j = cj - 1; j <= cj + 1; j++) {
-      for (let i = ci - 1; i <= ci + 1; i++) {
-        const b = this.buildingAt(i, j);
-        if (!b || b.ruined) continue;
-        const nx = clamp(m.x, i - 0.5, i + 0.5);
-        const ny = clamp(m.y, j - 0.5, j + 0.5);
-        const d = Math.hypot(m.x - nx, m.y - ny);
-        if (d <= bestD) {
-          bestD = d;
-          best = { id: b.id, dx: i - m.x, dy: j - m.y };
-        }
-      }
-    }
-    return best;
-  }
-
   /** Moves along a flow field (or straight along (dx, dy) when field is null or exhausted). */
-  private steer(m: Unit, _def: MonsterDef, field: FlowField | null, dx: number, dy: number) {
+  private steer(m: Unit, field: FlowField | null, dx: number, dy: number) {
     let sx = dx;
     let sy = dy;
     if (field) {
@@ -436,9 +861,12 @@ export class World {
       this.setState(m, 'idle', true);
       return;
     }
+    // Tar pits: slowed next to buildings.
+    const slow = this.progression.mods.town.slow;
+    const speed = m.speed * (slow > 0 && this.adjacentBuilding(m, 0.6) ? 1 - slow : 1);
     const dir = norm({ x: sx, y: sy });
-    m.x += dir.x * m.speed * DT;
-    m.y += dir.y * m.speed * DT;
+    m.x += dir.x * speed * DT;
+    m.y += dir.y * speed * DT;
     m.facing = dir;
     m.moving = true;
     this.setState(m, 'walk', true);
@@ -527,16 +955,40 @@ export class World {
     return m;
   }
 
+  /** Adds a rookie at a ground position. Public for tests and debug tools. */
+  addRookie(x: number, y: number, kind: RookieKind = 'swordsman'): Unit {
+    const r = this.makeRookie(kind, x, y);
+    this.rookies.push(r);
+    return r;
+  }
+
   // ------------------------------------------------------------------ combat helpers
 
-  private damage(u: Unit, amount: number, by: Unit) {
+  /** Damages a monster; `by` is the attacking unit id (-1 for buildings/thorns). */
+  private damage(u: Unit, amount: number, by: number) {
     u.hp -= amount;
-    this.events.push({ type: 'hit', unit: u.id, by: by.id, damage: amount, x: u.x, y: u.y });
+    this.events.push({ type: 'hit', unit: u.id, by, damage: amount, x: u.x, y: u.y });
     if (u.hp <= 0) {
       u.hp = 0;
       this.setState(u, 'dead');
       this.events.push({ type: 'death', unit: u.id });
-      if (u.team === 'enemy') this.kills++;
+      if (u.team === 'enemy') {
+        this.kills++;
+        this.gems.push({ id: this.nextId++, x: u.x, y: u.y, value: XP_DROP[u.kind] ?? 1, magnet: false, speed: 0 });
+        const killer = this.rookies.find((r) => r.id === by);
+        if (killer) this.creditRookieKill(killer);
+      }
+    }
+  }
+
+  private creditRookieKill(r: Unit) {
+    r.unitKills++;
+    const next = r.rank + 1;
+    if (next < ARMY.rankKills.length && r.unitKills >= ARMY.rankKills[next]) {
+      r.rank = next;
+      this.applyRookieStats(r);
+      r.hp = r.maxHp;
+      this.events.push({ type: 'rookiePromoted', unit: r.id, rank: next });
     }
   }
 
@@ -551,15 +1003,23 @@ export class World {
     }
   }
 
-  private hurtPlayer(p: Unit, amount: number) {
-    if (this.god || p.invuln > 0 || p.state === 'dead') return;
+  /** Damages the knight or a rookie. */
+  private hurtFriendly(p: Unit, amount: number) {
+    if (p.invuln > 0 || p.state === 'dead') return;
+    const isKnight = p.kind === 'knight';
+    if (isKnight && this.god) return;
     p.hp -= amount;
-    p.invuln = KNIGHT.hurtInvuln;
-    this.events.push({ type: 'playerHurt', unit: p.id, damage: amount });
+    p.invuln = isKnight ? KNIGHT.hurtInvuln : 0.15;
+    if (isKnight) this.events.push({ type: 'playerHurt', unit: p.id, damage: amount });
+    else this.events.push({ type: 'hit', unit: p.id, by: -1, damage: amount, x: p.x, y: p.y });
     if (p.hp <= 0) {
       p.hp = 0;
       this.setState(p, 'dead');
-      this.events.push({ type: 'playerDied', unit: p.id });
+      if (isKnight) this.events.push({ type: 'playerDied', unit: p.id });
+      else {
+        this.events.push({ type: 'death', unit: p.id });
+        this.recruitIn = Math.max(this.recruitIn, ARMY.respawnDelay);
+      }
     }
   }
 
@@ -582,28 +1042,37 @@ export class World {
     return best;
   }
 
-  private nearestPlayer(x: number, y: number): Unit | null {
+  /** Nearest living knight or rookie. */
+  private nearestFriendly(x: number, y: number): Unit | null {
     let best: Unit | null = null;
     let bestD = Infinity;
-    for (const p of this.players) {
-      if (p.state === 'dead') continue;
-      const d = Math.hypot(p.x - x, p.y - y);
-      if (d < bestD) {
-        bestD = d;
-        best = p;
+    for (const list of [this.players, this.rookies]) {
+      for (const p of list) {
+        if (p.state === 'dead') continue;
+        const d = Math.hypot(p.x - x, p.y - y);
+        if (d < bestD) {
+          bestD = d;
+          best = p;
+        }
       }
     }
     return best;
   }
 
+  private friendlyById(id: number): Unit | null {
+    if (id < 0) return null;
+    for (const list of [this.players, this.rookies]) for (const p of list) if (p.id === id) return p;
+    return null;
+  }
+
   // ------------------------------------------------------------------ physics
 
-  /** Soft push-apart between overlapping units (monsters and knights). */
+  /** Soft push-apart between overlapping units. */
   private separate() {
     const all = this.bodyHash;
     all.clear();
-    for (const m of this.monsters) if (m.state !== 'dead') all.insert(m);
-    for (const p of this.players) if (p.state !== 'dead') all.insert(p);
+    const lists = [this.monsters, this.rookies, this.players];
+    for (const list of lists) for (const u of list) if (u.state !== 'dead') all.insert(u);
     const visit = (u: Unit) => {
       if (u.state === 'dead') return;
       all.query(u.x, u.y, u.radius + 0.5, (o) => {
@@ -624,8 +1093,7 @@ export class World {
         o.y += dy * push * (wo / total);
       });
     };
-    for (const m of this.monsters) visit(m);
-    for (const p of this.players) visit(p);
+    for (const list of lists) for (const u of list) visit(u);
   }
 
   /** Applies knockback velocity, then resolves collisions with blocked cells and the map edge. */
@@ -686,6 +1154,7 @@ export class World {
       facing: { x: 0.7071, y: 0.7071 }, state: 'idle' as UnitState, stateTime: 0,
       attackCooldown: 0, hitPending: false, attackBuilding: -1,
       invuln: 0, dodgeCooldown: 0, dodgeHeld: false, moving: false,
+      rank: 0, unitKills: 0, targetId: -1, retargetIn: 0, postX: x, postY: y,
     };
   }
 
@@ -715,6 +1184,16 @@ export class World {
 /** Separation mass: bigger bodies push smaller ones aside. */
 function mass(u: Unit): number {
   return u.radius * u.radius * 20;
+}
+
+function centreOf(cells: [number, number][]): [number, number] {
+  let x = 0;
+  let y = 0;
+  for (const [i, j] of cells) {
+    x += i;
+    y += j;
+  }
+  return [x / cells.length, y / cells.length];
 }
 
 function norm(v: Vec2): Vec2 {

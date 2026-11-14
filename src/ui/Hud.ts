@@ -14,6 +14,11 @@ export interface HudWorld {
   stars: number;
   players: { hp: number; maxHp: number }[];
   buildings: { id: number; hp: number; maxHp: number; ruined: boolean }[];
+  knightLevel: number;
+  xp: number;
+  xpToNext: number;
+  rookies: number;
+  rookieCap: number;
 }
 
 export interface HudCallbacks {
@@ -25,7 +30,10 @@ const STYLE = `
 .vd-hud { position: fixed; inset: 0; pointer-events: none; font: 600 15px system-ui, sans-serif; color: #3b2418; }
 .vd-hud .bar { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
   display: flex; gap: 12px; align-items: center; background: #f3e3d0dd; padding: 6px 12px; border-radius: 8px;
-  max-width: 380px; white-space: nowrap; }
+  max-width: min(560px, 96vw); white-space: nowrap; overflow: hidden; }
+.vd-hud .lv { font-weight: 800; flex: none; }
+.vd-hud .xp { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: #7a4a3666; }
+.vd-hud .xp > div { height: 100%; width: 0; background: #ffd75e; transition: width 120ms; }
 .vd-hud .bar.flash { animation: vd-flash 400ms ease-out; }
 @keyframes vd-flash { 0% { box-shadow: 0 0 0 0 #ff2a1aff; } 30% { box-shadow: 0 0 14px 6px #ff2a1acc; } 100% { box-shadow: 0 0 0 0 #ff2a1a00; } }
 .vd-hud .hp { width: 120px; height: 12px; background: #7a4a36; border-radius: 6px; overflow: hidden; flex: none; }
@@ -33,7 +41,7 @@ const STYLE = `
 .vd-hud .bld.low { color: #c4221a; }
 @media (max-width: 600px) {
   .vd-hud { font-size: 12px; }
-  .vd-hud .bar { gap: 8px; padding: 4px 8px; }
+  .vd-hud .bar { gap: 6px; padding: 4px 8px 9px; }
   .vd-hud .hp { width: 80px; height: 10px; }
 }
 .vd-hud .warn { position: absolute; padding: 6px 12px; background: #b8322ccc; color: #fff; border-radius: 6px;
@@ -81,6 +89,9 @@ export class Hud {
   private waveEl: HTMLSpanElement;
   private bldEl: HTMLSpanElement;
   private killsEl: HTMLSpanElement;
+  private lvEl: HTMLSpanElement;
+  private rookiesEl: HTMLSpanElement;
+  private xpFill: HTMLDivElement;
   private warns: Record<Side, HTMLDivElement>;
   private over: HTMLDivElement;
   private panel: HTMLDivElement;
@@ -106,7 +117,7 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'vd-hud';
     this.el.innerHTML = `
-      <div class="bar"><div class="hp"><div></div></div><span class="wave"></span><span class="bld"></span><span class="kills"></span></div>
+      <div class="bar"><span class="lv"></span><div class="hp"><div></div></div><span class="wave"></span><span class="bld"></span><span class="rookies"></span><span class="kills"></span><div class="xp"><div></div></div></div>
       ${(['top', 'bottom', 'left', 'right'] as Side[]).map((s) => `<div class="warn ${s}"></div>`).join('')}
       <div class="over"><div class="panel"></div></div>`;
     root.appendChild(this.el);
@@ -115,6 +126,9 @@ export class Hud {
     this.waveEl = this.el.querySelector('.wave')!;
     this.bldEl = this.el.querySelector('.bld')!;
     this.killsEl = this.el.querySelector('.kills')!;
+    this.lvEl = this.el.querySelector('.lv')!;
+    this.rookiesEl = this.el.querySelector('.rookies')!;
+    this.xpFill = this.el.querySelector('.xp > div')!;
     this.warns = {
       top: this.el.querySelector('.warn.top')!, bottom: this.el.querySelector('.warn.bottom')!,
       left: this.el.querySelector('.warn.left')!, right: this.el.querySelector('.warn.right')!,
@@ -139,6 +153,10 @@ export class Hud {
     this.prevStanding = standing;
 
     this.killsEl.textContent = `Kills ${world.kills}`;
+    this.lvEl.textContent = `Lv ${world.knightLevel}`;
+    const xpFrac = world.xpToNext > 0 ? Math.min(1, Math.max(0, world.xp / world.xpToNext)) : 0;
+    this.xpFill.style.width = `${100 * xpFrac}%`;
+    this.rookiesEl.textContent = `⛑ ${world.rookies}/${world.rookieCap}`;
 
     const ended = world.status !== 'playing';
     if (ended && !this.ended) {
