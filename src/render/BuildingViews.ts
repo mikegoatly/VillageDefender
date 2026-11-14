@@ -30,11 +30,15 @@ interface View {
   icon?: Phaser.GameObjects.Text;
   /** Ground ring showing a role's aura/range (planning). */
   aura?: Phaser.GameObjects.Graphics;
+  auraCells?: [number, number][];
+  auraColor?: number;
   centre: { x: number; y: number };
 }
 
 export const RUBBLE_TILES = ['st:rocks_dirt_N', 'st:rocks_dirt_E', 'st:rocks_grass_S'];
 const PUFF = 'vd-puff';
+/** Aura tile colours: chapel holy gold, smithy forge orange, watchtower sky blue (all contrast with grass). */
+const AURA_COLORS: Record<RoleKind, number> = { barracks: 0xffffff, chapel: 0xfff27a, smithy: 0xff7a2e, watchtower: 0x4f9dff };
 
 export class BuildingViews {
   private views = new Map<number, View>();
@@ -101,23 +105,65 @@ export class BuildingViews {
       .setOrigin(0.5, 1).setScale(s).setDepth(5e5 + 1);
     const radius = ROLES[role].radius;
     if (radius > 0) {
-      v.aura = this.scene.add.graphics().setDepth(-5e5).setVisible(this.aurasVisible);
-      const col = role === 'chapel' ? 0x9fd27a : role === 'smithy' ? 0xf0ad4e : 0x7fb3e6;
-      const pts: Phaser.Math.Vector2[] = [];
-      for (let k = 0; k <= 48; k++) {
-        const a = (k / 48) * Math.PI * 2;
-        const p = this.toScreen(v.centre.x + Math.cos(a) * radius, v.centre.y + Math.sin(a) * radius);
-        pts.push(new Phaser.Math.Vector2(p.x, p.y));
+      // Cells whose centre is within the radius of the building centre (matches the sim's check).
+      const cells: [number, number][] = [];
+      const r = Math.ceil(radius);
+      for (let j = Math.floor(v.centre.y) - r; j <= Math.ceil(v.centre.y) + r; j++) {
+        for (let i = Math.floor(v.centre.x) - r; i <= Math.ceil(v.centre.x) + r; i++) {
+          if (Math.hypot(i - v.centre.x, j - v.centre.y) <= radius) cells.push([i, j]);
+        }
       }
-      v.aura.fillStyle(col, 0.12).fillPoints(pts, true);
-      v.aura.lineStyle(3, col, 0.8).strokePoints(pts, true);
+      v.auraCells = cells;
+      v.auraColor = AURA_COLORS[role];
+      v.aura = this.scene.add.graphics().setDepth(-5e5);
+      this.drawAura(v);
     }
   }
 
-  /** Aura rings are shown while planning. */
+  /**
+   * Highlights the affected tiles: filled diamonds plus a bold outline around the area while
+   * planning; just a faint outline during play so you can still see where it reaches.
+   */
+  private drawAura(v: View) {
+    const g = v.aura;
+    if (!g || !v.auraCells) return;
+    g.clear();
+    if (v.ruined) return;
+    const key = (i: number, j: number) => `${i},${j}`;
+    const covered = new Set(v.auraCells.map(([i, j]) => key(i, j)));
+    const corner = (x: number, y: number) => {
+      const p = this.toScreen(x, y);
+      return new Phaser.Math.Vector2(p.x, p.y);
+    };
+    const col = v.auraColor ?? 0xffffff;
+    if (this.aurasVisible) {
+      g.fillStyle(col, 0.35);
+      for (const [i, j] of v.auraCells) {
+        g.fillPoints([corner(i - 0.5, j - 0.5), corner(i + 0.5, j - 0.5), corner(i + 0.5, j + 0.5), corner(i - 0.5, j + 0.5)], true);
+      }
+    }
+    // Outline: every cell edge that borders an uncovered cell.
+    g.lineStyle(this.aurasVisible ? 5 : 3, col, this.aurasVisible ? 1 : 0.75);
+    for (const [i, j] of v.auraCells) {
+      const edges: [number, number, [number, number], [number, number]][] = [
+        [i + 1, j, [i + 0.5, j - 0.5], [i + 0.5, j + 0.5]],
+        [i - 1, j, [i - 0.5, j - 0.5], [i - 0.5, j + 0.5]],
+        [i, j + 1, [i - 0.5, j + 0.5], [i + 0.5, j + 0.5]],
+        [i, j - 1, [i - 0.5, j - 0.5], [i + 0.5, j - 0.5]],
+      ];
+      for (const [ni, nj, a, b] of edges) {
+        if (covered.has(key(ni, nj))) continue;
+        const pa = corner(a[0], a[1]);
+        const pb = corner(b[0], b[1]);
+        g.lineBetween(pa.x, pa.y, pb.x, pb.y);
+      }
+    }
+  }
+
+  /** Strong tile highlight while planning; faint outline during play. */
   setAurasVisible(on: boolean) {
     this.aurasVisible = on;
-    for (const v of this.views.values()) v.aura?.setVisible(on && !v.ruined);
+    for (const v of this.views.values()) this.drawAura(v);
   }
 
   highlight(id: number) {
