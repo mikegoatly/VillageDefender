@@ -5,7 +5,8 @@
   "frameHeight": 300,
   "pivotX": 120,
   "pivotY": 220,
-  "columns": 1,
+  "atlas": "ft-house-wood.atlas.json",
+  "pixelsPerUnit": 96,
   "frameCount": 1,
   "views": 1
 }

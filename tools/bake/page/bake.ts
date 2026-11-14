@@ -9,13 +9,15 @@ import {
   type BakeResult,
   type BakeSpec,
   type CharacterSpec,
-  type Direction,
   type SheetMeta,
   type StaticSpec,
 } from './types';
 
 const SUPERSAMPLE = 2;
-const MAX_SHEET_WIDTH = 4096;
+const MAX_SHEET_SIZE = 4096;
+const ALPHA_THRESHOLD = 8;
+const SPACING = 2;
+const TRIM_PADDING = 2;
 
 const loader = new GLTFLoader();
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
@@ -77,8 +79,12 @@ function renderFrame(scene: THREE.Scene, cam: THREE.Camera, w: number, h: number
   return out;
 }
 
-/** Draws `frame` onto `ctx` at (x, y) with a solid outline behind it. */
-function drawOutlined(ctx: CanvasRenderingContext2D, frame: HTMLCanvasElement, x: number, y: number, g: BakeGlobals) {
+/** Returns a new canvas of the same size as `frame` with a solid outline behind it. */
+function outlined(frame: HTMLCanvasElement, g: BakeGlobals): HTMLCanvasElement {
+  const out = document.createElement('canvas');
+  out.width = frame.width;
+  out.height = frame.height;
+  const ctx = out.getContext('2d', { willReadFrequently: true })!;
   const { radius, color } = g.outline;
   if (radius > 0) {
     const sil = document.createElement('canvas');
@@ -92,21 +98,101 @@ function drawOutlined(ctx: CanvasRenderingContext2D, frame: HTMLCanvasElement, x
     const steps = 16;
     for (let i = 0; i < steps; i++) {
       const a = (i / steps) * Math.PI * 2;
-      ctx.drawImage(sil, x + Math.cos(a) * radius, y + Math.sin(a) * radius);
+      ctx.drawImage(sil, Math.cos(a) * radius, Math.sin(a) * radius);
     }
   }
-  ctx.drawImage(frame, x, y);
+  ctx.drawImage(frame, 0, 0);
+  return out;
 }
 
-function makeSheet(frames: HTMLCanvasElement[], w: number, h: number, g: BakeGlobals) {
-  const columns = Math.max(1, Math.min(frames.length, Math.floor(MAX_SHEET_WIDTH / w)));
-  const rows = Math.ceil(frames.length / columns);
+interface Rect { x: number; y: number; w: number; h: number }
+
+/** Alpha bounds (alpha > ALPHA_THRESHOLD) of a frame, padded and clamped. Empty frames give a 1x1 rect. */
+function frameBounds(f: HTMLCanvasElement): Rect {
+  const w = f.width;
+  const h = f.height;
+  const d = f.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, w, h).data;
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > ALPHA_THRESHOLD) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return { x: 0, y: 0, w: 1, h: 1 };
+  const x0 = Math.max(0, minX - TRIM_PADDING);
+  const y0 = Math.max(0, minY - TRIM_PADDING);
+  const x1 = Math.min(w, maxX + 1 + TRIM_PADDING);
+  const y1 = Math.min(h, maxY + 1 + TRIM_PADDING);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Shelf-packs rects (tallest first) into a sheet of the given width; returns positions and height. */
+function shelfPack(sizes: { w: number; h: number }[], width: number) {
+  const order = sizes.map((_, i) => i).sort((a, b) => sizes[b].h - sizes[a].h);
+  const pos: { x: number; y: number }[] = new Array(sizes.length);
+  let x = 0, y = 0, rowH = 0;
+  for (const i of order) {
+    const w = sizes[i].w + SPACING;
+    const h = sizes[i].h + SPACING;
+    if (w > width) return undefined;
+    if (x + w > width) { x = 0; y += rowH; rowH = 0; }
+    pos[i] = { x, y };
+    x += w;
+    rowH = Math.max(rowH, h);
+  }
+  return { pos, height: y + rowH };
+}
+
+/** Outlines every frame, trims each to its own bounds and packs them into one atlas image + TexturePacker JSON. */
+function makeAtlas(
+  frames: HTMLCanvasElement[], names: string[], cellW: number, cellH: number, g: BakeGlobals, sheetName: string,
+) {
+  const outlinedFrames = frames.map((f) => outlined(f, g));
+  const bounds = outlinedFrames.map(frameBounds);
+  const total = bounds.reduce((sum, b) => sum + (b.w + SPACING) * (b.h + SPACING), 0);
+  const maxW = Math.max(...bounds.map((b) => b.w + SPACING));
+
+  let best: { width: number; height: number; pos: { x: number; y: number }[] } | undefined;
+  const start = Math.max(maxW, Math.ceil(Math.sqrt(total) / 64) * 64);
+  for (let width = start; width <= MAX_SHEET_SIZE; width += 64) {
+    const r = shelfPack(bounds, width);
+    if (!r || r.height > MAX_SHEET_SIZE) continue;
+    if (!best || width * r.height < best.width * best.height) best = { width, height: r.height, pos: r.pos };
+  }
+  if (!best) throw new Error(`${sheetName}: ${frames.length} frames cannot be packed into ${MAX_SHEET_SIZE}x${MAX_SHEET_SIZE}`);
+
+  // Shrink to the used extent.
+  let usedW = 1, usedH = 1;
+  bounds.forEach((b, i) => {
+    usedW = Math.max(usedW, best!.pos[i].x + b.w);
+    usedH = Math.max(usedH, best!.pos[i].y + b.h);
+  });
   const sheet = document.createElement('canvas');
-  sheet.width = columns * w;
-  sheet.height = rows * h;
+  sheet.width = usedW;
+  sheet.height = usedH;
   const ctx = sheet.getContext('2d')!;
-  frames.forEach((f, i) => drawOutlined(ctx, f, (i % columns) * w, Math.floor(i / columns) * h, g));
-  return { png: sheet.toDataURL('image/png'), columns };
+  const atlasFrames: Record<string, unknown> = {};
+  outlinedFrames.forEach((f, i) => {
+    const b = bounds[i];
+    const p = best!.pos[i];
+    ctx.drawImage(f, b.x, b.y, b.w, b.h, p.x, p.y, b.w, b.h);
+    atlasFrames[names[i]] = {
+      frame: { x: p.x, y: p.y, w: b.w, h: b.h },
+      rotated: false,
+      trimmed: true,
+      spriteSourceSize: { x: b.x, y: b.y, w: b.w, h: b.h },
+      sourceSize: { w: cellW, h: cellH },
+    };
+  });
+  return {
+    png: sheet.toDataURL('image/png'),
+    atlas: { frames: atlasFrames, meta: { image: `${sheetName}.png`, size: { w: usedW, h: usedH }, scale: '1' } },
+  };
 }
 
 async function bakeCharacter(g: BakeGlobals, spec: CharacterSpec): Promise<BakeResult> {
@@ -131,6 +217,7 @@ async function bakeCharacter(g: BakeGlobals, spec: CharacterSpec): Promise<BakeR
   const mixer = new THREE.AnimationMixer(model);
 
   const frames: HTMLCanvasElement[] = [];
+  const names: string[] = [];
   const anims: NonNullable<SheetMeta['anims']> = {};
 
   for (const anim of spec.anims) {
@@ -139,9 +226,7 @@ async function bakeCharacter(g: BakeGlobals, spec: CharacterSpec): Promise<BakeR
     mixer.stopAllAction();
     const action = mixer.clipAction(clip);
     action.play();
-    const start = {} as Record<Direction, number>;
     DIRECTIONS.forEach((dir, di) => {
-      start[dir] = frames.length;
       model.rotation.y = facingRotation((di * Math.PI) / 4, g.elevation);
       for (let i = 0; i < anim.frames; i++) {
         const t = anim.loop
@@ -149,18 +234,20 @@ async function bakeCharacter(g: BakeGlobals, spec: CharacterSpec): Promise<BakeR
           : (i / Math.max(1, anim.frames - 1)) * clip.duration * 0.999;
         mixer.setTime(t);
         frames.push(renderFrame(scene, cam, w, h));
+        names.push(`${anim.name}/${dir}/${i}`);
       }
     });
-    anims[anim.name] = { frames: anim.frames, fps: anim.fps, loop: anim.loop, start };
+    anims[anim.name] = { frames: anim.frames, fps: anim.fps, loop: anim.loop };
   }
 
-  const { png, columns } = makeSheet(frames, w, h, g);
+  const sheet = makeAtlas(frames, names, w, h, g, spec.name);
   return {
-    png,
+    png: sheet.png,
+    atlas: sheet.atlas,
     meta: {
       name: spec.name, image: `${spec.name}.png`,
       frameWidth: w, frameHeight: h, pivotX, pivotY,
-      columns, frameCount: frames.length,
+      atlas: `${spec.name}.atlas.json`, pixelsPerUnit: g.pixelsPerUnit, frameCount: frames.length,
       directions: DIRECTIONS, anims,
     },
   };
@@ -180,17 +267,20 @@ async function bakeStatic(g: BakeGlobals, spec: StaticSpec): Promise<BakeResult>
   const { cellWidth: w, cellHeight: h, pivotX, pivotY } = spec;
   const cam = makeCamera(g, w, h, pivotX, pivotY);
   const frames: HTMLCanvasElement[] = [];
+  const names: string[] = [];
   for (let v = 0; v < spec.views; v++) {
     group.rotation.y = (v * Math.PI) / 2;
     frames.push(renderFrame(scene, cam, w, h));
+    names.push(`view/${v}`);
   }
-  const { png, columns } = makeSheet(frames, w, h, g);
+  const sheet = makeAtlas(frames, names, w, h, g, spec.name);
   return {
-    png,
+    png: sheet.png,
+    atlas: sheet.atlas,
     meta: {
       name: spec.name, image: `${spec.name}.png`,
       frameWidth: w, frameHeight: h, pivotX, pivotY,
-      columns, frameCount: frames.length, views: spec.views,
+      atlas: `${spec.name}.atlas.json`, pixelsPerUnit: g.pixelsPerUnit, frameCount: frames.length, views: spec.views,
     },
   };
 }

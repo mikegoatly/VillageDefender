@@ -5,7 +5,8 @@
   "frameHeight": 400,
   "pivotX": 220,
   "pivotY": 290,
-  "columns": 1,
+  "atlas": "ft-house-stone.atlas.json",
+  "pixelsPerUnit": 96,
   "frameCount": 1,
   "views": 1
 }

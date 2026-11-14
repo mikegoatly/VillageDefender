@@ -327,6 +327,17 @@ Findings:
   | rect n=18, ts 0.65 | 683 | 58 / 79 | 25 / 34 |
   | rect n=22, ts 0.55 | 1011 | 59 / 67 | 26 / 29 |
 
+### Milestone 1 results (2026-11-14)
+
+- **Playable toy:** knight moves (screen-relative), hold-to-attack auto-aims at the nearest enemy, dodge roll with i-frames, HP and restart. Zombies arrive in escalating waves from 1–2 map edges with a 3 s on-screen warning. Map: generated rectangular town, 18 diamonds across at 0.65× tiles (~680 cells), buildings and trees block movement.
+- **Input:** keyboard (WASD/arrows, Space attack, Shift/K dodge), gamepad (left stick/D-pad, A or RT attack, B dodge), touch (floating left joystick, hold ⚔ to attack, » dodge); the active device switches automatically. Rotate-to-landscape overlay pauses the game on portrait touch devices.
+- **Readability:** gold halo under the knight; gold see-through silhouette when he is behind a building.
+- **Architecture:** sim is pure TS in `src/sim` (fixed 60 Hz, seeded, deterministic); flow-field pathing; render in `src/render/GameScene.ts`; DOM HUD in `src/ui`.
+- **Texture budget:** per-frame-trimmed atlases at 96 px/unit cut character sheets from ~21.5 MB to ~5 MB GPU each.
+- **Bugs caught by tests:** knight's swing hit himself (shared spatial hash); flow field lost regions due to Float32 rounding; isolated rim cells on the rectangular map (now removed at generation).
+- **Bot balance baseline (seeds 1–5):** idle bot dies at 22–31 s in wave 2; simple fighter bot survives 154–183 s, reaching wave 11–13 with 191–248 kills. Every run eventually loses — fine for a toy, needs tuning once upgrades exist.
+- **Known gaps / next:** zombie crowds overlap heavily in big waves; no hit-stop/damage numbers/audio yet; touch controls use placeholder CSS art (swap to Kenney Mobile Controls); occlusion check is approximate.
+
 ## 7. Decisions
 
 ### Decided (2026-11-14)
@@ -354,6 +365,10 @@ Findings:
     knight at ~25 px whatever the tile count; buildings become multi-block (2×2 footprints,
     2 storeys) so they still read as buildings. Final size picked in milestone 1 from the
     variants below.
+17. **Auto-aim:** the basic attack targets the nearest enemy in range, even while running the other way.
+18. **Touch attack:** hold the ⚔ button to attack (same as keyboard/pad). The always-on attack toggle stays available as an accessibility option.
+19. **Milestone 1 scope:** buildings are obstacles only; building HP and damage arrive in milestone 2.
+20. **Map size:** 18 diamonds across at 0.65× tiles (decision 11 variant).
 
 ### Open (decide later)
 

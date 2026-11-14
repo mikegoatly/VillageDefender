@@ -16,5 +16,10 @@
 
 - Plan and decisions: `docs/GAME_PLAN.md`.
 - Commands: `npm run dev`, `npm test`, `npm run build`, `npm run import-assets`,
-  `npm run bake`, `node tools/screenshot.mjs "<query>"` (needs dev server on 5173).
+  `npm run bake`, `node tools/screenshot.mjs "<query>"` (needs dev server on 5173),
+  `node tools/playtest.mjs "<query>" <seconds> <shots>` (scripted play via `window.__vd`,
+  saves `screenshots/playtest-N.png` and `-close.png`, needs dev server).
+- URL debug params: `?seed= &speed= &god=1 &wave=`.
+- Tests: `npx vitest run`; bot balance table: `npx vitest run tests/sim/bots.test.ts --disableConsoleIntercept`.
+  Test helpers (builders, ASCII maps, bots) live in tests/helpers — reuse them.
 - Sprite sheet inspector: `/tools/bake/page/viewer.html?sheet=<name>&anim=<anim>`.

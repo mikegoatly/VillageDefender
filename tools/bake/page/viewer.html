@@ -22,12 +22,14 @@
       img.src = `/public/assets/sprites/${meta.image}?t=${Date.now()}`;
       await img.decode();
       const out = document.getElementById('out');
-      const drawFrame = (parent, idx) => {
+      const atlas = await (await fetch(`/public/assets/sprites/${meta.atlas}`)).json();
+      const drawFrame = (parent, frameName) => {
         const c = document.createElement('canvas');
         c.width = meta.frameWidth * scale; c.height = meta.frameHeight * scale;
         const ctx = c.getContext('2d');
-        const sx = (idx % meta.columns) * meta.frameWidth, sy = Math.floor(idx / meta.columns) * meta.frameHeight;
-        ctx.drawImage(img, sx, sy, meta.frameWidth, meta.frameHeight, 0, 0, c.width, c.height);
+        const f = atlas.frames[frameName];
+        ctx.drawImage(img, f.frame.x, f.frame.y, f.frame.w, f.frame.h,
+          f.spriteSourceSize.x * scale, f.spriteSourceSize.y * scale, f.spriteSourceSize.w * scale, f.spriteSourceSize.h * scale);
         ctx.fillStyle = 'red'; ctx.fillRect(meta.pivotX * scale - 2, meta.pivotY * scale - 2, 4, 4);
         parent.appendChild(c);
       };
@@ -38,13 +40,13 @@
             const row = document.createElement('div'); row.className = 'row';
             row.innerHTML = `<b>${a} ${d}</b>`;
             const info = meta.anims[a];
-            for (let i = 0; i < info.frames; i++) drawFrame(row, info.start[d] + i);
+            for (let i = 0; i < info.frames; i++) drawFrame(row, `${a}/${d}/${i}`);
             out.appendChild(row);
           }
         }
       } else {
         const row = document.createElement('div'); row.className = 'row';
-        for (let i = 0; i < meta.frameCount; i++) drawFrame(row, i);
+        for (let i = 0; i < meta.frameCount; i++) drawFrame(row, `view/${i}`);
         out.appendChild(row);
       }
       window.viewerReady = true;

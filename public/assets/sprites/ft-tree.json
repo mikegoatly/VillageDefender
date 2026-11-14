@@ -5,7 +5,8 @@
   "frameHeight": 340,
   "pivotX": 100,
   "pivotY": 290,
-  "columns": 1,
+  "atlas": "ft-tree.atlas.json",
+  "pixelsPerUnit": 96,
   "frameCount": 1,
   "views": 1
 }

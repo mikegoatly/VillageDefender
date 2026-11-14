@@ -64,20 +64,24 @@ export type Direction = (typeof DIRECTIONS)[number];
 export interface SheetMeta {
   name: string;
   image: string;
+  /** Working cell size; atlas frames are trimmed within it. */
   frameWidth: number;
   frameHeight: number;
   pivotX: number;
   pivotY: number;
-  columns: number;
+  /** Phaser JSON-hash atlas file next to the image. Frame names: `${anim}/${dir}/${i}` or `view/${v}`. */
+  atlas: string;
+  pixelsPerUnit: number;
   frameCount: number;
   /** character sheets */
   directions?: readonly Direction[];
-  anims?: Record<string, { frames: number; fps: number; loop: boolean; start: Record<Direction, number> }>;
+  anims?: Record<string, { frames: number; fps: number; loop: boolean }>;
   /** static sheets: frame index per view rotation */
   views?: number;
 }
 
 export interface BakeResult {
   png: string; // data URL
+  atlas: unknown; // TexturePacker JSON-hash
   meta: SheetMeta;
 }

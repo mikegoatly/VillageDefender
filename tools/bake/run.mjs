@@ -40,8 +40,9 @@ try {
       const result = await page.evaluate(([g, s]) => window.bake(g, s), [globals, spec]);
       const png = Buffer.from(result.png.split(',')[1], 'base64');
       writeFileSync(join(OUT, `${spec.name}.png`), png);
+      writeFileSync(join(OUT, `${spec.name}.atlas.json`), JSON.stringify(result.atlas));
       writeFileSync(join(OUT, `${spec.name}.json`), JSON.stringify(result.meta, null, 2));
-      console.log(`${spec.name}: ${result.meta.frameCount} frames, ${(png.length / 1024).toFixed(0)} KB, ${Date.now() - t0} ms`);
+      console.log(`${spec.name}: ${result.meta.frameCount} frames, ${result.atlas.meta.size.w}x${result.atlas.meta.size.h} (${(result.atlas.meta.size.w * result.atlas.meta.size.h * 4 / 1048576).toFixed(2)} MB GPU), ${(png.length / 1024).toFixed(0)} KB, ${Date.now() - t0} ms`);
     }
   }
 } finally {

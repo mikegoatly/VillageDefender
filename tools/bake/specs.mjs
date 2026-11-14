@@ -5,9 +5,9 @@ export const globals = {
   // Sketch Town grid diamonds are 232x110 → sin(elevation) = 110/232.
   elevation: Math.asin(110 / 232),
   // Mini characters are ~0.76 units tall → ~80px on screen, against ~216px Sketch blocks.
-  pixelsPerUnit: 120,
-  outline: { radius: 3, color: [74, 44, 34] },
-  character: { cellWidth: 160, cellHeight: 176, pivotX: 80, pivotY: 140 },
+  pixelsPerUnit: 96,
+  outline: { radius: 2.5, color: [74, 44, 34] },
+  character: { cellWidth: 256, cellHeight: 224, pivotX: 128, pivotY: 168 },
 };
 
 /** Standard animation set shared by every Kenney "Mini" rig character. */

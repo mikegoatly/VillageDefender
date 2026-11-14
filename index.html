@@ -7,17 +7,10 @@
     <style>
       html, body { margin: 0; height: 100%; background: #d9bfa6; overflow: hidden; touch-action: none; }
       #game { position: fixed; inset: 0; }
-      #hud {
-        position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left));
-        font: 14px sans-serif; color: #3b2418; background: #f3e3d0cc; padding: 4px 8px; border-radius: 4px;
-        cursor: pointer; user-select: none;
-      }
-      #hud:empty { display: none; }
     </style>
   </head>
   <body>
     <div id="game"></div>
-    <div id="hud"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
