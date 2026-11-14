@@ -1,0 +1,11 @@
+{
+  "name": "ft-house-stone",
+  "image": "ft-house-stone.png",
+  "frameWidth": 440,
+  "frameHeight": 400,
+  "pivotX": 220,
+  "pivotY": 290,
+  "columns": 1,
+  "frameCount": 1,
+  "views": 1
+}

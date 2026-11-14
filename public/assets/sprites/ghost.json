@@ -1,0 +1,82 @@
+{
+  "name": "ghost",
+  "image": "ghost.png",
+  "frameWidth": 160,
+  "frameHeight": 176,
+  "pivotX": 80,
+  "pivotY": 140,
+  "columns": 25,
+  "frameCount": 192,
+  "directions": [
+    "E",
+    "SE",
+    "S",
+    "SW",
+    "W",
+    "NW",
+    "N",
+    "NE"
+  ],
+  "anims": {
+    "idle": {
+      "frames": 4,
+      "fps": 4,
+      "loop": true,
+      "start": {
+        "E": 0,
+        "SE": 4,
+        "S": 8,
+        "SW": 12,
+        "W": 16,
+        "NW": 20,
+        "N": 24,
+        "NE": 28
+      }
+    },
+    "walk": {
+      "frames": 8,
+      "fps": 12,
+      "loop": true,
+      "start": {
+        "E": 32,
+        "SE": 40,
+        "S": 48,
+        "SW": 56,
+        "W": 64,
+        "NW": 72,
+        "N": 80,
+        "NE": 88
+      }
+    },
+    "attack": {
+      "frames": 6,
+      "fps": 14,
+      "loop": false,
+      "start": {
+        "E": 96,
+        "SE": 102,
+        "S": 108,
+        "SW": 114,
+        "W": 120,
+        "NW": 126,
+        "N": 132,
+        "NE": 138
+      }
+    },
+    "die": {
+      "frames": 6,
+      "fps": 10,
+      "loop": false,
+      "start": {
+        "E": 144,
+        "SE": 150,
+        "S": 156,
+        "SW": 162,
+        "W": 168,
+        "NW": 174,
+        "N": 180,
+        "NE": 186
+      }
+    }
+  }
+}

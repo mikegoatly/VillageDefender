@@ -1,0 +1,11 @@
+{
+  "name": "ft-tree",
+  "image": "ft-tree.png",
+  "frameWidth": 200,
+  "frameHeight": 340,
+  "pivotX": 100,
+  "pivotY": 290,
+  "columns": 1,
+  "frameCount": 1,
+  "views": 1
+}
