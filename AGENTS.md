@@ -20,6 +20,7 @@
   `node tools/playtest.mjs "<query>" <seconds> <shots>` (scripted play via `window.__vd`,
   saves `screenshots/playtest-N.png` and `-close.png`, needs dev server).
 - URL debug params: `?seed= &speed= &god=1 &wave=`.
+- Debug mode: dev builds or `?debug=1`; toggle with backtick/F2/🐞. World debug API: `debugSpawn`, `debugGiveXp`, `debugGiveUpgrade`, `debugAddRookie`, `debugJumpToWave`, `debugKillAll`, `debugSetBuildingHp`, `debugEnd`, `debugInfo`; overlays via `window.__vd.overlays`. Balance retunes: edit live in the panel, Copy balance JSON, then bake the numbers into src/data/*.
 - Tests: `npx vitest run`; bot balance table: `npx vitest run tests/sim/bots.test.ts --disableConsoleIntercept`.
   Test helpers (builders, ASCII maps, bots) live in tests/helpers — reuse them.
 - Sprite sheet inspector: `/tools/bake/page/viewer.html?sheet=<name>&anim=<anim>`.

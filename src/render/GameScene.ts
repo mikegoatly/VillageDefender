@@ -9,7 +9,7 @@ import { DT, MAP } from '../data/balance';
 import { InputManager } from '../input/InputManager';
 import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ROOKIES, type RookieKind } from '../data/rookies';
-import { groundDirToScreen, groundToScreen } from '../sim/iso';
+import { groundDirToScreen, groundToScreen, screenToGround } from '../sim/iso';
 import { Ground, type TownMap } from '../sim/map';
 import { emptyInput, type InputState } from '../sim/types';
 import { World, type Unit } from '../sim/world';
@@ -17,6 +17,8 @@ import { installRotateOverlay } from '../ui/RotateOverlay';
 import { Hud, type HudWorld } from '../ui/Hud';
 import { LevelUpPanel } from '../ui/LevelUpPanel';
 import { FxViews } from './FxViews';
+import { DebugPanel, debugEnabled, type DebugHost, type OverlayName } from '../ui/DebugPanel';
+import { DebugOverlay } from './DebugOverlay';
 import { BuildingViews, RUBBLE_TILES, type PlacedBlock } from './BuildingViews';
 import { createCharacterAnims, directionFor, preloadSheets, sheetMeta, sheetOrigin } from './sheets';
 
@@ -30,6 +32,18 @@ const SHEETS = ['knight', 'zombie', 'orc', 'swordsman', 'archer'];
 const HALO_KNIGHT = 0xffd75e;
 const HALO_ROOKIE = [0x7fb3e6, 0xb9d6f2, 0xffffff];
 const ROTATE_CLASS = 'vd-rotate-active';
+
+/**
+ * Debug state that survives scene restarts (the panel lives outside the scene; the scene object
+ * itself is reused by Phaser on restart).
+ */
+const debugState = {
+  panel: null as DebugPanel | null,
+  speed: null as number | null,
+  paused: false,
+  overlays: { flowKnight: false, flowBuildings: false, hitboxes: false, ranges: false, labels: false } as Record<OverlayName, boolean>,
+  lastClick: null as { x: number; y: number } | null,
+};
 
 interface UnitView {
   sprite: Phaser.GameObjects.Sprite;
@@ -73,6 +87,7 @@ export class GameScene extends Phaser.Scene {
   private paused = false;
   private uninstallRotate?: () => void;
   private override: InputState | null = null;
+  private debugOverlay?: DebugOverlay;
 
   constructor() {
     super('Game');
@@ -113,6 +128,7 @@ export class GameScene extends Phaser.Scene {
       this.handleEvents();
     });
     this.fx = new FxViews(this, (x, y) => this.toScreen(x, y));
+    this.setupDebug();
 
     this.scale.on('resize', this.fitCamera, this);
     this.events.once('shutdown', () => {
@@ -121,6 +137,7 @@ export class GameScene extends Phaser.Scene {
       this.uninstallRotate?.();
       this.hud.destroy();
       this.levelUp.destroy();
+      this.debugOverlay?.destroy();
     });
     this.fitCamera();
     this.exposeDebug();
@@ -129,7 +146,7 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, deltaMs: number) {
     this.paused = document.documentElement.classList.contains(ROTATE_CLASS);
     const input = this.override ?? this.input2.poll();
-    if (!this.paused) {
+    if (!this.paused && !debugState.paused) {
       this.accumulator += Math.min(deltaMs / 1000, 0.1) * this.params.speed;
       let steps = 0;
       while (this.accumulator >= DT && steps < 8 * Math.max(1, this.params.speed)) {
@@ -142,6 +159,34 @@ export class GameScene extends Phaser.Scene {
     this.sync(deltaMs / 1000);
     this.buildingViews.update(this.world.buildings, this.time.now / 1000, deltaMs / 1000);
     this.syncUi();
+    this.debugOverlay?.update(this.world, debugState.overlays);
+    debugState.panel?.update();
+  }
+
+  /** Debug panel (dev builds or ?debug=1): created once, survives restarts; overlays per scene. */
+  private setupDebug() {
+    if (!debugEnabled()) return;
+    if (debugState.speed !== null) this.params.speed = debugState.speed;
+    this.debugOverlay = new DebugOverlay(this, (x, y) => this.toScreen(x, y));
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      debugState.lastClick = screenToGround(p.worldX, p.worldY, MAP.tileScale);
+    });
+    if (debugState.panel) return;
+    // The host always reads the live scene/world, so it stays valid across restarts.
+    const scene = this;
+    const host: DebugHost = {
+      world: () => scene.world,
+      seed: () => scene.params.seed,
+      restart: (seed?: number) => scene.restart(seed),
+      get speed() { return scene.params.speed; },
+      set speed(v: number) { scene.params.speed = v; debugState.speed = v; },
+      get paused() { return debugState.paused; },
+      set paused(v: boolean) { debugState.paused = v; },
+      stepTicks: (n: number) => scene.step(n, scene.override ?? scene.input2.poll()),
+      overlays: debugState.overlays,
+      lastClickGround: () => debugState.lastClick,
+    };
+    debugState.panel = new DebugPanel(host);
   }
 
   /** HUD and the level-up panel (the sim pauses itself while a choice is open). */
@@ -394,6 +439,7 @@ export class GameScene extends Phaser.Scene {
       this.override = s;
     };
     vd.restart = (seed?: number) => this.restart(seed);
+    vd.overlays = debugState.overlays;
     vd.choose = (i: number) => {
       this.world.chooseUpgrade(i);
       this.handleEvents();

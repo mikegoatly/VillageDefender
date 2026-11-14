@@ -21,19 +21,19 @@ export interface RookieDef {
 
 export const ROOKIES: Record<RookieKind, RookieDef> = {
   swordsman: {
-    sheet: 'swordsman', radius: 0.23, hp: 60, speed: 2.7, damage: 10,
+    sheet: 'swordsman', radius: 0.23, hp: 60, speed: 2.7, damage: 7.5,
     attackCooldown: 0.8, attackHitTime: 0.15, attackDuration: 0.35, range: 0.9, keepAway: 0, projectileSpeed: 0,
   },
   archer: {
-    sheet: 'archer', radius: 0.22, hp: 40, speed: 2.6, damage: 8,
+    sheet: 'archer', radius: 0.22, hp: 40, speed: 2.6, damage: 6,
     attackCooldown: 1.2, attackHitTime: 0.3, attackDuration: 0.45, range: 5, keepAway: 1.8, projectileSpeed: 9,
   },
 };
 
 export const ARMY = {
   /** Kills at which the n-th rookie is earned (scaled by upgrades). */
-  thresholds: [12, 30, 55, 85, 120, 160, 205, 255, 310],
-  baseCap: 3,
+  thresholds: [20, 50, 90, 135, 185, 240, 300, 365],
+  baseCap: 2,
   /** Delay before a fallen rookie's replacement walks out. */
   respawnDelay: 15,
   /** Class order for successive rookies. */

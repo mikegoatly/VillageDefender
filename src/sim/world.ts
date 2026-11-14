@@ -182,7 +182,8 @@ export class World implements UpgradeHost {
   private readonly waves: WaveDef[];
   private pending: PendingWave | null;
   private spawnQueue: { at: number; side: Side; kind: MonsterKind }[] = [];
-  private readonly god: boolean;
+  /** Players take no damage (debug; mutable at runtime). */
+  god: boolean;
   private readonly noWaves: boolean;
   private readonly noRookies: boolean;
   /** Rookies recruited so far (including fallen ones), and the respawn timer. */
@@ -960,6 +961,87 @@ export class World implements UpgradeHost {
     const r = this.makeRookie(kind, x, y);
     this.rookies.push(r);
     return r;
+  }
+
+  // ------------------------------------------------------------------ debug
+  // Used by the in-game debug panel (src/ui/DebugPanel.ts). Not used by normal play.
+
+  /** Spawns monsters at a ground point (spread slightly) or along a map edge. */
+  debugSpawn(kind: MonsterKind, count: number, at: Side | { x: number; y: number }) {
+    for (let k = 0; k < count; k++) {
+      if (typeof at === 'string') this.spawnMonster(at, kind);
+      else this.addMonster(at.x + this.rng.range(-0.4, 0.4), at.y + this.rng.range(-0.4, 0.4), kind);
+    }
+  }
+
+  debugGiveXp(amount: number) {
+    const before = this.progression.level;
+    this.progression.addXp(amount);
+    for (let l = before + 1; l <= this.progression.level; l++) this.events.push({ type: 'levelUp', level: l });
+  }
+
+  /** Takes one stack of an upgrade without a level-up. Returns false when maxed/unknown. */
+  debugGiveUpgrade(id: string): boolean {
+    const ok = this.progression.grant(id, this);
+    if (ok) this.applyMods();
+    return ok;
+  }
+
+  debugAddRookie(kind: RookieKind) {
+    const k = this.players[0];
+    const r = this.addRookie(k.x + 0.6, k.y + 0.6, kind);
+    this.collideCells(r);
+    this.events.push({ type: 'rookieJoined', unit: r.id, kind, building: -1 });
+  }
+
+  debugHealKnight() {
+    for (const p of this.players) if (p.state !== 'dead') p.hp = p.maxHp;
+  }
+
+  /** Next wave becomes `wave`, arriving after its normal warning. */
+  debugJumpToWave(wave: number) {
+    const w = Math.min(Math.max(1, Math.round(wave)), this.totalWaves);
+    this.wave = w - 1;
+    this.pending = { wave: w, at: this.time + WAVES.warning + 0.1, sides: this.pickSides(w), warned: false };
+  }
+
+  /** Kills every living monster (they drop gems as usual). */
+  debugKillAll() {
+    for (const m of this.monsters) if (m.state !== 'dead') this.damage(m, m.hp + 1, -1);
+  }
+
+  /** Sets a building's HP fraction (0 destroys it, 1 repairs it). */
+  debugSetBuildingHp(id: number, fraction: number) {
+    const b = this.buildings[id];
+    if (!b || b.ruined) return;
+    if (fraction <= 0) {
+      this.damageBuilding(b, b.hp, this.players[0]);
+      return;
+    }
+    b.hp = b.maxHp * Math.min(1, fraction);
+  }
+
+  debugEnd(won: boolean) {
+    if (this.status !== 'playing') return;
+    if (won) {
+      this.pending = null;
+      this.spawnQueue = [];
+      this.debugKillAll();
+      this.end(true, null);
+    } else this.end(false, 'knight');
+  }
+
+  /** Read-only views of internal state for debug overlays. */
+  debugInfo() {
+    return {
+      knightFlow: this.knightFlow.dist,
+      buildingFlow: this.buildingFlow.dist,
+      nextWaveAt: this.pending?.at ?? null,
+      nextWave: this.pending?.wave ?? null,
+      queued: this.spawnQueue.length,
+      nextRookieAt: this.nextRookieAt(),
+      recruitIn: this.recruitIn,
+    };
   }
 
   // ------------------------------------------------------------------ combat helpers

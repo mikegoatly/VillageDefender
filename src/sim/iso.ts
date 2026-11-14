@@ -12,6 +12,13 @@ export function groundToScreen(gx: number, gy: number, scale = 1): Vec2 {
   return { x: (gx - gy) * ISO_HX * scale, y: (gx + gy) * ISO_HY * scale };
 }
 
+/** Screen position → ground position (inverse of groundToScreen). */
+export function screenToGround(sx: number, sy: number, scale = 1): Vec2 {
+  const a = sx / (ISO_HX * scale);
+  const b = sy / (ISO_HY * scale);
+  return { x: (a + b) / 2, y: (b - a) / 2 };
+}
+
 /**
  * Screen-space direction (e.g. stick input, y down) → ground direction with the same length.
  * Movement is screen-relative: pushing "up" moves the unit straight up the screen.

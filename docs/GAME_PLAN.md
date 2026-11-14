@@ -279,6 +279,7 @@ Built in from the first milestone:
 - Playwright scripts: boot, play N seconds, screenshot at desktop / tablet / phone-portrait
   / phone-landscape viewports, fail on console errors.
 - Dev overlay: fps, entity counts, flow-field and hitbox toggles.
+- In-game debug panel (decision 34) for humans; the same World debug API (`world.debug*`) is available to scripts via `window.__vd.world()`.
 
 ## 6. Milestones
 
@@ -362,6 +363,12 @@ Findings:
 - **Bugs caught:** test bots hung because the world pauses for level-ups (helpers now resolve choices); Toughness double-healed; rookies lost track of building attackers between swings.
 - **Known gaps:** archer bow animation is subtle; no sound; touch Rally button has no cooldown display; rookie AI doesn't retreat to heal.
 
+### Retune and debug mode (2026-11-14)
+
+- User play-test: 3 stars on the first attempt with rookies — too easy.
+- Retune: XP curve 8 × 1.4^(level−1) (~6 level-ups per run, was ~9); rookie cap 2 (was 3), thresholds 20/50/90/135/…; rookie damage −25%; bigger waves 6–8 (3 sides on the final waves). Bot averages after: fighter 0.8★ (4/5 wins), defender 1.2★ (4/5 wins), was 1.0★ / 2.4★.
+- Debug panel (lil-gui, src/ui/DebugPanel.ts): run stats, speed/pause/step, god mode, retry/new town/load seed; spawn any monster at an edge/the knight/the last clicked point; kill all; jump to wave; win/lose now; heal, +XP, level up, grant any upgrade; add swordsman/archer; set building HP / destroy / repair all; overlays (flow fields, hitboxes, ranges, labels — src/render/DebugOverlay.ts); live balance editing of every balance table with Copy-as-JSON and Reset. Debug state (speed, pause, overlays) survives restarts.
+
 ## 7. Decisions
 
 ### Decided (2026-11-14)
@@ -403,6 +410,10 @@ Findings:
 28. **Rookies:** swordsman + archer for now; Rally kept as a button.
 29. **Town planning (3b):** every building starts as a house. Before a level starts you spend coins to upgrade chosen houses into role buildings (barracks, chapel, smithy, watchtower). No building during the level — you survive all waves with the plan you made.
 30. **Coins:** from wave rewards plus kills.
+31. **Coins persist** in a wallet across attempts and levels and buy permanent meta upgrades and unlocks. Town planning (3b) uses a separate per-level planning budget so retries stay fair (budget scales with the level).
+32. **Levels reset each run** (roguelite): knight level and in-run upgrades start fresh every attempt; long-term power comes from the meta layer (decision 31, open item 12 small and capped).
+33. **Unlockable upgrade pool:** a new player starts with a small set of level-up upgrades; more are unlocked through progress and achievements (e.g. win a level, earn 3 stars, reach knight level 6, kill 10 brutes, win without losing a building), so the card pool grows over time. Needs save data — lands with 3b / milestone 5 meta.
+34. **Debug mode:** in dev builds always, in production with `?debug=1`. Toggle with ` (backtick), F2 or the 🐞 button.
 
 ### Open (decide later)
 
@@ -415,4 +426,3 @@ Findings:
 15. **Distribution target:** web only first, or stores/Steam from the start.
     Affects packaging and save storage only.
 16. **Name.**
-31. **Coin persistence (before 3b):** do coins carry over between attempts and levels (a meta wallet), or does each level grant a fixed planning budget?

@@ -3,9 +3,12 @@
 import { computeMods, UPGRADE_BY_ID, UPGRADES, type Mods, type UpgradeHost, type UpgradeOffer } from '../data/upgrades';
 import type { Rng } from './rng';
 
+/** XP for level 1→2 and growth per level (retune 2026-11-14: ~6 level-ups per level-1 run). */
+export const XP_CURVE = { base: 8, growth: 1.4 };
+
 /** XP needed to go from `level` to `level + 1`. */
 export function xpToNext(level: number): number {
-  return Math.round(5 * Math.pow(1.3, level - 1));
+  return Math.round(XP_CURVE.base * Math.pow(XP_CURVE.growth, level - 1));
 }
 
 export class Progression {
@@ -51,6 +54,16 @@ export class Progression {
     this.offers = null;
     if (this.pending > 0) this.roll();
     return def.id;
+  }
+
+  /** Debug: takes one stack of an upgrade directly, without spending a level. */
+  grant(id: string, host: UpgradeHost): boolean {
+    const def = UPGRADE_BY_ID[id];
+    if (!def || (this.levels[id] ?? 0) >= def.max) return false;
+    this.levels[id] = (this.levels[id] ?? 0) + 1;
+    this.mods = computeMods(this.levels);
+    def.onPick?.(host);
+    return true;
   }
 
   private roll() {

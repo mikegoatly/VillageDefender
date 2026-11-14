@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { UPGRADES } from '../../src/data/upgrades';
-import { Progression, xpToNext } from '../../src/sim/progression';
+import { Progression, XP_CURVE, xpToNext } from '../../src/sim/progression';
 import { Rng } from '../../src/sim/rng';
 
 const host = () => ({ healKnights: vi.fn(), repairBuildings: vi.fn() });
+/** XP needed to gain `n` levels from level 1. */
+const xpFor = (n: number) => Array.from({ length: n }, (_, i) => xpToNext(i + 1)).reduce((a, b) => a + b, 0);
 const aProgression = (seed = 1) => new Progression(new Rng(seed));
 /** Marks every upgrade except `keep` as fully taken. */
 function maxAllExcept(p: Progression, keep: string[]) {
@@ -11,8 +13,10 @@ function maxAllExcept(p: Progression, keep: string[]) {
 }
 
 describe('xpToNext', () => {
-  it('follows round(5 * 1.3^(level-1))', () => {
-    expect([1, 2, 3, 4, 5].map(xpToNext)).toEqual([5, 7, 8, 11, 14]);
+  it('follows round(base * growth^(level-1))', () => {
+    const expected = [1, 2, 3, 4, 5].map((l) => Math.round(XP_CURVE.base * Math.pow(XP_CURVE.growth, l - 1)));
+    expect([1, 2, 3, 4, 5].map(xpToNext)).toEqual(expected);
+    expect(xpToNext(1)).toBe(Math.round(XP_CURVE.base));
   });
 
   it('never decreases as the level rises', () => {
@@ -21,24 +25,24 @@ describe('xpToNext', () => {
 
   it('is exposed on the instance for the current level', () => {
     const p = aProgression();
-    expect(p.xpToNext).toBe(5);
-    p.addXp(5);
-    expect(p.xpToNext).toBe(7);
+    expect(p.xpToNext).toBe(xpToNext(1));
+    p.addXp(xpToNext(1));
+    expect(p.xpToNext).toBe(xpToNext(2));
   });
 });
 
 describe('addXp', () => {
   it('accumulates below the threshold without a choice', () => {
     const p = aProgression();
-    expect(p.addXp(4)).toBe(0);
+    expect(p.addXp(xpToNext(1) - 1)).toBe(0);
     expect(p.level).toBe(1);
-    expect(p.xp).toBe(4);
+    expect(p.xp).toBe(xpToNext(1) - 1);
     expect(p.offers).toBeNull();
   });
 
   it('levels up at the threshold, carries the remainder and opens 3 offers', () => {
     const p = aProgression();
-    expect(p.addXp(7)).toBe(1);
+    expect(p.addXp(xpToNext(1) + 2)).toBe(1);
     expect(p.level).toBe(2);
     expect(p.xp).toBe(2);
     expect(p.offers).toHaveLength(3);
@@ -46,14 +50,14 @@ describe('addXp', () => {
 
   it('a big pickup gains several levels at once', () => {
     const p = aProgression();
-    expect(p.addXp(5 + 7 + 8 + 3)).toBe(3);
+    expect(p.addXp(xpFor(3) + 3)).toBe(3);
     expect(p.level).toBe(4);
     expect(p.xp).toBe(3);
   });
 
   it('keeps the open offers when more XP arrives mid-choice', () => {
     const p = aProgression();
-    p.addXp(5);
+    p.addXp(xpToNext(1));
     const offers = p.offers;
     p.addXp(1);
     expect(p.offers).toBe(offers);
@@ -64,7 +68,7 @@ describe('offers', () => {
   it('are 3 distinct upgrades with name, description, pool and level', () => {
     for (let seed = 1; seed <= 30; seed++) {
       const p = aProgression(seed);
-      p.addXp(5);
+      p.addXp(xpToNext(1));
       const ids = p.offers!.map((o) => o.id);
       expect(new Set(ids).size, `seed ${seed}`).toBe(3);
       for (const o of p.offers!) {
@@ -104,14 +108,14 @@ describe('offers', () => {
   it('offer fewer than 3 cards when fewer than 3 upgrades remain', () => {
     const p = aProgression();
     maxAllExcept(p, ['arc', 'walls']);
-    p.addXp(5);
+    p.addXp(xpToNext(1));
     expect(p.offers!.map((o) => o.id).sort()).toEqual(['arc', 'walls']);
   });
 
   it('describe() text uses the current level (veterans: veterans then captains)', () => {
     const p = aProgression();
     maxAllExcept(p, ['veterans']);
-    p.addXp(5);
+    p.addXp(xpToNext(1));
     expect(p.offers![0]).toMatchObject({ id: 'veterans', level: 0, description: 'New rookies join as veterans' });
     p.choose(0, host());
     p.addXp(p.xpToNext);
@@ -121,7 +125,7 @@ describe('offers', () => {
   it('describe() text uses the current level (slits)', () => {
     const p = aProgression();
     maxAllExcept(p, ['slits']);
-    p.addXp(5);
+    p.addXp(xpToNext(1));
     expect(p.offers![0].description).toBe('Buildings shoot arrows at nearby monsters');
     p.choose(0, host());
     p.addXp(p.xpToNext);
@@ -134,7 +138,7 @@ describe('choose', () => {
     const p = aProgression();
     maxAllExcept(p, ['walls']);
     const h = host();
-    p.addXp(5);
+    p.addXp(xpToNext(1));
     expect(p.choose(0, h)).toBe('walls');
     expect(p.levels.walls).toBe(1);
     expect(p.mods.town.maxHpMul).toBeCloseTo(1.25);
@@ -145,14 +149,14 @@ describe('choose', () => {
   it('returns null for a bad index or when nothing is offered', () => {
     const p = aProgression();
     expect(p.choose(0, host())).toBeNull();
-    p.addXp(5);
+    p.addXp(xpToNext(1));
     expect(p.choose(3, host())).toBeNull();
     expect(p.offers).not.toBeNull();
   });
 
   it('queued level-ups re-roll a fresh offer after each choice, then resume', () => {
     const p = aProgression(3);
-    p.addXp(5 + 7 + 8);
+    p.addXp(xpFor(3));
     const taken: string[] = [];
     let previous = p.offers;
     for (let k = 0; k < 3; k++) {
@@ -170,7 +174,7 @@ describe('choose', () => {
   it('a stack taken in one choice is reflected in the next offer\'s level', () => {
     const p = aProgression();
     maxAllExcept(p, ['blade', 'swift']);
-    p.addXp(5 + 7);
+    p.addXp(xpFor(2));
     const first = p.offers!.find((o) => o.id === 'blade')!;
     expect(first.level).toBe(0);
     p.choose(p.offers!.indexOf(first), host());
@@ -182,7 +186,7 @@ describe('everything maxed', () => {
   it('offers nothing and does not pause, but the level still rises', () => {
     const p = aProgression();
     maxAllExcept(p, []);
-    expect(p.addXp(5 + 7)).toBe(2);
+    expect(p.addXp(xpFor(2))).toBe(2);
     expect(p.level).toBe(3);
     expect(p.offers).toBeNull();
   });
@@ -191,9 +195,44 @@ describe('everything maxed', () => {
     const p = aProgression();
     maxAllExcept(p, ['veterans']);
     p.levels.veterans = 1; // one stack left
-    p.addXp(5 + 7 + 8); // three level-ups, one card
+    p.addXp(xpFor(3)); // three level-ups, one card
     expect(p.offers!.map((o) => o.id)).toEqual(['veterans']);
     p.choose(0, host());
     expect(p.offers).toBeNull();
+  });
+});
+
+describe('grant (debug)', () => {
+  it('takes a stack and applies mods without changing level or xp', () => {
+    const p = aProgression();
+    expect(p.grant('walls', host())).toBe(true);
+    expect(p.levels.walls).toBe(1);
+    expect(p.mods.town.maxHpMul).toBeCloseTo(1.25);
+    expect(p.level).toBe(1);
+    expect(p.xp).toBe(0);
+    expect(p.offers).toBeNull();
+  });
+
+  it('stacks up to max, then refuses', () => {
+    const p = aProgression();
+    const max = UPGRADES.find((u) => u.id === 'walls')!.max;
+    for (let k = 0; k < max; k++) expect(p.grant('walls', host())).toBe(true);
+    expect(p.grant('walls', host())).toBe(false);
+    expect(p.levels.walls).toBe(max);
+  });
+
+  it('runs onPick, and not when refused', () => {
+    const p = aProgression();
+    const h = host();
+    p.grant('walls', h);
+    expect(h.repairBuildings).toHaveBeenCalledWith(0.25);
+    const h2 = host();
+    p.levels.walls = UPGRADES.find((u) => u.id === 'walls')!.max;
+    p.grant('walls', h2);
+    expect(h2.repairBuildings).not.toHaveBeenCalled();
+  });
+
+  it('returns false for an unknown id', () => {
+    expect(aProgression().grant('nope', host())).toBe(false);
   });
 });

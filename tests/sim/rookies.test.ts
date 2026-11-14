@@ -38,7 +38,7 @@ describe('recruitment', () => {
   });
 
   it('classes follow the order swordsman, archer, swordsman', () => {
-    const { world } = town().build();
+    const { world } = town().withUpgrades({ garrison: 1 }).build(); // base cap may be below 3
     for (const t of ARMY.thresholds.slice(0, 3)) {
       world.kills = t;
       runTicks(world, 3);

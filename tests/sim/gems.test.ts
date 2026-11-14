@@ -84,7 +84,7 @@ describe('level-up flow', () => {
     const { world } = aWorld().withKnightAt(20, 20).build();
     for (let k = 0; k < xpToNext(1); k++) dropGem(world, 20, 20);
     const events = tickRaw(world, 1);
-    expect(events.filter((e) => e.type === 'gemCollected')).toHaveLength(5);
+    expect(events.filter((e) => e.type === 'gemCollected')).toHaveLength(xpToNext(1));
     expect(events).toContainEqual({ type: 'levelUp', level: 2 });
     expect(world.choosing).toBe(true);
     expect(world.progression.offers).toHaveLength(3);

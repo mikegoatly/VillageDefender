@@ -11,13 +11,13 @@ export interface WaveDef {
 
 export const LEVEL1_WAVES: WaveDef[] = [
   { monsters: { zombie: 5 }, sides: 1 },
-  { monsters: { zombie: 5, orc: 2 }, sides: 1 },
-  { monsters: { zombie: 6, orc: 3 }, sides: 1 },
-  { monsters: { zombie: 6, orc: 3, brute: 1 }, sides: 2 },
-  { monsters: { zombie: 8, orc: 4 }, sides: 2 },
+  { monsters: { zombie: 6, orc: 2 }, sides: 1 },
+  { monsters: { zombie: 7, orc: 4 }, sides: 1 },
   { monsters: { zombie: 8, orc: 5, brute: 1 }, sides: 2 },
-  { monsters: { zombie: 10, orc: 5, brute: 1 }, sides: 2 },
-  { monsters: { zombie: 12, orc: 6, brute: 2 }, sides: 3 },
+  { monsters: { zombie: 10, orc: 7 }, sides: 2 },
+  { monsters: { zombie: 12, orc: 8, brute: 1 }, sides: 2 },
+  { monsters: { zombie: 14, orc: 8, brute: 2 }, sides: 2 },
+  { monsters: { zombie: 16, orc: 10, brute: 2 }, sides: 3 },
 ];
 
 /** Flattens a wave into a spawn order that mixes kinds rather than sending them in blocks. */
