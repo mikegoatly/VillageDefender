@@ -36,9 +36,14 @@ const kindCounts = (world: World) => {
 const nonZero = (w: WaveDef) => Object.fromEntries(Object.entries(w.monsters).filter(([, n]) => (n ?? 0) > 0));
 
 describe('wave table', () => {
-  it('has 8 waves whose totals match their spawn order', () => {
-    expect(TOWN1_WAVES).toHaveLength(8);
+  it('has waves whose totals match their spawn order', () => {
+    expect(TOWN1_WAVES.length).toBeGreaterThan(0);
     for (const w of TOWN1_WAVES) expect(spawnOrder(w)).toHaveLength(total(w));
+  });
+
+  it('ends with the boss wave', () => {
+    expect(TOWN1_WAVES.at(-1)!.monsters.warlord).toBe(1);
+    expect(TOWN1_WAVES.slice(0, -1).every((w) => !w.monsters.warlord)).toBe(true);
   });
 
   it('interleaves kinds rather than sending them in blocks', () => {
@@ -108,7 +113,7 @@ describe('waves', () => {
     expect(kindCounts(world)).toEqual(nonZero(w4));
   });
 
-  it.each([2, 3, 8])('spawns exactly the kinds listed for wave %i', (n) => {
+  it.each([2, 3, TOWN1_WAVES.length])('spawns exactly the kinds listed for wave %i', (n) => {
     const world = new World({ seed: 2, god: true, startWave: n });
     const w = TOWN1_WAVES[n - 1];
     record(world, WAVES.firstAt + total(w) * WAVES.spawnSpacing + 0.2);

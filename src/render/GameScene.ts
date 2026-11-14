@@ -7,12 +7,12 @@
 import * as Phaser from 'phaser';
 import { DT, MAP } from '../data/balance';
 import { InputManager } from '../input/InputManager';
-import { MONSTERS, type MonsterKind } from '../data/monsters';
+import { BOSS, MONSTERS, type MonsterKind } from '../data/monsters';
 import { ROOKIES, type RookieKind } from '../data/rookies';
 import { groundDirToScreen, groundToScreen, screenToGround } from '../sim/iso';
 import { Ground, type TownMap } from '../sim/map';
 import { emptyInput, type InputState } from '../sim/types';
-import { World, type Unit } from '../sim/world';
+import { World, type SimEvent, type Unit } from '../sim/world';
 import { installRotateOverlay } from '../ui/RotateOverlay';
 import { Hud, type HudWorld } from '../ui/Hud';
 import { LevelUpPanel } from '../ui/LevelUpPanel';
@@ -23,6 +23,9 @@ import { PlanningPanel, type PlanningView } from '../ui/PlanningPanel';
 import { ROLE_ORDER, ROLES, type RoleKind } from '../data/roles';
 import { TOWNS, type TownDef } from '../data/towns';
 import { Profile } from '../meta/profile';
+import { WEAPON_ORDER, WEAPONS, type WeaponKind } from '../data/weapons';
+import { GameAudio } from '../audio/GameAudio';
+import { ACHIEVEMENTS } from '../data/achievements';
 import { BuildingViews, RUBBLE_TILES, type PlacedBlock } from './BuildingViews';
 import { createCharacterAnims, directionFor, preloadSheets, sheetMeta, sheetOrigin } from './sheets';
 
@@ -31,7 +34,12 @@ const CHAR_SCALE_AT_120 = 1.4;
 /** Sketch tiles: height of one stacked block level, and the top-face centre within the image. */
 const SKETCH_LEVEL = 106;
 const SKETCH_ORIGIN = { x: 128 / 256, y: 185 / 352 };
-const SHEETS = ['knight', 'zombie', 'orc', 'swordsman', 'archer'];
+const SHEETS = [
+  'knight', 'knight-spear', 'knight-hammer', 'knight-axe', 'knight-flail',
+  'zombie', 'orc', 'skeleton', 'ghost', 'vampire', 'swordsman', 'archer',
+];
+/** Weapon picker glyphs. */
+const WEAPON_ICONS: Record<WeaponKind, string> = { sword: '⚔', spear: '↟', hammer: '🔨', axes: '🪓', flail: '✺' };
 /** Halo colours (decision 8): knight gold, rookies army blue by rank. */
 const HALO_KNIGHT = 0xffd75e;
 const HALO_ROOKIE = [0x7fb3e6, 0xb9d6f2, 0xffffff];
@@ -106,6 +114,9 @@ export class GameScene extends Phaser.Scene {
   /** House selected while planning (-1 none). */
   private selected = -1;
   private endExtras: HudWorld['endExtras'];
+  private audio!: GameAudio;
+  /** Seconds left of hit-stop: the sim freezes briefly on big impacts (juice). */
+  private hitStop = 0;
 
   constructor() {
     super('Game');
@@ -119,6 +130,7 @@ export class GameScene extends Phaser.Scene {
       seed: this.params.seed, god: this.params.god, startWave: this.params.wave,
       planning: this.params.plan, planningPoints: this.town.planningPoints,
       allowedRoles: getProfile().data.roles, townId: this.town.id, waves: this.town.waves,
+      weapon: getProfile().data.weapons.includes(getProfile().data.weapon) ? getProfile().data.weapon : 'sword',
     });
     this.selected = -1;
     this.endExtras = undefined;
@@ -129,6 +141,7 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     preloadSheets(this, SHEETS);
+    GameAudio.preload(this);
     for (const key of tileKeys(this.world.map)) {
       if (this.textures.exists(key)) continue;
       const [pack, name] = key.split(':');
@@ -153,6 +166,9 @@ export class GameScene extends Phaser.Scene {
       this.handleEvents();
     });
     this.fx = new FxViews(this, (x, y) => this.toScreen(x, y));
+    this.audio = new GameAudio(this);
+    this.audio.music(this.world.phase === 'planning' ? 'plan' : 'play');
+    this.hitStop = 0;
     this.setupDebug();
     this.setupPlanning();
 
@@ -165,6 +181,7 @@ export class GameScene extends Phaser.Scene {
       this.levelUp.destroy();
       this.debugOverlay?.destroy();
       this.planning?.destroy();
+      this.audio.destroy();
     });
     this.fitCamera();
     this.exposeDebug();
@@ -173,7 +190,8 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, deltaMs: number) {
     this.paused = document.documentElement.classList.contains(ROTATE_CLASS);
     const input = this.override ?? this.input2.poll();
-    if (!this.paused && !debugState.paused) {
+    if (this.hitStop > 0) this.hitStop -= deltaMs / 1000;
+    else if (!this.paused && !debugState.paused) {
       this.accumulator += Math.min(deltaMs / 1000, 0.1) * this.params.speed;
       let steps = 0;
       while (this.accumulator >= DT && steps < 8 * Math.max(1, this.params.speed)) {
@@ -200,8 +218,9 @@ export class GameScene extends Phaser.Scene {
     this.endExtras = {
       coins: outcome.coins, wallet: getProfile().data.coins,
       achievements: outcome.newAchievements.map((a) => ({ name: a.name, description: a.description })),
-      unlocks: outcome.unlockedRoles.map((r) => ROLES[r].name),
+      unlocks: [...outcome.unlockedRoles.map((r) => ROLES[r].name), ...outcome.unlockedWeapons.map((w) => WEAPONS[w].name)],
     };
+    this.audio.music(null);
   }
 
   // ------------------------------------------------------------------ planning (3b)
@@ -212,6 +231,7 @@ export class GameScene extends Phaser.Scene {
       onAssign: (id, role) => this.assignRole(id, role),
       onSelectNext: (d) => this.selectBuilding(this.cycleBuilding(d)),
       onStart: () => this.startTown(),
+      onWeapon: (kind) => this.chooseWeapon(kind as WeaponKind),
     });
     this.buildingViews.setAurasVisible(true);
     document.body.classList.add('vd-planning');
@@ -246,9 +266,26 @@ export class GameScene extends Phaser.Scene {
     this.refreshPlanning();
   }
 
+  private chooseWeapon(kind: WeaponKind) {
+    if (!getProfile().data.weapons.includes(kind) || !this.world.setWeapon(kind)) return;
+    getProfile().setWeapon(kind);
+    // Rebuild the knight's sprite with the new weapon sheet.
+    for (const p of this.world.players) {
+      const v = this.views.get(p.id);
+      if (v) {
+        v.sprite.destroy();
+        v.halo?.destroy();
+        v.ghost?.destroy();
+        this.views.delete(p.id);
+      }
+    }
+    this.refreshPlanning();
+  }
+
   private startTown() {
     if (this.world.phase !== 'planning') return;
     this.world.start();
+    this.audio.music('play');
     this.planning?.hide();
     document.body.classList.remove('vd-planning');
     this.buildingViews.setAurasVisible(false);
@@ -272,6 +309,12 @@ export class GameScene extends Phaser.Scene {
         lockHint: k === 'smithy' ? 'Unlock: save a town' : k === 'watchtower' ? 'Unlock: save a town with 3 stars' : undefined,
       })),
       assigned: w.buildings.filter((x) => x.role).map((x) => ROLES[x.role!].name).join(', ') || 'none yet',
+      weapons: WEAPON_ORDER.map((k) => ({
+        kind: k, name: WEAPONS[k].name, description: WEAPONS[k].description, icon: WEAPON_ICONS[k],
+        locked: !getProfile().data.weapons.includes(k),
+        lockHint: weaponHint(k),
+      })),
+      selectedWeapon: w.weapon,
     };
     this.planning.show(view);
   }
@@ -320,6 +363,7 @@ export class GameScene extends Phaser.Scene {
       knightLevel: w.progression.level, xp: w.progression.xp, xpToNext: w.progression.xpToNext,
       rookies: w.rookies.filter((r) => r.state !== 'dead').length, rookieCap: w.rookieCap,
       endExtras: this.endExtras,
+      boss: w.boss ? { name: 'Orc Warlord', hp: w.boss.hp, maxHp: w.boss.maxHp } : null,
     };
   }
 
@@ -411,12 +455,12 @@ export class GameScene extends Phaser.Scene {
     let v = this.views.get(u.id);
     if (v) return v;
     const def = u.team === 'enemy' ? MONSTERS[u.kind as MonsterKind] : null;
-    const sheet = def ? def.sheet : u.kind === 'knight' ? 'knight' : ROOKIES[u.kind as RookieKind].sheet;
+    const sheet = def ? def.sheet : u.kind === 'knight' ? WEAPONS[this.world.weapon].sheet : ROOKIES[u.kind as RookieKind].sheet;
     const meta = sheetMeta(this, sheet);
     const [ox, oy] = sheetOrigin(meta);
     const scale = this.charScale(sheet) * (def?.scale ?? 1);
     const tint = def?.tint ?? 0xffffff;
-    const sprite = this.add.sprite(0, 0, sheet).setOrigin(ox, oy).setScale(scale).setTint(tint);
+    const sprite = this.add.sprite(0, 0, sheet).setOrigin(ox, oy).setScale(scale).setTint(tint).setAlpha(def?.alpha ?? 1);
     v = { sprite, flash: 0, tint };
     if (u.team === 'player') {
       // Friendly halo (decision 8) and see-through silhouette for occlusion (decision 9).
@@ -476,6 +520,10 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.fx.sync(this.world.gems, this.world.projectiles, this.time.now / 1000);
+    // Flail: show the spinning ring while the knight attacks.
+    const k = this.world.players[0];
+    const spinning = this.world.weapon === 'flail' && k && k.state === 'attack';
+    this.fx.spinRing(spinning ? k.x : null, k?.y ?? 0, WEAPONS.flail.range * this.world.progression.mods.knight.rangeMul, this.time.now / 1000);
     for (const [id, v] of this.views) {
       if (live.has(id)) continue;
       v.sprite.destroy();
@@ -503,8 +551,65 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
+  /** Game-feel effects: damage numbers, hit-stop, shakes, boss telegraphs. */
+  private juice(e: SimEvent) {
+    const s = MAP.tileScale;
+    switch (e.type) {
+      case 'hit': {
+        const m = this.world.monsters.find((u) => u.id === e.unit);
+        if (!m) return;
+        const p = this.toScreen(e.x, e.y);
+        const heavy = e.damage >= 20;
+        this.fx.damageNumber(p.x, p.y - 70 * s * (MONSTERS[m.kind as MonsterKind].scale), e.damage, heavy);
+        if (heavy) this.hitStop = Math.max(this.hitStop, 0.035);
+        return;
+      }
+      case 'death': {
+        const m = this.world.monsters.find((u) => u.id === e.unit);
+        if (m && (m.kind === 'brute' || m.kind === 'warlord')) {
+          this.hitStop = Math.max(this.hitStop, m.kind === 'warlord' ? 0.25 : 0.07);
+          this.cameras.main.shake(m.kind === 'warlord' ? 600 : 160, m.kind === 'warlord' ? 0.012 : 0.005);
+        }
+        return;
+      }
+      case 'swing':
+        if (e.weapon === 'hammer') {
+          // Shockwave where the slam lands, timed with the hit.
+          const k = this.world.players[0];
+          const r = WEAPONS.hammer.range * this.world.progression.mods.knight.rangeMul;
+          const x = k.x + k.facing.x * r;
+          const y = k.y + k.facing.y * r;
+          this.time.delayedCall(WEAPONS.hammer.hitTime * 1000, () => this.fx.shockwave(x, y, WEAPONS.hammer.arc));
+        }
+        return;
+      case 'bossSpawn':
+        this.cameras.main.shake(500, 0.008);
+        return;
+      case 'bossSlamWarn':
+        this.fx.telegraph(e.x, e.y, e.radius, e.time);
+        return;
+      case 'bossSlam':
+        this.fx.shockwave(e.x, e.y, e.radius, 0xb8322c);
+        this.cameras.main.shake(320, 0.012);
+        this.hitStop = Math.max(this.hitStop, 0.09);
+        return;
+      case 'bossCharge': {
+        const boss = this.world.monsters.find((u) => u.id === e.unit);
+        const b = this.world.buildings[e.building];
+        if (!boss || !b) return;
+        const cx = b.cells.reduce((a, [i]) => a + i, 0) / b.cells.length;
+        const cy = b.cells.reduce((a, [, j]) => a + j, 0) / b.cells.length;
+        this.fx.chargeLine(boss.x, boss.y, cx, cy, BOSS.charge.windup);
+        return;
+      }
+      default:
+    }
+  }
+
   private handleEvents() {
+    this.audio.handleEvents(this.world.events);
     for (const e of this.world.events) {
+      this.juice(e);
       if (e.type === 'hit') {
         const v = this.views.get(e.unit);
         if (v) v.flash = 0.08;
@@ -583,6 +688,12 @@ export class GameScene extends Phaser.Scene {
       cells: this.world.map.ground.reduce((a, g) => a + (g ? 1 : 0), 0),
     });
   }
+}
+
+/** Unlock hint for a locked weapon, from the achievement that rewards it. */
+function weaponHint(k: WeaponKind): string | undefined {
+  const a = ACHIEVEMENTS.find((x) => x.reward?.weapon === k);
+  return a ? `Unlock: ${a.description.toLowerCase()}` : undefined;
 }
 
 /** Every texture key the map needs. */

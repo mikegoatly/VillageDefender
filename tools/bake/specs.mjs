@@ -39,6 +39,37 @@ export const specs = [
     attachments: [{ ...RIGHT_HAND, model: 'mini-dungeon/weapon-spear' }],
     anims: STANDARD_ANIMS,
   },
+  { kind: 'character', name: 'vampire', model: 'graveyard/character-vampire', anims: STANDARD_ANIMS },
+  // Knight weapon variants (Medieval Weapons models are ~8x larger than Mini models, hence the scales).
+  {
+    kind: 'character', name: 'knight-spear', model: 'mini-dungeon/character-human',
+    attachments: [
+      { ...RIGHT_HAND, model: 'mini-dungeon/weapon-spear' },
+      { ...LEFT_HAND, model: 'mini-dungeon/shield-round', scale: 0.8 },
+    ],
+    anims: STANDARD_ANIMS,
+  },
+  {
+    kind: 'character', name: 'knight-hammer', model: 'mini-dungeon/character-human',
+    attachments: [{ ...RIGHT_HAND, model: 'medieval-weapons/hammer-a', scale: 0.15 }],
+    anims: STANDARD_ANIMS,
+  },
+  {
+    kind: 'character', name: 'knight-axe', model: 'mini-dungeon/character-human',
+    attachments: [
+      { ...RIGHT_HAND, model: 'medieval-weapons/axe-single', scale: 0.14 },
+      { ...LEFT_HAND, model: 'mini-dungeon/shield-round', scale: 0.8 },
+    ],
+    anims: STANDARD_ANIMS,
+  },
+  {
+    kind: 'character', name: 'knight-flail', model: 'mini-dungeon/character-human',
+    attachments: [
+      { ...RIGHT_HAND, model: 'medieval-weapons/club-a', scale: 0.13 },
+      { ...LEFT_HAND, model: 'mini-dungeon/shield-round', scale: 0.8 },
+    ],
+    anims: STANDARD_ANIMS,
+  },
   { kind: 'character', name: 'zombie', model: 'graveyard/character-zombie', anims: STANDARD_ANIMS },
   { kind: 'character', name: 'skeleton', model: 'graveyard/character-skeleton', anims: STANDARD_ANIMS },
   { kind: 'character', name: 'ghost', model: 'graveyard/character-ghost', anims: STANDARD_ANIMS },

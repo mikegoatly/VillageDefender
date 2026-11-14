@@ -3,11 +3,15 @@
 
 import { ACHIEVEMENTS, type LifetimeStats, type RunResult } from '../data/achievements';
 import { STARTING_ROLES, type RoleKind } from '../data/roles';
+import { STARTING_WEAPONS, type WeaponKind } from '../data/weapons';
 
 export interface ProfileData {
   version: 1;
   coins: number;
   roles: RoleKind[];
+  weapons: WeaponKind[];
+  /** Weapon picked last time (pre-selected when planning). */
+  weapon: WeaponKind;
   achievements: string[];
   bestStars: Record<string, number>;
   stats: LifetimeStats;
@@ -42,13 +46,14 @@ export function browserStore(): KeyValueStore {
 }
 
 export function freshProfile(): ProfileData {
-  return { version: 1, coins: 0, roles: [...STARTING_ROLES], achievements: [], bestStars: {}, stats: { runs: 0, wins: 0, kills: {} } };
+  return { version: 1, coins: 0, roles: [...STARTING_ROLES], weapons: [...STARTING_WEAPONS], weapon: 'sword', achievements: [], bestStars: {}, stats: { runs: 0, wins: 0, kills: {} } };
 }
 
 export interface RunOutcome {
   coins: number;
   newAchievements: { id: string; name: string; description: string }[];
   unlockedRoles: RoleKind[];
+  unlockedWeapons: WeaponKind[];
   newBest: boolean;
 }
 
@@ -69,6 +74,7 @@ export class Profile {
         ...base,
         ...d,
         roles: Array.from(new Set([...(d.roles ?? []), ...STARTING_ROLES])) as RoleKind[],
+        weapons: Array.from(new Set([...(d.weapons ?? []), ...STARTING_WEAPONS])) as WeaponKind[],
         stats: { ...base.stats, ...(d.stats ?? {}), kills: { ...(d.stats?.kills ?? {}) } },
       };
     } catch {
@@ -96,6 +102,7 @@ export class Profile {
 
     const newAchievements: RunOutcome['newAchievements'] = [];
     const unlockedRoles: RoleKind[] = [];
+    const unlockedWeapons: WeaponKind[] = [];
     for (const a of ACHIEVEMENTS) {
       if (d.achievements.includes(a.id) || !a.check(run, d.stats)) continue;
       d.achievements.push(a.id);
@@ -105,9 +112,14 @@ export class Profile {
         d.roles.push(role);
         unlockedRoles.push(role);
       }
+      const weapon = a.reward?.weapon;
+      if (weapon && !d.weapons.includes(weapon)) {
+        d.weapons.push(weapon);
+        unlockedWeapons.push(weapon);
+      }
     }
     this.save();
-    return { coins: run.coins, newAchievements, unlockedRoles, newBest };
+    return { coins: run.coins, newAchievements, unlockedRoles, unlockedWeapons, newBest };
   }
 
   // Debug helpers.
@@ -118,6 +130,17 @@ export class Profile {
 
   unlockAll(roles: RoleKind[]) {
     this.data.roles = Array.from(new Set([...this.data.roles, ...roles]));
+    this.save();
+  }
+
+  unlockAllWeapons(weapons: WeaponKind[]) {
+    this.data.weapons = Array.from(new Set([...this.data.weapons, ...weapons]));
+    this.save();
+  }
+
+  setWeapon(w: WeaponKind) {
+    if (!this.data.weapons.includes(w)) return;
+    this.data.weapon = w;
     this.save();
   }
 

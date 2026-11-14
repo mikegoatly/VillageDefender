@@ -4,9 +4,10 @@
 
 import GUI, { type Controller } from 'lil-gui';
 import { BUILDING, KNIGHT, WAVES } from '../data/balance';
-import { MONSTERS, type MonsterKind } from '../data/monsters';
+import { BOSS, MONSTERS, type MonsterKind } from '../data/monsters';
 import { ARMY, GEMS, ROOKIES, TOWN_ARROWS } from '../data/rookies';
 import { UPGRADES } from '../data/upgrades';
+import { WEAPONS, WEAPON_ORDER } from '../data/weapons';
 import { XP_CURVE } from '../sim/progression';
 import type { World } from '../sim/world';
 import type { Profile } from '../meta/profile';
@@ -50,6 +51,14 @@ const BALANCE: Record<string, Obj> = {
   'MONSTERS.zombie': MONSTERS.zombie,
   'MONSTERS.orc': MONSTERS.orc,
   'MONSTERS.brute': MONSTERS.brute,
+  'MONSTERS.skeleton': MONSTERS.skeleton,
+  'MONSTERS.ghost': MONSTERS.ghost,
+  'MONSTERS.vampire': MONSTERS.vampire,
+  'MONSTERS.warlord': MONSTERS.warlord,
+  'BOSS.slam': BOSS.slam,
+  'BOSS.charge': BOSS.charge,
+  'BOSS.summon': BOSS.summon,
+  ...Object.fromEntries(WEAPON_ORDER.map((k) => [`WEAPONS.${k}`, WEAPONS[k]])),
   'ROOKIES.swordsman': ROOKIES.swordsman,
   'ROOKIES.archer': ROOKIES.archer,
 } as unknown as Record<string, Obj>;
@@ -90,7 +99,7 @@ export class DebugPanel {
   private readonly stats = {
     time: '', wave: '', nextWave: '', monsters: '', rookies: '', kills: '', knight: '', buildings: '', fps: '', seed: '',
   };
-  private readonly profileStats = { coins: '', roles: '', achievements: '' };
+  private readonly profileStats = { coins: '', roles: '', weapons: '', achievements: '' };
   private readonly profileControllers: Controller[] = [];
   private readonly statControllers: Controller[] = [];
   private buildingController!: Controller;
@@ -218,7 +227,7 @@ export class DebugPanel {
 
   private buildSpawn() {
     const f = this.gui.addFolder('Spawn');
-    f.add(this.p, 'spawnKind', ['zombie', 'orc', 'brute']).name('kind');
+    f.add(this.p, 'spawnKind', Object.keys(MONSTERS)).name('kind');
     f.add(this.p, 'spawnCount', 1, 50, 1).name('count');
     f.add(this.p, 'spawnTarget', [...SPAWN_TARGETS]).name('target');
     f.add({ go: () => this.spawn() }, 'go').name('Spawn');
@@ -303,6 +312,7 @@ export class DebugPanel {
       this.refreshProfile();
     };
     f.add({ go: act((p) => p.unlockAll(['barracks', 'chapel', 'smithy', 'watchtower'])) }, 'go').name('Unlock all roles');
+    f.add({ go: act((p) => p.unlockAllWeapons(WEAPON_ORDER)) }, 'go').name('Unlock all weapons');
     f.add({ go: act((p) => p.addCoins(100)) }, 'go').name('+100 coins');
     f.add({ go: act((p) => p.reset()) }, 'go').name('Reset profile');
   }
@@ -311,6 +321,7 @@ export class DebugPanel {
     const d = this.host.profile().data;
     this.profileStats.coins = String(d.coins);
     this.profileStats.roles = d.roles.join(', ') || '-';
+    this.profileStats.weapons = d.weapons.join(', ') || '-';
     this.profileStats.achievements = d.achievements.join(', ') || '-';
     this.profileControllers.forEach((c) => c.updateDisplay());
   }

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { defenderBot, defenderChooser, defenderPlan, fighterBot, fighterChooser, idleBot, idleChooser, playLevel, type Bot, type PlanPolicy, type PlayResult } from '../helpers/bots';
+import { TOWN1_WAVES } from '../../src/data/waves';
+import { WEAPON_ORDER } from '../../src/data/weapons';
 import type { Chooser } from '../helpers/worldBuilder';
 
 const SEEDS = [1, 2, 3, 4, 5];
-const MAX_SECONDS = 300;
+const MAX_SECONDS = 400;
 
 const BOTS: Record<string, { bot: () => Bot; choose: Chooser; plan?: PlanPolicy }> = {
   idle: { bot: idleBot, choose: idleChooser },
@@ -18,13 +20,18 @@ for (const [name, { bot, choose, plan }] of Object.entries(BOTS)) {
   results[name] = SEEDS.map((s) => playLevel(s, name, bot(), MAX_SECONDS, choose, plan));
 }
 
+// Planned defender with each weapon, for balancing (seeds 1-5).
+const weaponResults = Object.fromEntries(WEAPON_ORDER.map((w) => [
+  w, SEEDS.map((s) => playLevel(s, `defender-${w}`, defenderBot(), MAX_SECONDS, defenderChooser, defenderPlan, w)),
+])) as Record<(typeof WEAPON_ORDER)[number], PlayResult[]>;
+
 const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 const outcome = (r: PlayResult) =>
   r.status === 'playing' ? 'timeout' : r.status === 'won' ? 'won' : `lost (${r.lossReason})`;
 const upgradesText = (r: PlayResult) =>
   Object.entries(r.upgrades).map(([id, n]) => `${id}${n}`).join(' ') || '-';
 
-describe('bot play-tests (default level, 8 waves)', () => {
+describe(`bot play-tests (default level, ${TOWN1_WAVES.length} waves + boss)`, () => {
   it('prints the results table', () => {
     const header = 'seed  bot                 result        time    wave  kills  buildings  stars  lvl  rookies  coins  upgrades';
     const rows = Object.values(results).flat().map((r) =>
@@ -32,6 +39,26 @@ describe('bot play-tests (default level, 8 waves)', () => {
     const avgs = Object.entries(results).map(([name, rs]) =>
       `${name.padEnd(18)} avg stars ${avg(rs.map((r) => r.stars)).toFixed(2)}  avg kills ${avg(rs.map((r) => r.kills)).toFixed(1)}  avg standing ${avg(rs.map((r) => r.standing)).toFixed(1)}  avg level ${avg(rs.map((r) => r.level)).toFixed(1)}  avg rookies ${avg(rs.map((r) => r.rookiesAlive)).toFixed(1)}  avg coins ${avg(rs.map((r) => r.coins)).toFixed(1)}  wins ${rs.filter((r) => r.status === 'won').length}/${rs.length}`);
     console.log(`\n${header}\n${rows.join('\n')}\n\n${avgs.join('\n')}`);
+  });
+
+  it('prints the defender-by-weapon table', () => {
+    const header = 'weapon  seed  result        time    wave  kills  buildings  stars  lvl  boss killed';
+    const rows = Object.entries(weaponResults).flatMap(([w, rs]) => rs.map((r) =>
+      `${w.padEnd(6)}  ${String(r.seed).padStart(4)}  ${outcome(r).padEnd(12)}  ${r.time.toFixed(1).padStart(6)}s  ${String(r.wave).padStart(4)}  ${String(r.kills).padStart(5)}  ${`${r.standing}/${r.total}`.padStart(9)}  ${String(r.stars).padStart(5)}  ${String(r.level).padStart(3)}  ${r.bossKilled ? 'yes' : 'no'}`));
+    const avgs = Object.entries(weaponResults).map(([w, rs]) =>
+      `${w.padEnd(6)}  wins ${rs.filter((r) => r.status === 'won').length}/${rs.length}  avg stars ${avg(rs.map((r) => r.stars)).toFixed(2)}  avg time ${avg(rs.map((r) => r.time)).toFixed(1)}s  avg wave ${avg(rs.map((r) => r.wave)).toFixed(1)}  avg kills ${avg(rs.map((r) => r.kills)).toFixed(1)}  avg standing ${avg(rs.map((r) => r.standing)).toFixed(1)}  avg level ${avg(rs.map((r) => r.level)).toFixed(1)}  boss killed ${rs.filter((r) => r.bossKilled).length}/${rs.length}`);
+    console.log(['', header, ...rows, '', ...avgs].join('\n'));
+  });
+
+  it('weapon runs are consistent and use the requested weapon', () => {
+    for (const [w, rs] of Object.entries(weaponResults)) {
+      for (const r of rs) {
+        expect(r.weapon).toBe(w);
+        expect(r.standing).toBeLessThanOrEqual(r.total);
+        if (r.status === 'lost') expect(r.stars).toBe(0);
+        if (r.status === 'won') expect(r.bossKilled, `${w} seed ${r.seed}`).toBe(true);
+      }
+    }
   });
 
   it('idle never wins', () => {

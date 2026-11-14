@@ -379,6 +379,28 @@ Findings:
 - **Tests:** planning accounting, each role's effect and ruin behaviour, coin sources and `runResult`, profile and achievements on an in-memory store; builders `withPlan`/`inPlanning` and bot `defenderPlan`.
 - **Known gaps:** coins buy nothing yet (milestone 5); card unlocks (decision 33) not yet implemented; only one town.
 
+### Milestone 4 results (2026-11-14)
+- **Post-tune (after the table below):** skeleton damage 7→5, boss slam 30→22 (telegraph 1.3 s, cooldown 7 s), spear 17 damage / 0.45 s, waves 9–10 trimmed. Planned defender bot, seeds 1–5: sword 4/5 wins 1.0★, spear 4/5 1.2★, hammer 5/5 1.4★, axes 5/5 1.4★, flail 4/5 1.2★; fighter 0/5 (ignoring the town loses); idle 0/5. Wins take ~3.7–3.8 min.
+
+- **New monsters:** skeleton stalker (fast, fragile, always hunts the knight and ignores rookies and buildings), ghost phaser (drifts through buildings and trees straight to the nearest building), vampire leech (hunts rookies, heals by the damage it deals, falls back to the knight when none are left). Introduced one at a time: skeletons wave 3, ghosts wave 5, vampires wave 7.
+- **Boss:** Orc Warlord (1400 HP, immune to knockback) arrives in wave 10 with an escort. Telegraphed ground slam (2.3 cell radius, 1.2 s warning, 30 damage plus knockback), charges at the nearest building (1 s wind-up, 4x speed, 120 building damage), and calls 4 orcs from a map edge every 16 s. The level is won only when he and the field are cleared.
+- **Five weapons:** sword (balanced arc); spear (long, narrow thrust that pierces a line); warhammer (slow slam, area damage, huge knockback); throwing axes (boomerang that flies out ~4 cells and returns, hitting each enemy once per leg, so twice); flail (hold to spin, a damage pulse every 0.25 s to everything around the knight). Upgrades apply to all of them (blade = damage, reach = range). Weapon choice is made in planning and saved in the profile; achievements unlock the weapons (decision 38).
+- **Audio (Kenney CC0):** 46 sound effects and 2 music loops, driven by sim events with per-sound rate limits; volume and mute settings are persisted.
+- **Juice:** floating damage numbers, hit-stop on heavy hits, the boss slam and big kills, screen shake, boss telegraph circle, charge line, hammer shockwave, flail ring and spinning thrown axes.
+- **Tests:** weapon behaviours and mods per weapon, monster targeting (stalker, leech, phaser) and per-kind xp/coins, boss slam/charge/summon/kill, weapon unlocks and old-save loading, full 10-wave bot runs; builder `withWeapon`, helper `dummy`, `playLevel` weapon parameter.
+- **Bot balance (planned defender, seeds 1-5, 10 waves + boss; for comparison with the sword: idle 0/5 wins, fighter 1/5, unplanned defender 1/5):**
+
+  | weapon | wins | avg stars | avg time | avg kills | avg standing | avg level | boss killed |
+  |---|---|---|---|---|---|---|---|
+  | sword | 2/5 | 0.60 | 222.7 s | 172.0 | 3.4 | 8.0 | 2/5 |
+  | spear | 1/5 | 0.40 | 210.0 s | 166.2 | 4.0 | 7.8 | 1/5 |
+  | hammer | 3/5 | 1.00 | 226.0 s | 177.6 | 4.2 | 8.0 | 3/5 |
+  | axes | 4/5 | 1.20 | 224.7 s | 176.2 | 5.4 | 7.8 | 4/5 |
+  | flail | 4/5 | 1.00 | 228.4 s | 177.0 | 4.2 | 8.2 | 4/5 |
+
+  The new level is much harder for the bots than the 8-wave one (fighter 1/5, was 4/5). Spear is weakest (narrow arc), axes and flail strongest; seed 4 is lost to the town by every weapon. Real play-testing is still needed: the bots are crude.
+- **Known gaps:** the flail model is a spiked mace; weapons look small on screen; sounds were chosen by filename and need a listen; no audio settings UI yet, only the persisted defaults.
+
 ## 7. Decisions
 
 ### Decided (2026-11-14)
@@ -427,15 +449,16 @@ Findings:
 35. **Unlockable roles:** new profiles start with Barracks and Chapel; Smithy unlocks by saving a town (achievement "Defender"), Watchtower by saving a town with 3 stars ("Not a scratch").
 36. **Planning points per town:** fixed by the town (Town 1: 2), the same on every attempt; not tied to knight level or coins.
 37. **Terminology:** town = stage/map; knight level = in-run XP level.
+38. **Weapon unlocks:** sword from the start; spear (knight level 8), warhammer (10 brutes), throwing axes (reach wave 6), flail (defeat the Orc Warlord).
+39. **Weapon choice** happens in planning (W / gamepad X / tap); remembered in the profile.
+40. **Town 1 length:** 10 waves + boss (~5 min).
+41. **Boss:** Orc Warlord — telegraphed ground slam, charges buildings, summons raiders; arrives in wave 10.
+42. **Knight death:** game over (open item 13 closed).
 
 ### Open (decide later)
 
 12. **Meta progression strength:** small and capped (recommended) vs Survivors-style grind.
     Before milestone 5.
-13. **Knight death:** game over vs respawn once per level at a cost (recommended: the
-    building you respawn in takes heavy damage). Before milestone 4.
-14. **Level length:** 8–12 min as written vs 6–8 min (recommended, phone-friendly).
-    Before milestone 4 balancing.
 15. **Distribution target:** web only first, or stores/Steam from the start.
     Affects packaging and save storage only.
 16. **Name.**

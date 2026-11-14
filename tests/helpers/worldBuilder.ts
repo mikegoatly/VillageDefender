@@ -6,6 +6,7 @@ import type { RookieKind } from '../../src/data/rookies';
 import type { RoleKind } from '../../src/data/roles';
 import { UPGRADE_BY_ID, type UpgradeOffer } from '../../src/data/upgrades';
 import type { WaveDef } from '../../src/data/waves';
+import type { WeaponKind } from '../../src/data/weapons';
 import type { TownMap } from '../../src/sim/map';
 import { emptyInput, type InputState } from '../../src/sim/types';
 import { World, type Unit, type WorldOptions } from '../../src/sim/world';
@@ -31,6 +32,8 @@ export class WorldBuilder {
   private plan: Record<number, RoleKind> | undefined;
   private keepPlanning = false;
 
+  /** Knight's basic attack (default sword). */
+  withWeapon(kind: WeaponKind) { this.opts.weapon = kind; return this; }
   withSeed(seed: number) { this.opts.seed = seed; return this; }
   withMap(rows: string[]) { this.mapVal = mapFromAscii(rows); return this; }
   withTownMap(map: TownMap) { this.mapVal = map; return this; }
@@ -155,4 +158,11 @@ export function collectEvents(world: World, ticks: number, input: InputState = e
   const all: World['events'] = [];
   for (let k = 0; k < ticks; k++) { step(world, input); all.push(...world.events); }
   return all;
+}
+
+/** Turns a monster into a stationary punching bag: never moves under its own power, effectively unkillable. */
+export function dummy(m: Unit, hp = 100000): Unit {
+  m.speed = 0;
+  m.hp = m.maxHp = hp;
+  return m;
 }

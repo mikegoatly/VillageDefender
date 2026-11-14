@@ -19,6 +19,8 @@ export interface HudWorld {
   xpToNext: number;
   rookies: number;
   rookieCap: number;
+  /** Boss health (omit or null when no boss is alive). */
+  boss?: { name: string; hp: number; maxHp: number } | null;
   /** Meta-progression results, shown when the run ended (may arrive a frame after the end). */
   endExtras?: {
     coins: number;
@@ -72,6 +74,29 @@ const STYLE = `
   animation: vd-pop 250ms ease-out both; }
 @keyframes vd-pop { 0% { transform: scale(0); } 70% { transform: scale(1.2); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .vd-hud .star.on, .vd-hud .bar.flash { animation: none; } }
+.vd-hud .boss { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 40px); left: 50%; width: min(560px, 70vw);
+  transform: translate(-50%, -12px); opacity: 0; display: none; transition: opacity 300ms, transform 300ms; text-align: center; }
+.vd-hud .boss.show { display: block; }
+.vd-hud .boss.in { opacity: 1; transform: translate(-50%, 0); }
+.vd-hud .boss .bname { font-weight: 800; letter-spacing: 2px; color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; margin-bottom: 2px; }
+.vd-hud .boss .btrack { position: relative; height: 16px; background: #2a1410; border: 2px solid #1a0b08; border-radius: 8px; overflow: hidden; }
+.vd-hud .boss .btrail, .vd-hud .boss .bfill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; }
+.vd-hud .boss .btrail { background: #e8928a; transition: width 300ms ease-out 400ms; }
+.vd-hud .boss .bfill { background: #b8322c; transition: width 120ms; }
+.vd-hud .boss-banner { position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%); padding: 10px 24px;
+  background: #b8322ccc; color: #fff; border-radius: 8px; font-size: 26px; font-weight: 800; text-align: center;
+  opacity: 0; transition: opacity 300ms; white-space: nowrap; max-width: 96vw; box-sizing: border-box; }
+.vd-hud .boss-banner.show { opacity: 1; }
+@media (max-width: 600px) {
+  .vd-hud .boss { width: 70vw; }
+  .vd-hud .boss .bname { font-size: 11px; letter-spacing: 1px; }
+  .vd-hud .boss .btrack { height: 12px; }
+  .vd-hud .boss-banner { font-size: 16px; padding: 6px 12px; white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vd-hud .boss, .vd-hud .boss-banner { transition: none; }
+  .vd-hud .boss .btrail, .vd-hud .boss .bfill { transition: none; }
+}
 .vd-hud .rule { font-size: 12px; opacity: 0.8; margin: 2px 0 8px; }
 .vd-hud .stats { margin: 0 0 8px; line-height: 1.4; }
 .vd-hud .extras { margin: 0 0 8px; line-height: 1.4; font-size: 14px; }
@@ -108,6 +133,13 @@ export class Hud {
   private warns: Record<Side, HTMLDivElement>;
   private over: HTMLDivElement;
   private panel: HTMLDivElement;
+  private bossEl: HTMLDivElement;
+  private bossName: HTMLDivElement;
+  private bossFill: HTMLDivElement;
+  private bossTrail: HTMLDivElement;
+  private bossBanner: HTMLDivElement;
+  private bossVisible = false;
+  private bossBannerTimer?: number;
   private warnTimer?: number;
   private flashTimer?: number;
   private prevStanding: number | null = null;
@@ -133,6 +165,8 @@ export class Hud {
     this.el.innerHTML = `
       <div class="bar"><span class="lv"></span><div class="hp"><div></div></div><span class="wave"></span><span class="bld"></span><span class="rookies"></span><span class="kills"></span><div class="xp"><div></div></div></div>
       ${(['top', 'bottom', 'left', 'right'] as Side[]).map((s) => `<div class="warn ${s}"></div>`).join('')}
+      <div class="boss"><div class="bname"></div><div class="btrack"><div class="btrail"></div><div class="bfill"></div></div></div>
+      <div class="boss-banner">The Orc Warlord approaches!</div>
       <div class="over"><div class="panel"></div></div>`;
     root.appendChild(this.el);
     this.bar = this.el.querySelector('.bar')!;
@@ -147,6 +181,11 @@ export class Hud {
       top: this.el.querySelector('.warn.top')!, bottom: this.el.querySelector('.warn.bottom')!,
       left: this.el.querySelector('.warn.left')!, right: this.el.querySelector('.warn.right')!,
     };
+    this.bossEl = this.el.querySelector('.boss')!;
+    this.bossName = this.el.querySelector('.bname')!;
+    this.bossFill = this.el.querySelector('.bfill')!;
+    this.bossTrail = this.el.querySelector('.btrail')!;
+    this.bossBanner = this.el.querySelector('.boss-banner')!;
     this.over = this.el.querySelector('.over')!;
     this.panel = this.el.querySelector('.panel')!;
     window.addEventListener('keydown', this.onKey);
@@ -172,6 +211,8 @@ export class Hud {
     this.xpFill.style.width = `${100 * xpFrac}%`;
     this.rookiesEl.textContent = `⛑ ${world.rookies}/${world.rookieCap}`;
 
+    this.updateBoss(world.boss ?? null);
+
     const ended = world.status !== 'playing';
     if (ended && !this.ended) {
       this.buildPanel(world, standing, total);
@@ -184,6 +225,35 @@ export class Hud {
     if (!ended) this.extrasShown = false;
     this.ended = ended;
     this.over.classList.toggle('show', ended);
+  }
+
+  private updateBoss(boss: HudWorld['boss']) {
+    if (!boss || boss.hp <= 0 || boss.maxHp <= 0) {
+      if (this.bossVisible) {
+        this.bossVisible = false;
+        this.bossEl.classList.remove('show', 'in');
+      }
+      return;
+    }
+    const pct = `${(100 * Math.min(1, Math.max(0, boss.hp / boss.maxHp))).toFixed(2)}%`;
+    this.bossName.textContent = boss.name.toUpperCase();
+    this.bossFill.style.width = pct;
+    if (!this.bossVisible) {
+      this.bossVisible = true;
+      // Snap the trail to the fill on appearance so it does not animate up from nothing.
+      this.bossTrail.style.transition = 'none';
+      this.bossTrail.style.width = pct;
+      void this.bossTrail.offsetWidth;
+      this.bossTrail.style.transition = '';
+      this.bossEl.classList.add('show');
+      void this.bossEl.offsetWidth;
+      this.bossEl.classList.add('in');
+      this.bossBanner.classList.add('show');
+      clearTimeout(this.bossBannerTimer);
+      this.bossBannerTimer = window.setTimeout(() => this.bossBanner.classList.remove('show'), 2500);
+    } else {
+      this.bossTrail.style.width = pct; // CSS delay (400 ms) makes the trail catch up
+    }
   }
 
   private flash() {
@@ -249,6 +319,7 @@ export class Hud {
   destroy() {
     clearTimeout(this.warnTimer);
     clearTimeout(this.flashTimer);
+    clearTimeout(this.bossBannerTimer);
     window.removeEventListener('keydown', this.onKey);
     this.el.remove();
   }

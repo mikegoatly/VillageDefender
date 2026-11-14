@@ -9,6 +9,7 @@ import { World, type Unit } from '../../src/sim/world';
 import type { UpgradeOffer, UpgradePool } from '../../src/data/upgrades';
 import { STARTING_ROLES } from '../../src/data/roles';
 import { TOWNS } from '../../src/data/towns';
+import type { WeaponKind } from '../../src/data/weapons';
 import { stepWith, type Chooser } from './worldBuilder';
 
 export type Bot = (world: World) => InputState;
@@ -221,14 +222,17 @@ export interface PlayResult {
   upgrades: Record<string, number>;
   /** Coins earned this run. */
   coins: number;
+  weapon: WeaponKind;
+  /** Orc Warlord defeated this run. */
+  bossKilled: boolean;
 }
 
 /** Plays a full default level with a bot until it ends or maxSeconds elapses. */
-export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300, choose: Chooser = idleChooser, plan?: PlanPolicy): PlayResult {
+export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300, choose: Chooser = idleChooser, plan?: PlanPolicy, weapon: WeaponKind = 'sword'): PlayResult {
   // Planned runs use a fresh profile's roles and town 1's points; unplanned runs skip planning entirely.
   const world = new World(plan
-    ? { seed, planning: true, planningPoints: TOWNS[0].planningPoints, allowedRoles: STARTING_ROLES }
-    : { seed });
+    ? { seed, planning: true, planningPoints: TOWNS[0].planningPoints, allowedRoles: STARTING_ROLES, weapon }
+    : { seed, weapon });
   if (plan) {
     plan(world);
     world.start();
@@ -240,5 +244,6 @@ export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300
     kills: world.kills, standing: world.standingBuildings(), total: world.buildings.length, stars: world.stars,
     level: world.progression.level, rookiesAlive: world.rookies.filter((r) => r.state !== 'dead').length,
     upgrades: { ...world.progression.levels }, coins: Math.round(world.coins),
+    weapon, bossKilled: (world.killsByKind.warlord ?? 0) > 0,
   };
 }

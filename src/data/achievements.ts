@@ -1,6 +1,7 @@
 // Achievements: persistent goals that unlock content (decision 33/35). Checked after every run.
 
 import type { RoleKind } from './roles';
+import type { WeaponKind } from './weapons';
 
 /** What a finished run reports to the profile. */
 export interface RunResult {
@@ -10,6 +11,8 @@ export interface RunResult {
   standing: number;
   totalBuildings: number;
   knightLevel: number;
+  /** Highest wave reached. */
+  wave: number;
   kills: Record<string, number>;
   coins: number;
 }
@@ -27,7 +30,7 @@ export interface AchievementDef {
   description: string;
   /** True once earned; sees this run and lifetime stats (already including this run). */
   check(run: RunResult, life: LifetimeStats): boolean;
-  reward?: { role?: RoleKind };
+  reward?: { role?: RoleKind; weapon?: WeaponKind };
 }
 
 export const ACHIEVEMENTS: AchievementDef[] = [
@@ -41,10 +44,18 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   },
   {
     id: 'brute-slayer', name: 'Brute slayer', description: 'Defeat 10 brutes',
-    check: (_r, l) => (l.kills.brute ?? 0) >= 10,
+    check: (_r, l) => (l.kills.brute ?? 0) >= 10, reward: { weapon: 'hammer' },
   },
   {
     id: 'seasoned', name: 'Seasoned', description: 'Reach knight level 8 in one run',
-    check: (r) => r.knightLevel >= 8,
+    check: (r) => r.knightLevel >= 8, reward: { weapon: 'spear' },
+  },
+  {
+    id: 'hold-the-line', name: 'Holding the line', description: 'Reach wave 6',
+    check: (r) => r.wave >= 6, reward: { weapon: 'axes' },
+  },
+  {
+    id: 'kingslayer', name: 'Kingslayer', description: 'Defeat the Orc Warlord',
+    check: (r) => (r.kills.warlord ?? 0) > 0, reward: { weapon: 'flail' },
   },
 ];

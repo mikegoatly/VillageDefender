@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { PlanningPanel, type PlanningCallbacks, type PlanningRoleOption, type PlanningView } from '../../src/ui/PlanningPanel';
+import { PlanningPanel, type PlanningCallbacks, type PlanningRoleOption, type PlanningView, type PlanningWeaponOption } from '../../src/ui/PlanningPanel';
 import type { RoleKind } from '../../src/data/roles';
 
 function aRole(kind: RoleKind, o: Partial<PlanningRoleOption> = {}): PlanningRoleOption {
@@ -11,12 +11,18 @@ const ROLES = (): PlanningRoleOption[] => [aRole('barracks'), aRole('chapel'), a
 function aView(o: Partial<PlanningView> = {}): PlanningView {
   return { townName: 'Oakvale', pointsLeft: 2, pointsTotal: 3, selected: null, roles: ROLES(), assigned: 'Barracks', ...o };
 }
+function aWeapon(kind: string, o: Partial<PlanningWeaponOption> = {}): PlanningWeaponOption {
+  return { kind, name: kind[0].toUpperCase() + kind.slice(1), description: `${kind} attack`, locked: false, icon: `i-${kind}`, ...o };
+}
+const WEAPONS = (): PlanningWeaponOption[] => [
+  aWeapon('sword'), aWeapon('spear', { locked: true, lockHint: 'Win a town' }), aWeapon('hammer'), aWeapon('axes'),
+];
 const selected = (role: RoleKind | null = null) => ({ id: 4, label: 'House #4', role });
 
 describe('PlanningPanel', () => {
   let root: HTMLElement;
   let panel: PlanningPanel;
-  let cb: { [K in keyof PlanningCallbacks]: Mock<PlanningCallbacks[K]> };
+  let cb: { [K in keyof Required<PlanningCallbacks>]: Mock<Required<PlanningCallbacks>[K]> };
   let clock: number;
   let rafQueue: Map<number, FrameRequestCallback>;
   let rafId: number;
@@ -56,7 +62,7 @@ describe('PlanningPanel', () => {
     vi.stubGlobal('cancelAnimationFrame', (id: number) => { rafQueue.delete(id); });
     pad = null;
     Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad] });
-    cb = { onAssign: vi.fn(), onSelectNext: vi.fn(), onStart: vi.fn() };
+    cb = { onAssign: vi.fn(), onSelectNext: vi.fn(), onStart: vi.fn(), onWeapon: vi.fn() };
     panel = new PlanningPanel(root, cb);
   });
   afterEach(() => {
@@ -75,6 +81,13 @@ describe('PlanningPanel', () => {
     expect(text('.start')).toBe('Start ▶');
     expect(text('.hint')).toBe('Tap a house to give it a role');
     expect(root.querySelector('.card')).toBeNull();
+  });
+
+  it('places the hint after the banner in the same top column, never inside it', () => {
+    panel.show(aView({ weapons: [{ kind: 'sword', name: 'Sword', description: 'd', locked: false, icon: 'S' }], selectedWeapon: 'sword' }));
+    const top = root.querySelector('.top')!;
+    expect(Array.from(top.children).map((c) => c.className)).toEqual(['banner', 'hint']);
+    expect(root.querySelector('.banner .hint')).toBeNull();
   });
 
   it('renders a card with Plain house and one button per role when selected', () => {
@@ -312,6 +325,87 @@ describe('PlanningPanel', () => {
     panel.show(aView());
     press('Enter');
     expect(cb.onStart).not.toHaveBeenCalled();
+  });
+
+  describe('weapon picker', () => {
+    const wpns = () => [...root.querySelectorAll<HTMLButtonElement>('.wpn')];
+    const wpn = (kind: string) => wpns().find((b) => b.dataset.kind === kind)!;
+    const wview = (selectedWeapon = 'sword', weapons = WEAPONS()) => aView({ weapons, selectedWeapon });
+
+    it('omitting the optional fields renders no weapon row and keeps the banner unchanged', () => {
+      panel.show(aView());
+      expect(root.querySelector('.weapons')).toBeNull();
+      expect(root.querySelector('.banner')!.children).toHaveLength(5);
+      ready();
+      press('w');
+      press('W', { shiftKey: true });
+      expect(cb.onWeapon).not.toHaveBeenCalled();
+    });
+
+    it('renders icons, names, the selected highlight and locked state', () => {
+      panel.show(wview('hammer'));
+      expect(text('.wl')).toBe('Weapon:');
+      expect(wpns()).toHaveLength(4);
+      expect(wpns().filter((b) => b.classList.contains('sel'))).toEqual([wpn('hammer')]);
+      expect(wpn('sword').textContent).toContain('i-sword');
+      expect(wpn('sword').textContent).toContain('Sword');
+      expect(wpn('spear').disabled).toBe(true);
+      expect(wpn('spear').textContent).toContain('🔒');
+      expect(wpn('spear').title).toBe('Win a town');
+      expect(wpn('spear').textContent).toContain('Win a town');
+      expect(wpn('sword').disabled).toBe(false);
+    });
+
+    it('clicking an enabled weapon calls onWeapon; locked does nothing', () => {
+      panel.show(wview());
+      wpn('axes').click();
+      expect(cb.onWeapon).toHaveBeenLastCalledWith('axes');
+      wpn('spear').click();
+      expect(cb.onWeapon).toHaveBeenCalledTimes(1);
+    });
+
+    it('W cycles forward and Shift+W backward, skipping locked, with wrap', () => {
+      panel.show(wview('sword'));
+      ready();
+      press('w');
+      expect(cb.onWeapon).toHaveBeenLastCalledWith('hammer');
+      panel.show(wview('axes'));
+      press('w');
+      expect(cb.onWeapon).toHaveBeenLastCalledWith('sword');
+      press('W', { shiftKey: true });
+      expect(cb.onWeapon).toHaveBeenLastCalledWith('hammer'); // view still shows axes; previous skips locked spear
+      panel.show(wview('sword'));
+      press('W', { shiftKey: true });
+      expect(cb.onWeapon).toHaveBeenLastCalledWith('axes'); // wraps
+      panel.show(wview('hammer'));
+      press('w', { shiftKey: true });
+      expect(cb.onWeapon).toHaveBeenLastCalledWith('sword');
+    });
+
+    it('W is ignored during the input guard and with a single unlocked weapon', () => {
+      panel.show(wview());
+      press('w');
+      expect(cb.onWeapon).not.toHaveBeenCalled();
+      ready();
+      panel.show(wview('sword', [aWeapon('sword'), aWeapon('spear', { locked: true })]));
+      press('w');
+      expect(cb.onWeapon).not.toHaveBeenCalled();
+    });
+
+    it('gamepad X (button 2) cycles to the next unlocked weapon on the rising edge', () => {
+      showReady(wview('sword'));
+      setPad({ 2: true });
+      step();
+      expect(cb.onWeapon).toHaveBeenLastCalledWith('hammer');
+      step();
+      expect(cb.onWeapon).toHaveBeenCalledTimes(1);
+    });
+
+    it('is shown alongside the role card', () => {
+      panel.show({ ...wview(), selected: selected() });
+      expect(wpns()).toHaveLength(4);
+      expect(opts()).toHaveLength(5);
+    });
   });
 
   it('destroy removes DOM, key listener and rAF loop', () => {

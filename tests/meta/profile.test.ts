@@ -165,3 +165,114 @@ describe('debug helpers', () => {
     expect(new Profile(store).data.coins).toBe(0);
   });
 });
+
+describe('weapon unlocks', () => {
+  it('a fresh profile has only the sword, selected', () => {
+    const { profile } = aProfile();
+    expect(profile.data.weapons).toEqual(['sword']);
+    expect(profile.data.weapon).toBe('sword');
+  });
+
+  it.each([
+    ['seasoned (knight level 8)', { knightLevel: 8 }, 'seasoned', 'spear'],
+    ['brute slayer (10 brutes)', { kills: { brute: 10 } }, 'brute-slayer', 'hammer'],
+    ['hold the line (wave 6)', { wave: 6 }, 'hold-the-line', 'axes'],
+    ['kingslayer (the Warlord)', { kills: { warlord: 1 } }, 'kingslayer', 'flail'],
+  ] as const)('%s unlocks a weapon', (_name, run, id, weapon) => {
+    const { profile } = aProfile();
+    const out = profile.recordRun(aRun(run));
+    expect(out.newAchievements.map((a) => a.id)).toEqual([id]);
+    expect(out.unlockedWeapons).toEqual([weapon]);
+    expect(out.unlockedRoles).toEqual([]);
+    expect(profile.data.weapons).toEqual(['sword', weapon]);
+  });
+
+  it('wave 5 is not enough for the axes, and level 7 not for the spear', () => {
+    const { profile } = aProfile();
+    expect(profile.recordRun(aRun({ wave: 5, knightLevel: 7 })).unlockedWeapons).toEqual([]);
+  });
+
+  it('brutes count across runs toward the hammer', () => {
+    const { profile } = aProfile();
+    expect(profile.recordRun(aRun({ kills: { brute: 9 } })).unlockedWeapons).toEqual([]);
+    expect(profile.recordRun(aRun({ kills: { brute: 1 } })).unlockedWeapons).toEqual(['hammer']);
+  });
+
+  it('weapons are only reported once', () => {
+    const { profile } = aProfile();
+    profile.recordRun(aRun({ knightLevel: 9, wave: 10 }));
+    const again = profile.recordRun(aRun({ knightLevel: 9, wave: 10 }));
+    expect(again.unlockedWeapons).toEqual([]);
+    expect(profile.data.weapons.slice().sort()).toEqual(['axes', 'spear', 'sword']);
+  });
+
+  it('a big run reports every weapon it earns', () => {
+    const { profile } = aProfile();
+    const out = profile.recordRun(aRun({ won: true, stars: 3, knightLevel: 9, wave: 10, kills: { brute: 12, warlord: 1 } }));
+    expect(out.unlockedWeapons.slice().sort()).toEqual(['axes', 'flail', 'hammer', 'spear']);
+  });
+});
+
+describe('weapon choice', () => {
+  it('setWeapon selects an unlocked weapon and persists it', () => {
+    const { store, profile } = aProfile();
+    profile.recordRun(aRun({ knightLevel: 8 }));
+    profile.setWeapon('spear');
+    expect(profile.data.weapon).toBe('spear');
+    expect(new Profile(store).data.weapon).toBe('spear');
+  });
+
+  it('setWeapon ignores a weapon that is still locked', () => {
+    const { profile } = aProfile();
+    profile.setWeapon('flail');
+    expect(profile.data.weapon).toBe('sword');
+  });
+
+  it('unlockAllWeapons adds every weapon once and saves', () => {
+    const { store, profile } = aProfile();
+    profile.unlockAllWeapons(['spear', 'hammer', 'axes', 'flail', 'sword']);
+    expect(profile.data.weapons.slice().sort()).toEqual(['axes', 'flail', 'hammer', 'spear', 'sword']);
+    profile.setWeapon('flail');
+    expect(new Profile(store).data.weapon).toBe('flail');
+    expect(new Profile(store).data.weapons).toHaveLength(5);
+  });
+
+  it('reset goes back to the sword only', () => {
+    const { profile } = aProfile();
+    profile.unlockAllWeapons(['spear']);
+    profile.setWeapon('spear');
+    profile.reset();
+    expect(profile.data.weapons).toEqual(['sword']);
+    expect(profile.data.weapon).toBe('sword');
+  });
+
+  it('old saves without weapons still load, with the sword', () => {
+    const { store, profile } = aProfile();
+    profile.save();
+    for (const k of store.data.keys()) store.data.set(k, JSON.stringify({ version: 1, coins: 12, roles: ['smithy'], achievements: ['first-win'], bestStars: { village: 2 } }));
+    const loaded = new Profile(store);
+    expect(loaded.data.coins).toBe(12);
+    expect(loaded.data.weapons).toEqual(['sword']);
+    expect(loaded.data.weapon).toBe('sword');
+    expect(loaded.data.bestStars.village).toBe(2);
+  });
+
+  it('a save missing the sword still gets it back', () => {
+    const { store, profile } = aProfile();
+    profile.save();
+    for (const k of store.data.keys()) store.data.set(k, JSON.stringify({ version: 1, weapons: ['axes'], weapon: 'axes' }));
+    const loaded = new Profile(store);
+    expect(loaded.data.weapons.slice().sort()).toEqual(['axes', 'sword']);
+    expect(loaded.data.weapon).toBe('axes');
+  });
+
+  it('unlocks from an old save are kept when new ones arrive', () => {
+    const { store, profile } = aProfile();
+    profile.save();
+    for (const k of store.data.keys()) store.data.set(k, JSON.stringify({ version: 1, weapons: ['sword', 'spear'], achievements: ['seasoned'] }));
+    const loaded = new Profile(store);
+    const out = loaded.recordRun(aRun({ kills: { warlord: 1 } }));
+    expect(out.unlockedWeapons).toEqual(['flail']);
+    expect(loaded.data.weapons).toEqual(['sword', 'spear', 'flail']);
+  });
+});

@@ -3,7 +3,9 @@
 
 import { BUILDING, DT, KNIGHT, KNOCKBACK_DAMPING, SEPARATION, STARS, WAVES } from '../data/balance';
 import { MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
-import { ARMY, GEMS, RALLY, ROOKIES, TOWN_ARROWS, XP_DROP, type RookieKind } from '../data/rookies';
+import { ARMY, GEMS, RALLY, ROOKIES, TOWN_ARROWS, type RookieKind } from '../data/rookies';
+import { WEAPONS, type WeaponDef, type WeaponKind } from '../data/weapons';
+import { newBossState, updateWarlord, type BossHost, type BossState } from './boss';
 import type { UpgradeHost } from '../data/upgrades';
 import { ROLE_EFFECTS, ROLES, type RoleKind } from '../data/roles';
 import { COINS } from '../data/towns';
@@ -60,6 +62,8 @@ export interface Unit {
   /** AI: where a rookie returns to when idle. */
   postX: number;
   postY: number;
+  /** Orc Warlord only. */
+  boss?: BossState;
 }
 
 export interface BuildingState {
@@ -91,6 +95,12 @@ export interface Projectile {
   ttl: number;
   /** Unit id credited with kills (-1 for buildings). */
   owner: number;
+  kind: 'arrow' | 'axe';
+  /** Axe: flies out to maxDist, then returns to its owner, hitting each enemy once per leg. */
+  returning: boolean;
+  travelled: number;
+  maxDist: number;
+  hitIds: number[];
 }
 
 export interface Gem {
@@ -104,7 +114,7 @@ export interface Gem {
 }
 
 export type SimEvent =
-  | { type: 'swing'; unit: number }
+  | { type: 'swing'; unit: number; weapon?: WeaponKind }
   | { type: 'hit'; unit: number; by: number; damage: number; x: number; y: number }
   | { type: 'death'; unit: number }
   | { type: 'playerHurt'; unit: number; damage: number }
@@ -120,6 +130,12 @@ export type SimEvent =
   | { type: 'rookiePromoted'; unit: number; rank: number }
   | { type: 'shot'; projectile: number; from: number }
   | { type: 'rally' }
+  | { type: 'axeThrow'; projectile: number }
+  | { type: 'bossSpawn'; unit: number }
+  | { type: 'bossSlamWarn'; unit: number; x: number; y: number; radius: number; time: number }
+  | { type: 'bossSlam'; unit: number; x: number; y: number; radius: number }
+  | { type: 'bossCharge'; unit: number; building: number }
+  | { type: 'bossSummon'; unit: number; count: number; side: Side }
   | { type: 'levelEnd'; won: boolean; stars: number; reason: 'knight' | 'town' | null };
 
 export interface WorldOptions {
@@ -146,6 +162,8 @@ export interface WorldOptions {
   /** Roles the player has unlocked; defaults to all. */
   allowedRoles?: RoleKind[];
   townId?: string;
+  /** Basic attack (decision 39); defaults to the sword. */
+  weapon?: WeaponKind;
 }
 
 interface PendingWave {
@@ -186,6 +204,8 @@ export class World implements UpgradeHost {
   /** Coins earned this run (decision 30). */
   coins = 0;
   readonly killsByKind: Record<string, number> = {};
+  /** Basic attack; can change during planning (decision 39). */
+  weapon: WeaponKind;
 
   private nextId = 1;
   private readonly rng: Rng;
@@ -228,6 +248,8 @@ export class World implements UpgradeHost {
     this.planningPoints = opts.planningPoints ?? 0;
     this.allowedRoles = opts.allowedRoles ?? (Object.keys(ROLES) as RoleKind[]);
     this.townId = opts.townId ?? 'village';
+    this.weapon = opts.weapon ?? 'sword';
+    this.bossHost = this.makeBossHost();
 
     this.cellBuilding = new Int32Array(this.map.size * this.map.size).fill(-1);
     this.buildings = this.map.buildings.map((b) => {
@@ -306,6 +328,13 @@ export class World implements UpgradeHost {
     return true;
   }
 
+  /** Chooses the knight's weapon during planning. */
+  setWeapon(kind: WeaponKind): boolean {
+    if (this.phase !== 'planning') return false;
+    this.weapon = kind;
+    return true;
+  }
+
   /** Ends planning; the first wave's countdown starts now. */
   start() {
     this.phase = 'running';
@@ -331,8 +360,17 @@ export class World implements UpgradeHost {
     return {
       townId: this.townId, won: this.status === 'won', stars: this.stars,
       standing: this.standingBuildings(), totalBuildings: this.buildings.length,
-      knightLevel: this.progression.level, kills: { ...this.killsByKind }, coins: Math.round(this.coins),
+      knightLevel: this.progression.level, wave: this.wave, kills: { ...this.killsByKind }, coins: Math.round(this.coins),
     };
+  }
+
+  /** The living boss, if one is on the field. */
+  get boss(): Unit | null {
+    return this.monsters.find((m) => m.kind === 'warlord' && m.state !== 'dead') ?? null;
+  }
+
+  get weaponDef(): WeaponDef {
+    return WEAPONS[this.weapon];
   }
 
   /** Kills needed for the next rookie, or null when all thresholds are used. */
@@ -462,27 +500,30 @@ export class World implements UpgradeHost {
       return;
     }
 
-    // Attack: hold to auto-swing at the nearest enemy (decision 2).
-    if (inp.attack && u.attackCooldown <= 0 && u.state !== 'attack') {
-      const target = this.nearestMonster(u.x, u.y, KNIGHT.acquireRange * km.rangeMul);
-      if (target) u.facing = norm({ x: target.x - u.x, y: target.y - u.y });
-      else if (moveLen > 0.1) u.facing = norm(move);
-      this.setState(u, 'attack');
-      u.hitPending = true;
-      u.attackCooldown = KNIGHT.attackCooldown * km.cooldownMul;
-      this.events.push({ type: 'swing', unit: u.id });
-    }
-
-    if (u.state === 'attack') {
-      if (u.hitPending && u.stateTime >= KNIGHT.attackHitTime) {
-        u.hitPending = false;
-        this.swingHits(u, KNIGHT.attackRange * km.rangeMul, Math.min(Math.PI, KNIGHT.attackArc * km.arcMul),
-          KNIGHT.attackDamage * km.damageMul * this.smithyMulAt(u.x, u.y), KNIGHT.knockback * km.knockbackMul);
+    // Attack: hold to auto-aim at the nearest enemy (decision 2); how it hits depends on the weapon (decision 39).
+    const w = this.weaponDef;
+    if (w.style === 'spin') {
+      this.updateSpin(u, inp.attack, w);
+    } else {
+      if (inp.attack && u.attackCooldown <= 0 && u.state !== 'attack') {
+        const target = this.nearestMonster(u.x, u.y, w.acquireRange * km.rangeMul);
+        if (target) u.facing = norm({ x: target.x - u.x, y: target.y - u.y });
+        else if (moveLen > 0.1) u.facing = norm(move);
+        this.setState(u, 'attack');
+        u.hitPending = true;
+        u.attackCooldown = w.cooldown * km.cooldownMul;
+        this.events.push({ type: 'swing', unit: u.id, weapon: this.weapon });
       }
-      if (u.stateTime >= KNIGHT.attackDuration) this.setState(u, 'idle');
+      if (u.state === 'attack') {
+        if (u.hitPending && u.stateTime >= w.hitTime) {
+          u.hitPending = false;
+          this.weaponHit(u, w);
+        }
+        if (u.stateTime >= w.duration) this.setState(u, 'idle');
+      }
     }
 
-    const speed = u.speed * (u.state === 'attack' ? KNIGHT.attackMoveFactor : 1);
+    const speed = u.speed * (u.state === 'attack' ? w.moveFactor : 1);
     u.moving = moveLen > 0.05;
     if (u.moving) {
       u.x += move.x * speed * DT;
@@ -490,6 +531,63 @@ export class World implements UpgradeHost {
       if (u.state !== 'attack') u.facing = norm(move);
     }
     if (u.state !== 'attack') this.setState(u, u.moving ? 'walk' : 'idle', true);
+  }
+
+  /** Applies the knight's weapon at the moment the attack lands. */
+  private weaponHit(u: Unit, w: WeaponDef) {
+    const km = this.progression.mods.knight;
+    const damage = w.damage * km.damageMul * this.smithyMulAt(u.x, u.y);
+    const knockback = w.knockback * km.knockbackMul;
+    if (w.style === 'arc') {
+      this.swingHits(u, w.range * km.rangeMul, Math.min(Math.PI, w.arc * km.arcMul), damage, knockback);
+    } else if (w.style === 'area') {
+      // Warhammer: slam centred ahead of the knight.
+      const reach = w.range * km.rangeMul;
+      this.areaHits(u.id, u.x + u.facing.x * reach, u.y + u.facing.y * reach, w.arc * km.arcMul, damage, knockback);
+    } else if (w.style === 'boomerang') {
+      this.throwAxe(u, w, damage);
+    }
+  }
+
+  /** Flail: while attack is held, damage pulses hit everything around the knight. */
+  private updateSpin(u: Unit, held: boolean, w: WeaponDef) {
+    const km = this.progression.mods.knight;
+    if (!held) {
+      if (u.state === 'attack') this.setState(u, 'idle');
+      return;
+    }
+    this.setState(u, 'attack', true);
+    if (u.attackCooldown > 0) return;
+    u.attackCooldown = w.cooldown * km.cooldownMul;
+    const damage = w.damage * km.damageMul * this.smithyMulAt(u.x, u.y);
+    this.areaHits(u.id, u.x, u.y, w.range * km.rangeMul * Math.sqrt(km.arcMul), damage, w.knockback * km.knockbackMul);
+    this.events.push({ type: 'swing', unit: u.id, weapon: this.weapon });
+  }
+
+  /** Hits every enemy whose body overlaps a circle; knocks them away from its centre. */
+  private areaHits(owner: number, cx: number, cy: number, radius: number, damage: number, knockback: number) {
+    this.enemyHash.query(cx, cy, radius + 0.6, (m) => {
+      if (m.state === 'dead') return;
+      const dx = m.x - cx;
+      const dy = m.y - cy;
+      const d = Math.hypot(dx, dy);
+      if (d - m.radius > radius) return;
+      this.damage(m, damage, owner);
+      const resist = MONSTERS[m.kind as MonsterKind].knockbackResist;
+      const k = d > 1e-4 ? (knockback * (1 - resist)) / d : 0;
+      m.vx += dx * k;
+      m.vy += dy * k;
+    });
+  }
+
+  private throwAxe(u: Unit, w: WeaponDef, damage: number) {
+    const km = this.progression.mods.knight;
+    const p: Projectile = {
+      id: this.nextId++, x: u.x, y: u.y, vx: u.facing.x * w.projectileSpeed, vy: u.facing.y * w.projectileSpeed,
+      damage, ttl: 6, owner: u.id, kind: 'axe', returning: false, travelled: 0, maxDist: w.range * km.rangeMul, hitIds: [],
+    };
+    this.projectiles.push(p);
+    this.events.push({ type: 'axeThrow', projectile: p.id });
   }
 
   /** Melee swing: hits every enemy within reach inside the facing arc. */
@@ -730,7 +828,8 @@ export class World implements UpgradeHost {
     const tx = target.x + (target.moving ? target.facing.x * target.speed * lead : 0);
     const ty = target.y + (target.moving ? target.facing.y * target.speed * lead : 0);
     const dir = norm({ x: tx - x, y: ty - y });
-    const p: Projectile = { id: this.nextId++, x, y, vx: dir.x * speed, vy: dir.y * speed, damage, ttl: 1.2 * (d / speed) + 0.3, owner };
+    const p: Projectile = { id: this.nextId++, x, y, vx: dir.x * speed, vy: dir.y * speed, damage, ttl: 1.2 * (d / speed) + 0.3, owner,
+      kind: 'arrow', returning: false, travelled: 0, maxDist: 0, hitIds: [] };
     this.projectiles.push(p);
     this.events.push({ type: 'shot', projectile: p.id, from: owner });
   }
@@ -738,6 +837,10 @@ export class World implements UpgradeHost {
   private updateProjectiles() {
     for (let k = this.projectiles.length - 1; k >= 0; k--) {
       const p = this.projectiles[k];
+      if (p.kind === 'axe') {
+        if (this.updateAxe(p)) this.projectiles.splice(k, 1);
+        continue;
+      }
       p.x += p.vx * DT;
       p.y += p.vy * DT;
       p.ttl -= DT;
@@ -749,6 +852,37 @@ export class World implements UpgradeHost {
       if (hit) this.damage(hit, p.damage, p.owner);
       if (hit || p.ttl <= 0) this.projectiles.splice(k, 1);
     }
+  }
+
+  /** Moves a thrown axe out and back; returns true when it should be removed. */
+  private updateAxe(p: Projectile): boolean {
+    const speed = Math.hypot(p.vx, p.vy);
+    const owner = this.players.find((pl) => pl.id === p.owner && pl.state !== 'dead');
+    p.ttl -= DT;
+    if (p.ttl <= 0 || !owner) return true;
+    if (!p.returning) {
+      p.travelled += speed * DT;
+      if (p.travelled >= p.maxDist) {
+        p.returning = true;
+        p.hitIds = [];
+      }
+    } else {
+      const dx = owner.x - p.x;
+      const dy = owner.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 0.45) return true;
+      p.vx = (dx / d) * speed;
+      p.vy = (dy / d) * speed;
+    }
+    p.x += p.vx * DT;
+    p.y += p.vy * DT;
+    this.enemyHash.query(p.x, p.y, 0.8, (m) => {
+      if (m.state === 'dead' || p.hitIds.includes(m.id)) return;
+      if (Math.hypot(m.x - p.x, m.y - p.y) > m.radius + 0.3) return;
+      p.hitIds.push(m.id);
+      this.damage(m, p.damage, p.owner);
+    });
+    return false;
   }
 
   /** Building regen, arrow slits and role effects. */
@@ -835,12 +969,26 @@ export class World implements UpgradeHost {
       this.continueAttack(m, def);
       return;
     }
+    // Boss abilities take over the unit while they run.
+    if (m.boss && updateWarlord(this.bossHost, m, m.boss)) {
+      this.setState(m, m.moving ? 'walk' : 'idle', true);
+      return;
+    }
 
-    // Choose a target: the nearest friendly (for 'nearest' types when one is close) or buildings.
-    const friend = this.nearestFriendly(m.x, m.y);
+    // Choose a target by archetype (plan section 3.3).
     const hasBuildings = this.standingBuildings() > 0;
-    const chase =
-      !!friend && (!hasBuildings || (def.target === 'nearest' && Math.hypot(friend.x - m.x, friend.y - m.y) <= def.aggroRange));
+    let friend: Unit | null;
+    let chase: boolean;
+    if (def.target === 'knight') {
+      friend = this.nearestOf(this.players, m.x, m.y);
+      chase = !!friend;
+    } else if (def.target === 'rookies') {
+      friend = this.nearestOf(this.rookies, m.x, m.y) ?? this.nearestOf(this.players, m.x, m.y);
+      chase = !!friend;
+    } else {
+      friend = this.nearestFriendly(m.x, m.y);
+      chase = !!friend && (!hasBuildings || (def.target === 'nearest' && Math.hypot(friend.x - m.x, friend.y - m.y) <= def.aggroRange));
+    }
 
     if (chase && friend) {
       const dx = friend.x - m.x;
@@ -853,7 +1001,8 @@ export class World implements UpgradeHost {
         return;
       }
       // The knight field only leads to the knight; rookies are always close, so go straight.
-      this.steer(m, friend.team === 'player' && friend.kind === 'knight' && d > 1.5 ? this.knightFlow : null, dx, dy);
+      const useField = !def.phasing && friend.kind === 'knight' && d > 1.5;
+      this.steer(m, useField ? this.knightFlow : null, dx, dy);
       return;
     }
 
@@ -870,8 +1019,14 @@ export class World implements UpgradeHost {
     }
     // The field ends on cells next to buildings; from there close the last gap directly,
     // since a cell centre is 0.5 from the building edge, beyond most monsters' reach.
-    const near = this.nearestBuildingCell(m);
     m.attackBuilding = -1;
+    if (def.phasing) {
+      // Ghosts drift straight through anything toward the nearest standing building.
+      const cell = this.nearestStandingCell(m.x, m.y);
+      this.steer(m, null, cell ? cell[0] - m.x : 0, cell ? cell[1] - m.y : 0);
+      return;
+    }
+    const near = this.nearestBuildingCell(m);
     this.steer(m, this.buildingFlow, near ? near[0] - m.x : 0, near ? near[1] - m.y : 0);
   }
 
@@ -904,7 +1059,10 @@ export class World implements UpgradeHost {
         if (m.hitPending && m.stateTime >= def.attackWindup) {
           m.hitPending = false;
           const reach = m.radius + target.radius + def.attackReach;
-          if (Math.hypot(dx, dy) <= reach + 0.1) this.hurtFriendly(target, def.damage);
+          if (Math.hypot(dx, dy) <= reach + 0.1) {
+            const dealt = this.hurtFriendly(target, def.damage);
+            if (def.lifesteal && dealt > 0) m.hp = Math.min(m.maxHp, m.hp + dealt * def.lifesteal);
+          }
         }
       }
     }
@@ -1061,6 +1219,10 @@ export class World implements UpgradeHost {
       kind, team: 'enemy', radius: def.radius, hp: def.hp, maxHp: def.hp,
       speed: def.speed + this.rng.range(-def.speedJitter, def.speedJitter),
     };
+    if (kind === 'warlord') {
+      m.boss = newBossState();
+      this.events.push({ type: 'bossSpawn', unit: m.id });
+    }
     this.monsters.push(m);
     return m;
   }
@@ -1166,8 +1328,8 @@ export class World implements UpgradeHost {
       if (u.team === 'enemy') {
         this.kills++;
         this.killsByKind[u.kind] = (this.killsByKind[u.kind] ?? 0) + 1;
-        this.coins += COINS.perKill[u.kind] ?? 0;
-        this.gems.push({ id: this.nextId++, x: u.x, y: u.y, value: XP_DROP[u.kind] ?? 1, magnet: false, speed: 0 });
+        this.coins += MONSTERS[u.kind as MonsterKind].coins;
+        this.gems.push({ id: this.nextId++, x: u.x, y: u.y, value: MONSTERS[u.kind as MonsterKind].xp, magnet: false, speed: 0 });
         const killer = this.rookies.find((r) => r.id === by);
         if (killer) this.creditRookieKill(killer);
       }
@@ -1196,11 +1358,11 @@ export class World implements UpgradeHost {
     }
   }
 
-  /** Damages the knight or a rookie. */
-  private hurtFriendly(p: Unit, amount: number) {
-    if (p.invuln > 0 || p.state === 'dead') return;
+  /** Damages the knight or a rookie. Returns the damage actually dealt. */
+  private hurtFriendly(p: Unit, amount: number): number {
+    if (p.invuln > 0 || p.state === 'dead') return 0;
     const isKnight = p.kind === 'knight';
-    if (isKnight && this.god) return;
+    if (isKnight && this.god) return 0;
     p.hp -= amount;
     p.invuln = isKnight ? KNIGHT.hurtInvuln : 0.15;
     if (isKnight) this.events.push({ type: 'playerHurt', unit: p.id, damage: amount });
@@ -1214,6 +1376,58 @@ export class World implements UpgradeHost {
         this.recruitIn = Math.max(this.recruitIn, ARMY.respawnDelay);
       }
     }
+    return amount;
+  }
+
+  /** Nearest living unit of a list. */
+  private nearestOf(list: Unit[], x: number, y: number): Unit | null {
+    let best: Unit | null = null;
+    let bestD = Infinity;
+    for (const u of list) {
+      if (u.state === 'dead') continue;
+      const d = Math.hypot(u.x - x, u.y - y);
+      if (d < bestD) {
+        bestD = d;
+        best = u;
+      }
+    }
+    return best;
+  }
+
+  /** Nearest cell of any standing building (whole map; used by phasing monsters). */
+  private nearestStandingCell(x: number, y: number): [number, number] | null {
+    let best: [number, number] | null = null;
+    let bestD = Infinity;
+    for (const b of this.buildings) {
+      if (b.ruined) continue;
+      for (const [i, j] of b.cells) {
+        const d = Math.hypot(i - x, j - y);
+        if (d < bestD) {
+          bestD = d;
+          best = [i, j];
+        }
+      }
+    }
+    return best;
+  }
+
+  /** What the boss module may touch (see sim/boss.ts). Built in the constructor so getters see live state. */
+  private bossHost!: BossHost;
+
+  private makeBossHost(): BossHost {
+    const w = this;
+    return {
+    get time() { return w.time; },
+    get buildings() { return w.buildings; },
+    get events() { return w.events; },
+    friendlies: () => [...this.players, ...this.rookies].filter((u) => u.state !== 'dead'),
+    nearestFriendlyTo: (x, y) => this.nearestFriendly(x, y),
+    hurtFriendlyBy: (t, n) => { this.hurtFriendly(t, n); },
+    damageBuildingBy: (b, n, by) => this.damageBuilding(b, n, by),
+    adjacentBuildingTo: (m, reach) => this.adjacentBuilding(m, reach),
+    spawnFromEdge: (side, kind) => this.spawnMonster(side, kind),
+    randomSide: () => this.rng.pick(['top', 'right', 'bottom', 'left'] as const),
+    };
   }
 
   private rebuildEnemyHash() {
@@ -1299,7 +1513,17 @@ export class World implements UpgradeHost {
       u.vy *= damp;
       if (Math.abs(u.vx) < 0.01 && Math.abs(u.vy) < 0.01) u.vx = u.vy = 0;
     }
-    this.collideCells(u);
+    // Phasing monsters (ghosts) ignore buildings and trees; only the map edge contains them.
+    if (u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].phasing) this.keepOnMap(u);
+    else this.collideCells(u);
+  }
+
+  private keepOnMap(u: Unit) {
+    if (inBounds(this.map, Math.round(u.x), Math.round(u.y))) return;
+    const c = this.map.centre;
+    const d = Math.hypot(c - u.x, c - u.y) || 1;
+    u.x += ((c - u.x) / d) * 0.08;
+    u.y += ((c - u.y) / d) * 0.08;
   }
 
   /** Pushes a circle out of every non-walkable cell it overlaps. Cell (i, j) spans i±0.5, j±0.5. */

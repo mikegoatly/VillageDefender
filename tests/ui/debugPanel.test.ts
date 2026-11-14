@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KNIGHT } from '../../src/data/balance';
+import { BOSS, MONSTERS } from '../../src/data/monsters';
+import { WEAPONS, WEAPON_ORDER } from '../../src/data/weapons';
 import { UPGRADES } from '../../src/data/upgrades';
 import { DebugPanel, debugEnabled, type DebugHost, type OverlayName } from '../../src/ui/DebugPanel';
 import type { World } from '../../src/sim/world';
@@ -25,8 +27,8 @@ function aFakeWorld() {
 
 function aFakeProfile() {
   return {
-    data: { coins: 5, roles: ['barracks', 'chapel'], achievements: ['first'] },
-    unlockAll: vi.fn(), addCoins: vi.fn(), reset: vi.fn(),
+    data: { coins: 5, roles: ['barracks', 'chapel'], weapons: ['sword', 'spear'], achievements: ['first'] },
+    unlockAll: vi.fn(), unlockAllWeapons: vi.fn(), addCoins: vi.fn(), reset: vi.fn(),
   };
 }
 
@@ -107,6 +109,27 @@ describe('DebugPanel', () => {
     expect(host.fake.debugSpawn).toHaveBeenCalledWith('orc', 12, 'left');
   });
 
+  it('Spawn kind dropdown lists every monster kind', () => {
+    const options = Array.from(controller('kind').domElement.querySelectorAll('option')).map((o) => o.textContent);
+    expect(options).toEqual(Object.keys(MONSTERS));
+    expect(options).toEqual(expect.arrayContaining(['skeleton', 'ghost', 'vampire', 'warlord']));
+  });
+
+  it('Balance folder exposes weapons, new monsters and boss abilities, and Reset restores them', () => {
+    const folderTitles = panel.gui.foldersRecursive().map((f) => f._title);
+    for (const k of WEAPON_ORDER) expect(folderTitles).toContain(`WEAPONS.${k}`);
+    for (const t of ['MONSTERS.skeleton', 'MONSTERS.ghost', 'MONSTERS.vampire', 'MONSTERS.warlord', 'BOSS.slam', 'BOSS.charge', 'BOSS.summon']) {
+      expect(folderTitles).toContain(t);
+    }
+    const dmg = WEAPONS.hammer.damage;
+    const slam = BOSS.slam.damage;
+    WEAPONS.hammer.damage = dmg + 50;
+    BOSS.slam.damage = slam + 50;
+    press('Reset balance');
+    expect(WEAPONS.hammer.damage).toBe(dmg);
+    expect(BOSS.slam.damage).toBe(slam);
+  });
+
   it('Spawn at knight uses the knight position', () => {
     controller('target').setValue('at knight');
     press('Spawn');
@@ -149,6 +172,9 @@ describe('DebugPanel', () => {
     expect(controller('coins').getValue()).toBe('5');
     expect(controller('roles').getValue()).toBe('barracks, chapel');
     expect(controller('achievements').getValue()).toBe('first');
+    expect(controller('weapons').getValue()).toBe('sword, spear');
+    press('Unlock all weapons');
+    expect(host.fakeProfile.unlockAllWeapons).toHaveBeenCalledWith(WEAPON_ORDER);
     press('Unlock all roles');
     expect(host.fakeProfile.unlockAll).toHaveBeenCalledWith(['barracks', 'chapel', 'smithy', 'watchtower']);
     host.fakeProfile.data.coins = 105;

@@ -1,0 +1,98 @@
+{
+  "sounds": {
+    "swing": [
+      "swing-1.ogg",
+      "swing-2.ogg",
+      "swing-3.ogg"
+    ],
+    "hit": [
+      "hit-1.ogg",
+      "hit-2.ogg",
+      "hit-3.ogg"
+    ],
+    "hitHeavy": [
+      "hitHeavy-1.ogg",
+      "hitHeavy-2.ogg",
+      "hitHeavy-3.ogg"
+    ],
+    "throw": [
+      "throw-1.ogg",
+      "throw-2.ogg"
+    ],
+    "monsterDie": [
+      "monsterDie-1.ogg",
+      "monsterDie-2.ogg",
+      "monsterDie-3.ogg"
+    ],
+    "knightHurt": [
+      "knightHurt-1.ogg",
+      "knightHurt-2.ogg"
+    ],
+    "knightDie": [
+      "knightDie-1.ogg"
+    ],
+    "buildingHit": [
+      "buildingHit-1.ogg",
+      "buildingHit-2.ogg",
+      "buildingHit-3.ogg"
+    ],
+    "buildingCollapse": [
+      "buildingCollapse-1.ogg",
+      "buildingCollapse-2.ogg",
+      "buildingCollapse-3.ogg"
+    ],
+    "gem": [
+      "gem-1.ogg",
+      "gem-2.ogg"
+    ],
+    "levelUp": [
+      "levelUp-1.ogg"
+    ],
+    "upgradePick": [
+      "upgradePick-1.ogg"
+    ],
+    "uiClick": [
+      "uiClick-1.ogg",
+      "uiClick-2.ogg"
+    ],
+    "rookieJoin": [
+      "rookieJoin-1.ogg"
+    ],
+    "rally": [
+      "rally-1.ogg"
+    ],
+    "arrow": [
+      "arrow-1.ogg",
+      "arrow-2.ogg"
+    ],
+    "waveWarning": [
+      "waveWarning-1.ogg",
+      "waveWarning-2.ogg"
+    ],
+    "bossArrive": [
+      "bossArrive-1.ogg",
+      "bossArrive-2.ogg"
+    ],
+    "bossSlamWarn": [
+      "bossSlamWarn-1.ogg"
+    ],
+    "bossSlam": [
+      "bossSlam-1.ogg",
+      "bossSlam-2.ogg"
+    ],
+    "bossCharge": [
+      "bossCharge-1.ogg",
+      "bossCharge-2.ogg"
+    ],
+    "win": [
+      "win-1.ogg"
+    ],
+    "lose": [
+      "lose-1.ogg"
+    ]
+  },
+  "music": {
+    "plan": "music-plan.ogg",
+    "play": "music-play.ogg"
+  }
+}

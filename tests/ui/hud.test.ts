@@ -175,6 +175,61 @@ describe('Hud', () => {
     });
   });
 
+  describe('boss bar', () => {
+    const boss = (hp: number, maxHp = 100) => ({ name: 'Orc Warlord', hp, maxHp });
+    const bossEl = () => root.querySelector('.boss')!;
+    const fill = () => (root.querySelector('.boss .bfill') as HTMLElement).style.width;
+    const trail = () => (root.querySelector('.boss .btrail') as HTMLElement).style.width;
+    const banner = () => root.querySelector('.boss-banner')!;
+
+    afterEach(() => vi.useRealTimers());
+
+    it('is hidden when the boss is omitted, null or dead', () => {
+      hud.update(aHudWorld());
+      expect(bossEl().classList.contains('show')).toBe(false);
+      hud.update(aHudWorld({ boss: null }));
+      expect(bossEl().classList.contains('show')).toBe(false);
+      hud.update(aHudWorld({ boss: boss(0) }));
+      expect(bossEl().classList.contains('show')).toBe(false);
+      expect(banner().classList.contains('show')).toBe(false);
+    });
+
+    it('shows the upper-cased name and fill width, then hides on death', () => {
+      hud.update(aHudWorld({ boss: boss(50) }));
+      expect(bossEl().classList.contains('show')).toBe(true);
+      expect(text('.bname')).toBe('ORC WARLORD');
+      expect(parseFloat(fill())).toBeCloseTo(50);
+      hud.update(aHudWorld({ boss: boss(25) }));
+      expect(parseFloat(fill())).toBeCloseTo(25);
+      expect(parseFloat(trail())).toBeCloseTo(25);
+      hud.update(aHudWorld({ boss: boss(0) }));
+      expect(bossEl().classList.contains('show')).toBe(false);
+    });
+
+    it('trail has a delayed transition and the bar is sized min(560px, 70vw)', () => {
+      hud.update(aHudWorld({ boss: boss(100) }));
+      const css = document.getElementById('vd-hud-style')!.textContent!;
+      expect(css).toMatch(/\.btrail \{[^}]*transition: width 300ms ease-out 400ms/);
+      expect(css).toMatch(/\.boss \{[^}]*width: min\(560px, 70vw\)/);
+    });
+
+    it('shows the arrival banner for 2.5 s, once per appearance', () => {
+      vi.useFakeTimers();
+      hud.update(aHudWorld({ boss: boss(100) }));
+      expect(banner().textContent).toBe('The Orc Warlord approaches!');
+      expect(banner().classList.contains('show')).toBe(true);
+      vi.advanceTimersByTime(2499);
+      expect(banner().classList.contains('show')).toBe(true);
+      vi.advanceTimersByTime(1);
+      expect(banner().classList.contains('show')).toBe(false);
+      hud.update(aHudWorld({ boss: boss(90) }));
+      expect(banner().classList.contains('show')).toBe(false);
+      hud.update(aHudWorld({ boss: null }));
+      hud.update(aHudWorld({ boss: boss(100) }));
+      expect(banner().classList.contains('show')).toBe(true);
+    });
+  });
+
   it('destroy removes DOM and key listener', () => {
     hud.update(aHudWorld({ status: 'won' }));
     hud.destroy();

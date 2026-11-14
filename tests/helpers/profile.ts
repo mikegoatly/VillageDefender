@@ -11,5 +11,5 @@ export function memoryStore(): KeyValueStore & { data: Map<string, string> } {
 
 /** A losing, zero-everything run; override what the test cares about. */
 export function aRun(over: Partial<RunResult> = {}): RunResult {
-  return { townId: 'village', won: false, stars: 0, standing: 0, totalBuildings: 6, knightLevel: 1, kills: {}, coins: 0, ...over };
+  return { townId: 'village', won: false, stars: 0, standing: 0, totalBuildings: 6, knightLevel: 1, wave: 1, kills: {}, coins: 0, ...over };
 }
