@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DT, WAVES } from '../../src/data/balance';
 import type { MonsterKind } from '../../src/data/monsters';
-import { LEVEL1_WAVES, spawnOrder, type WaveDef } from '../../src/data/waves';
+import { TOWN1_WAVES, spawnOrder, type WaveDef } from '../../src/data/waves';
 import { World, type SimEvent } from '../../src/sim/world';
 import { fieldRows, mapFromAscii } from '../helpers/mapBuilder';
 import { emptyInput } from '../../src/sim/types';
@@ -37,8 +37,8 @@ const nonZero = (w: WaveDef) => Object.fromEntries(Object.entries(w.monsters).fi
 
 describe('wave table', () => {
   it('has 8 waves whose totals match their spawn order', () => {
-    expect(LEVEL1_WAVES).toHaveLength(8);
-    for (const w of LEVEL1_WAVES) expect(spawnOrder(w)).toHaveLength(total(w));
+    expect(TOWN1_WAVES).toHaveLength(8);
+    for (const w of TOWN1_WAVES) expect(spawnOrder(w)).toHaveLength(total(w));
   });
 
   it('interleaves kinds rather than sending them in blocks', () => {
@@ -50,7 +50,7 @@ describe('wave table', () => {
 describe('waves', () => {
   it('warns, starts and spawns the first wave on schedule', () => {
     const world = new World({ seed: 1, god: true });
-    const w1 = LEVEL1_WAVES[0];
+    const w1 = TOWN1_WAVES[0];
     const log = record(world, WAVES.firstAt + 0.5);
     const warn = first(log, 'waveWarning')!;
     const start = first(log, 'waveStart')!;
@@ -66,7 +66,7 @@ describe('waves', () => {
 
   it('spawns monsters spread over count * spawnSpacing', () => {
     const world = new World({ seed: 1, god: true });
-    const count = total(LEVEL1_WAVES[0]);
+    const count = total(TOWN1_WAVES[0]);
     record(world, WAVES.firstAt + 0.05);
     expect(world.monsters.length).toBeGreaterThan(0);
     expect(world.monsters.length).toBeLessThan(count);
@@ -98,7 +98,7 @@ describe('waves', () => {
 
   it('honours the startWave option: count, sides and kinds come from that wave', () => {
     const world = new World({ seed: 1, god: true, startWave: 4 });
-    const w4 = LEVEL1_WAVES[3];
+    const w4 = TOWN1_WAVES[3];
     const log = record(world, WAVES.firstAt + total(w4) * WAVES.spawnSpacing + 0.2);
     const start = first(log, 'waveStart')!;
     expect(start.e.wave).toBe(4);
@@ -110,7 +110,7 @@ describe('waves', () => {
 
   it.each([2, 3, 8])('spawns exactly the kinds listed for wave %i', (n) => {
     const world = new World({ seed: 2, god: true, startWave: n });
-    const w = LEVEL1_WAVES[n - 1];
+    const w = TOWN1_WAVES[n - 1];
     record(world, WAVES.firstAt + total(w) * WAVES.spawnSpacing + 0.2);
     expect(kindCounts(world)).toEqual(nonZero(w));
   });
@@ -118,26 +118,26 @@ describe('waves', () => {
   it('clamps startWave into the table', () => {
     const world = new World({ seed: 1, god: true, startWave: 99 });
     const log = record(world, WAVES.firstAt + 0.2);
-    expect(first(log, 'waveStart')!.e.wave).toBe(LEVEL1_WAVES.length);
+    expect(first(log, 'waveStart')!.e.wave).toBe(TOWN1_WAVES.length);
   });
 
   it('progresses through every wave on the interval with the table sides and counts', () => {
     // A building-free map so idle waves cannot end the level (lost by town) before the last one.
     const world = new World({ seed: 2, god: true, map: mapFromAscii(fieldRows(40)) });
-    const log = record(world, WAVES.firstAt + WAVES.interval * (LEVEL1_WAVES.length - 1) + 0.5);
+    const log = record(world, WAVES.firstAt + WAVES.interval * (TOWN1_WAVES.length - 1) + 0.5);
     const starts = all(log, 'waveStart');
-    expect(starts.map((s) => s.e.wave)).toEqual(LEVEL1_WAVES.map((_, k) => k + 1));
+    expect(starts.map((s) => s.e.wave)).toEqual(TOWN1_WAVES.map((_, k) => k + 1));
     starts.forEach((s, k) => {
       expect(Math.abs(s.t - (WAVES.firstAt + k * WAVES.interval))).toBeLessThanOrEqual(1.5 * DT);
-      expect(s.e.count).toBe(total(LEVEL1_WAVES[k]));
+      expect(s.e.count).toBe(total(TOWN1_WAVES[k]));
     });
-    expect(all(log, 'waveWarning').map((x) => x.e.sides.length)).toEqual(LEVEL1_WAVES.map((w) => w.sides));
-    expect(world.wave).toBe(LEVEL1_WAVES.length);
-    expect(world.totalWaves).toBe(LEVEL1_WAVES.length);
+    expect(all(log, 'waveWarning').map((x) => x.e.sides.length)).toEqual(TOWN1_WAVES.map((w) => w.sides));
+    expect(world.wave).toBe(TOWN1_WAVES.length);
+    expect(world.totalWaves).toBe(TOWN1_WAVES.length);
   });
 
   it('starts no wave after the last one', () => {
-    const world = new World({ seed: 2, god: true, startWave: LEVEL1_WAVES.length });
+    const world = new World({ seed: 2, god: true, startWave: TOWN1_WAVES.length });
     const log = record(world, WAVES.firstAt + WAVES.interval * 2);
     expect(all(log, 'waveStart')).toHaveLength(1);
     expect(all(log, 'waveWarning')).toHaveLength(1);

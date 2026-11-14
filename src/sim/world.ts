@@ -5,7 +5,10 @@ import { BUILDING, DT, KNIGHT, KNOCKBACK_DAMPING, SEPARATION, STARS, WAVES } fro
 import { MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
 import { ARMY, GEMS, RALLY, ROOKIES, TOWN_ARROWS, XP_DROP, type RookieKind } from '../data/rookies';
 import type { UpgradeHost } from '../data/upgrades';
-import { LEVEL1_WAVES, spawnOrder, type WaveDef } from '../data/waves';
+import { ROLE_EFFECTS, ROLES, type RoleKind } from '../data/roles';
+import { COINS } from '../data/towns';
+import type { RunResult } from '../data/achievements';
+import { TOWN1_WAVES, spawnOrder, type WaveDef } from '../data/waves';
 import { FlowField } from './flowField';
 import { screenDirToGround } from './iso';
 import { generateTown, inBounds, isWalkable, type MapOptions, type Side, type TownMap } from './map';
@@ -71,6 +74,10 @@ export interface BuildingState {
   lastHit: number;
   /** Arrow-slit cooldown. */
   shotIn: number;
+  /** Role chosen while planning (null = plain house). */
+  role: RoleKind | null;
+  /** Watchtower cooldown. */
+  towerShotIn: number;
 }
 
 export interface Projectile {
@@ -130,8 +137,15 @@ export interface WorldOptions {
   noWaves?: boolean;
   /** Tests: disable rookie recruitment. */
   noRookies?: boolean;
-  /** Wave table; defaults to level 1. */
+  /** Wave table; defaults to town 1. */
   waves?: WaveDef[];
+  /** Start in the planning phase: tick() does nothing until start() (decision 29). */
+  planning?: boolean;
+  /** Planning points available (decision 36). */
+  planningPoints?: number;
+  /** Roles the player has unlocked; defaults to all. */
+  allowedRoles?: RoleKind[];
+  townId?: string;
 }
 
 interface PendingWave {
@@ -164,6 +178,14 @@ export class World implements UpgradeHost {
   /** Rally: seconds left active, and cooldown. */
   rallyTime = 0;
   rallyCooldown = 0;
+  /** 'planning' until start(); the sim only advances while 'running'. */
+  phase: 'planning' | 'running';
+  readonly planningPoints: number;
+  readonly allowedRoles: RoleKind[];
+  readonly townId: string;
+  /** Coins earned this run (decision 30). */
+  coins = 0;
+  readonly killsByKind: Record<string, number> = {};
 
   private nextId = 1;
   private readonly rng: Rng;
@@ -200,8 +222,12 @@ export class World implements UpgradeHost {
     this.god = !!opts.god;
     this.noWaves = !!opts.noWaves;
     this.noRookies = !!opts.noRookies;
-    this.waves = opts.waves ?? LEVEL1_WAVES;
+    this.waves = opts.waves ?? TOWN1_WAVES;
     this.totalWaves = this.waves.length;
+    this.phase = opts.planning ? 'planning' : 'running';
+    this.planningPoints = opts.planningPoints ?? 0;
+    this.allowedRoles = opts.allowedRoles ?? (Object.keys(ROLES) as RoleKind[]);
+    this.townId = opts.townId ?? 'village';
 
     this.cellBuilding = new Int32Array(this.map.size * this.map.size).fill(-1);
     this.buildings = this.map.buildings.map((b) => {
@@ -210,7 +236,7 @@ export class World implements UpgradeHost {
       const wallBlocks = Math.max(1, b.blocks.length - b.cells.length);
       const hp = BUILDING.baseHp + (wallBlocks - 1) * BUILDING.hpPerExtraBlock;
       for (const [i, j] of b.cells) this.cellBuilding[j * this.map.size + i] = b.id;
-      return { id: b.id, hp, maxHp: hp, baseMaxHp: hp, ruined: false, cells: b.cells, lastHit: -1, shotIn: 0 };
+      return { id: b.id, hp, maxHp: hp, baseMaxHp: hp, ruined: false, cells: b.cells, lastHit: -1, shotIn: 0, role: null, towerShotIn: 0 };
     });
 
     const c = this.map.centre;
@@ -252,7 +278,61 @@ export class World implements UpgradeHost {
   }
 
   get rookieCap(): number {
-    return ARMY.baseCap + this.progression.mods.army.capAdd;
+    return ARMY.baseCap + this.progression.mods.army.capAdd + this.standingRoles('barracks').length;
+  }
+
+  // ------------------------------------------------------------------ planning (3b)
+
+  /** Points not yet spent on roles. */
+  get planningPointsLeft(): number {
+    return this.planningPoints - this.buildings.reduce((n, b) => n + (b.role ? ROLES[b.role].cost : 0), 0);
+  }
+
+  /**
+   * Sets or clears a building's role during planning. Returns false if not allowed
+   * (wrong phase, locked role, not enough points).
+   */
+  setRole(buildingId: number, role: RoleKind | null): boolean {
+    const b = this.buildings[buildingId];
+    if (this.phase !== 'planning' || !b) return false;
+    if (role === null) {
+      b.role = null;
+      return true;
+    }
+    if (!this.allowedRoles.includes(role)) return false;
+    const refund = b.role ? ROLES[b.role].cost : 0;
+    if (this.planningPointsLeft + refund < ROLES[role].cost) return false;
+    b.role = role;
+    return true;
+  }
+
+  /** Ends planning; the first wave's countdown starts now. */
+  start() {
+    this.phase = 'running';
+  }
+
+  /** Standing buildings with a role. */
+  standingRoles(role: RoleKind): BuildingState[] {
+    return this.buildings.filter((b) => b.role === role && !b.ruined);
+  }
+
+  /** Damage multiplier from smithies near a ground point. */
+  smithyMulAt(x: number, y: number): number {
+    const r = ROLES.smithy.radius;
+    for (const b of this.standingRoles('smithy')) {
+      const [cx, cy] = centreOf(b.cells);
+      if (Math.hypot(cx - x, cy - y) <= r) return ROLE_EFFECTS.smithyDamageMul;
+    }
+    return 1;
+  }
+
+  /** What this run reports to the profile. */
+  runResult(): RunResult {
+    return {
+      townId: this.townId, won: this.status === 'won', stars: this.stars,
+      standing: this.standingBuildings(), totalBuildings: this.buildings.length,
+      knightLevel: this.progression.level, kills: { ...this.killsByKind }, coins: Math.round(this.coins),
+    };
   }
 
   /** Kills needed for the next rookie, or null when all thresholds are used. */
@@ -300,7 +380,7 @@ export class World implements UpgradeHost {
 
   tick(inputs: InputState[]) {
     this.events = [];
-    if (this.status !== 'playing' || this.choosing) return;
+    if (this.status !== 'playing' || this.choosing || this.phase !== 'running') return;
     this.time += DT;
     this.tickCount++;
 
@@ -349,6 +429,7 @@ export class World implements UpgradeHost {
     this.status = won ? 'won' : 'lost';
     this.lossReason = reason;
     this.stars = won ? this.starsFor(this.standingBuildings()) : 0;
+    if (won) this.coins += COINS.perWaveCleared * this.totalWaves + COINS.perStar * this.stars;
     this.events.push({ type: 'levelEnd', won, stars: this.stars, reason });
   }
 
@@ -396,7 +477,7 @@ export class World implements UpgradeHost {
       if (u.hitPending && u.stateTime >= KNIGHT.attackHitTime) {
         u.hitPending = false;
         this.swingHits(u, KNIGHT.attackRange * km.rangeMul, Math.min(Math.PI, KNIGHT.attackArc * km.arcMul),
-          KNIGHT.attackDamage * km.damageMul, KNIGHT.knockback * km.knockbackMul);
+          KNIGHT.attackDamage * km.damageMul * this.smithyMulAt(u.x, u.y), KNIGHT.knockback * km.knockbackMul);
       }
       if (u.stateTime >= KNIGHT.attackDuration) this.setState(u, 'idle');
     }
@@ -456,7 +537,9 @@ export class World implements UpgradeHost {
     const next = this.nextRookieAt();
     const owed = this.recruited - alive;
     if (owed <= 0 && (next === null || this.kills < next)) return;
-    const standing = this.buildings.filter((b) => !b.ruined);
+    // Rookies step out of a barracks when there is one (decision 29), else any standing building.
+    const barracks = this.standingRoles('barracks');
+    const standing = barracks.length ? barracks : this.buildings.filter((b) => !b.ruined);
     if (!standing.length) return;
     const home = standing[Math.floor(this.rng.frac() * standing.length)];
     const door = this.doorOf(home);
@@ -500,7 +583,7 @@ export class World implements UpgradeHost {
   }
 
   private rookieDamage(r: Unit): number {
-    return ROOKIES[r.kind as RookieKind].damage * this.progression.mods.army.damageMul * ARMY.rankMul[r.rank];
+    return ROOKIES[r.kind as RookieKind].damage * this.progression.mods.army.damageMul * ARMY.rankMul[r.rank] * this.smithyMulAt(r.x, r.y);
   }
 
   private pather(u: Unit): Pather {
@@ -668,11 +751,12 @@ export class World implements UpgradeHost {
     }
   }
 
-  /** Building regen and arrow slits. */
+  /** Building regen, arrow slits and role effects. */
   private updateTown() {
     const t = this.progression.mods.town;
     for (const b of this.buildings) {
       if (b.ruined) continue;
+      if (b.role) this.updateRole(b);
       if (t.regenFrac > 0) b.hp = Math.min(b.maxHp, b.hp + b.maxHp * t.regenFrac * DT);
       if (t.arrowSlits <= 0) continue;
       b.shotIn -= DT;
@@ -682,6 +766,28 @@ export class World implements UpgradeHost {
       if (!target) continue;
       this.shoot(ci, cj, target, TOWN_ARROWS.damage, TOWN_ARROWS.speed, -1);
       b.shotIn = Math.max(1.2, TOWN_ARROWS.interval - 0.8 * (t.arrowSlits - 1));
+    }
+  }
+
+  private updateRole(b: BuildingState) {
+    const def = ROLES[b.role!];
+    const [cx, cy] = centreOf(b.cells);
+    if (b.role === 'chapel') {
+      const heal = ROLE_EFFECTS.chapelHealPerSecond * DT;
+      for (const list of [this.players, this.rookies]) {
+        for (const u of list) {
+          if (u.state === 'dead' || Math.hypot(u.x - cx, u.y - cy) > def.radius) continue;
+          u.hp = Math.min(u.maxHp, u.hp + heal);
+        }
+      }
+    } else if (b.role === 'watchtower') {
+      b.towerShotIn -= DT;
+      if (b.towerShotIn > 0) return;
+      const target = this.nearestMonster(cx, cy, def.radius);
+      if (!target) return;
+      const w = ROLE_EFFECTS.watchtower;
+      this.shoot(cx, cy, target, w.damage, w.speed, -1);
+      b.towerShotIn = w.interval;
     }
   }
 
@@ -902,11 +1008,14 @@ export class World implements UpgradeHost {
     if (this.noWaves) return;
     const pw = this.pending;
     if (pw) {
-      if (!pw.warned && this.time >= pw.at - WAVES.warning) {
+      const warning = WAVES.warning + (this.standingRoles('watchtower').length ? ROLE_EFFECTS.watchtowerExtraWarning : 0);
+      if (!pw.warned && this.time >= pw.at - warning) {
         pw.warned = true;
         this.events.push({ type: 'waveWarning', wave: pw.wave, sides: pw.sides });
       }
       if (this.time >= pw.at) {
+        // Reaching the next wave pays for surviving the previous one.
+        if (pw.wave > 1) this.coins += COINS.perWaveCleared * (pw.wave - 1);
         this.wave = pw.wave;
         const order = spawnOrder(this.waves[pw.wave - 1]);
         order.forEach((kind, k) => {
@@ -1056,6 +1165,8 @@ export class World implements UpgradeHost {
       this.events.push({ type: 'death', unit: u.id });
       if (u.team === 'enemy') {
         this.kills++;
+        this.killsByKind[u.kind] = (this.killsByKind[u.kind] ?? 0) + 1;
+        this.coins += COINS.perKill[u.kind] ?? 0;
         this.gems.push({ id: this.nextId++, x: u.x, y: u.y, value: XP_DROP[u.kind] ?? 1, magnet: false, speed: 0 });
         const killer = this.rookies.find((r) => r.id === by);
         if (killer) this.creditRookieKill(killer);

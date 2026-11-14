@@ -1,4 +1,4 @@
-// Wave tables per level. Milestone 2: one level, 8 waves (~2.5 minutes).
+// Wave tables per town. Town 1 (medieval village): 8 waves (~3 minutes).
 
 import type { MonsterKind } from './monsters';
 
@@ -9,7 +9,7 @@ export interface WaveDef {
   sides: 1 | 2 | 3;
 }
 
-export const LEVEL1_WAVES: WaveDef[] = [
+export const TOWN1_WAVES: WaveDef[] = [
   { monsters: { zombie: 5 }, sides: 1 },
   { monsters: { zombie: 6, orc: 2 }, sides: 1 },
   { monsters: { zombie: 7, orc: 4 }, sides: 1 },

@@ -5,12 +5,15 @@ import * as Phaser from 'phaser';
 import { BUILDING, MAP } from '../data/balance';
 import type { Building } from '../sim/map';
 import type { BuildingState } from '../sim/world';
+import { ROLES, type RoleKind } from '../data/roles';
 
 /** Placed tile image plus its resting position (for hit shake). */
 export interface PlacedBlock {
   img: Phaser.GameObjects.Image;
   baseX: number;
   level: number;
+  i: number;
+  j: number;
 }
 
 interface View {
@@ -21,6 +24,13 @@ interface View {
   top: { x: number; y: number };
   shake: number;
   ruined: boolean;
+  /** Top block of each cell (the roof) with its original texture, for role roofs. */
+  roofs: { img: Phaser.GameObjects.Image; key: string }[];
+  role: RoleKind | null;
+  icon?: Phaser.GameObjects.Text;
+  /** Ground ring showing a role's aura/range (planning). */
+  aura?: Phaser.GameObjects.Graphics;
+  centre: { x: number; y: number };
 }
 
 export const RUBBLE_TILES = ['st:rocks_dirt_N', 'st:rocks_dirt_E', 'st:rocks_grass_S'];
@@ -28,6 +38,9 @@ const PUFF = 'vd-puff';
 
 export class BuildingViews {
   private views = new Map<number, View>();
+  /** Building highlighted during planning (-1 none). */
+  private highlighted = -1;
+  private aurasVisible = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -56,7 +69,59 @@ export class BuildingViews {
     const cx = def.cells.reduce((s, [i, j]) => s + this.toScreen(i, j).x, 0) / def.cells.length;
     top.x = cx;
     const bar = this.scene.add.graphics().setDepth(5e5);
-    this.views.set(def.id, { blocks, bar, top, shake: 0, ruined: false });
+    // Roof = highest block on each cell.
+    const roofs: View['roofs'] = [];
+    for (const [i, j] of def.cells) {
+      const onCell = blocks.filter((b) => b.i === i && b.j === j);
+      const roof = onCell.reduce<PlacedBlock | null>((a, b) => (!a || b.level > a.level ? b : a), null);
+      if (roof) roofs.push({ img: roof.img, key: roof.img.texture.key });
+    }
+    const cxg = def.cells.reduce((s, [i]) => s + i, 0) / def.cells.length;
+    const cyg = def.cells.reduce((s, [, j]) => s + j, 0) / def.cells.length;
+    this.views.set(def.id, { blocks, bar, top, shake: 0, ruined: false, roofs, role: null, centre: { x: cxg, y: cyg } });
+  }
+
+  /** Shows a role on a building: role roof on every cell, an icon badge and its aura ring. */
+  setRole(id: number, role: RoleKind | null) {
+    const v = this.views.get(id);
+    if (!v || v.ruined || v.role === role) return;
+    v.role = role;
+    for (const r of v.roofs) r.img.setTexture(role ? `st:${ROLES[role].roof}_S` : r.key);
+    v.icon?.destroy();
+    v.icon = undefined;
+    v.aura?.destroy();
+    v.aura = undefined;
+    if (!role) return;
+    const s = MAP.tileScale;
+    v.icon = this.scene.add
+      .text(v.top.x, v.top.y - 34 * s, ROLES[role].icon, {
+        fontFamily: 'system-ui, sans-serif', fontSize: '44px', color: '#3b2418',
+        backgroundColor: '#f3e3d0', padding: { x: 10, y: 2 },
+      })
+      .setOrigin(0.5, 1).setScale(s).setDepth(5e5 + 1);
+    const radius = ROLES[role].radius;
+    if (radius > 0) {
+      v.aura = this.scene.add.graphics().setDepth(-5e5).setVisible(this.aurasVisible);
+      const col = role === 'chapel' ? 0x9fd27a : role === 'smithy' ? 0xf0ad4e : 0x7fb3e6;
+      const pts: Phaser.Math.Vector2[] = [];
+      for (let k = 0; k <= 48; k++) {
+        const a = (k / 48) * Math.PI * 2;
+        const p = this.toScreen(v.centre.x + Math.cos(a) * radius, v.centre.y + Math.sin(a) * radius);
+        pts.push(new Phaser.Math.Vector2(p.x, p.y));
+      }
+      v.aura.fillStyle(col, 0.12).fillPoints(pts, true);
+      v.aura.lineStyle(3, col, 0.8).strokePoints(pts, true);
+    }
+  }
+
+  /** Aura rings are shown while planning. */
+  setAurasVisible(on: boolean) {
+    this.aurasVisible = on;
+    for (const v of this.views.values()) v.aura?.setVisible(on && !v.ruined);
+  }
+
+  highlight(id: number) {
+    this.highlighted = id;
   }
 
   /** Every block image, for occlusion checks. */
@@ -77,12 +142,15 @@ export class BuildingViews {
     v.ruined = true;
     for (const b of v.blocks) b.img.destroy();
     v.blocks = [];
+    v.roofs = [];
+    v.icon?.destroy();
+    v.aura?.destroy();
     v.smoke?.stop();
     // Rubble on each footprint cell (still blocks movement in the sim).
     def.cells.forEach(([i, j], k) => {
       const img = this.placeTile(RUBBLE_TILES[(i + j + k) % RUBBLE_TILES.length], i, j, 1);
       img.setTint(0xb8a493);
-      v.blocks.push({ img, baseX: img.x, level: 1 });
+      v.blocks.push({ img, baseX: img.x, level: 1, i, j });
     });
     // Dust burst.
     const s = MAP.tileScale;
@@ -113,6 +181,7 @@ export class BuildingViews {
       for (const blk of v.blocks) {
         blk.img.x = blk.baseX + offset;
         if (v.shake > 0.12) blk.img.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+        else if (b.id === this.highlighted) blk.img.setTint(0x3a3010).setTintMode(Phaser.TintModes.ADD);
         else blk.img.setTint(tint).setTintMode(Phaser.TintModes.MULTIPLY);
       }
 

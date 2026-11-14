@@ -9,6 +9,7 @@ import { ARMY, GEMS, ROOKIES, TOWN_ARROWS } from '../data/rookies';
 import { UPGRADES } from '../data/upgrades';
 import { XP_CURVE } from '../sim/progression';
 import type { World } from '../sim/world';
+import type { Profile } from '../meta/profile';
 
 export type OverlayName = 'flowKnight' | 'flowBuildings' | 'hitboxes' | 'ranges' | 'labels';
 
@@ -27,6 +28,8 @@ export interface DebugHost {
   overlays: Record<OverlayName, boolean>;
   /** Ground point under the last pointer click on the map, or null. */
   lastClickGround(): { x: number; y: number } | null;
+  /** Persistent player profile (coins, unlocked roles, achievements). */
+  profile(): Profile;
 }
 
 export function debugEnabled(): boolean {
@@ -87,6 +90,8 @@ export class DebugPanel {
   private readonly stats = {
     time: '', wave: '', nextWave: '', monsters: '', rookies: '', kills: '', knight: '', buildings: '', fps: '', seed: '',
   };
+  private readonly profileStats = { coins: '', roles: '', achievements: '' };
+  private readonly profileControllers: Controller[] = [];
   private readonly statControllers: Controller[] = [];
   private buildingController!: Controller;
   private buildingHpController!: Controller;
@@ -134,6 +139,7 @@ export class DebugPanel {
     this.buildArmy();
     this.buildBuildings();
     this.buildOverlays();
+    this.buildProfile();
     this.buildBalance();
     this.gui.folders.forEach((f) => { if (f._title !== 'Run') f.close(); });
 
@@ -286,6 +292,29 @@ export class DebugPanel {
     for (const name of OVERLAY_NAMES) f.add(this.host.overlays, name);
   }
 
+  private buildProfile() {
+    const f = this.gui.addFolder('Profile');
+    f.add({ note: 'Unlock changes apply on the next Retry/New town' }, 'note').name('note').disable();
+    for (const key of Object.keys(this.profileStats) as (keyof typeof this.profileStats)[]) {
+      this.profileControllers.push(f.add(this.profileStats, key).disable());
+    }
+    const act = (fn: (p: Profile) => void) => () => {
+      fn(this.host.profile());
+      this.refreshProfile();
+    };
+    f.add({ go: act((p) => p.unlockAll(['barracks', 'chapel', 'smithy', 'watchtower'])) }, 'go').name('Unlock all roles');
+    f.add({ go: act((p) => p.addCoins(100)) }, 'go').name('+100 coins');
+    f.add({ go: act((p) => p.reset()) }, 'go').name('Reset profile');
+  }
+
+  private refreshProfile() {
+    const d = this.host.profile().data;
+    this.profileStats.coins = String(d.coins);
+    this.profileStats.roles = d.roles.join(', ') || '-';
+    this.profileStats.achievements = d.achievements.join(', ') || '-';
+    this.profileControllers.forEach((c) => c.updateDisplay());
+  }
+
   private buildBalance() {
     const f = this.gui.addFolder('Balance (live)');
     f.add({ note: 'Building max HP / existing units: Retry' }, 'note').name('note').disable();
@@ -368,6 +397,7 @@ export class DebugPanel {
     const taken = Object.entries(w.progression.levels).filter(([, n]) => n > 0);
     this.p.taken = taken.map(([id, n]) => `${id}×${n}`).join(', ') || '-';
     this.statControllers.forEach((c) => c.updateDisplay());
+    this.refreshProfile();
     this.takenController.updateDisplay();
     this.gui.controllersRecursive().forEach((c) => {
       if (c.property === 'spawnStatus' || c.property === 'upgradeStatus') c.updateDisplay();

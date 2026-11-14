@@ -19,6 +19,13 @@ export interface HudWorld {
   xpToNext: number;
   rookies: number;
   rookieCap: number;
+  /** Meta-progression results, shown when the run ended (may arrive a frame after the end). */
+  endExtras?: {
+    coins: number;
+    wallet: number;
+    achievements: { name: string; description: string }[];
+    unlocks: string[];
+  };
 }
 
 export interface HudCallbacks {
@@ -28,6 +35,8 @@ export interface HudCallbacks {
 
 const STYLE = `
 .vd-hud { position: fixed; inset: 0; pointer-events: none; font: 600 15px system-ui, sans-serif; color: #3b2418; }
+/* The planning banner replaces the HUD pill until the town starts. */
+.vd-planning .vd-hud .bar { display: none; }
 .vd-hud .bar { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
   display: flex; gap: 12px; align-items: center; background: #f3e3d0dd; padding: 6px 12px; border-radius: 8px;
   max-width: min(560px, 96vw); white-space: nowrap; overflow: hidden; }
@@ -65,6 +74,10 @@ const STYLE = `
 @media (prefers-reduced-motion: reduce) { .vd-hud .star.on, .vd-hud .bar.flash { animation: none; } }
 .vd-hud .rule { font-size: 12px; opacity: 0.8; margin: 2px 0 8px; }
 .vd-hud .stats { margin: 0 0 8px; line-height: 1.4; }
+.vd-hud .extras { margin: 0 0 8px; line-height: 1.4; font-size: 14px; }
+.vd-hud .extras .coins { font-weight: 800; }
+.vd-hud .extras .ach { color: #8a5a00; }
+.vd-hud .extras .unlock { color: #2f7a2a; font-weight: 800; }
 .vd-hud .over button { margin: 4px 6px 0; font: inherit; padding: 8px 18px; border-radius: 6px; border: 2px solid #3b2418;
   background: #ffd75e; cursor: pointer; }
 `;
@@ -99,6 +112,7 @@ export class Hud {
   private flashTimer?: number;
   private prevStanding: number | null = null;
   private ended = false;
+  private extrasShown = false;
 
   private onKey = (e: KeyboardEvent) => {
     if (!this.ended || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -166,6 +180,8 @@ export class Hud {
       clearTimeout(this.warnTimer);
     }
     if (!ended && this.ended) this.panel.replaceChildren();
+    if (ended && world.endExtras && !this.extrasShown) this.renderExtras(world.endExtras);
+    if (!ended) this.extrasShown = false;
     this.ended = ended;
     this.over.classList.toggle('show', ended);
   }
@@ -179,6 +195,7 @@ export class Hud {
   }
 
   private buildPanel(world: HudWorld, standing: number, total: number) {
+    this.extrasShown = false;
     const stars = Array.from({ length: MAX_STARS }, (_, i) => {
       const on = i < world.stars;
       const delay = on ? ` style="animation-delay:${i * 300}ms"` : '';
@@ -195,9 +212,26 @@ export class Hud {
         <div class="s-kills">Kills ${world.kills}</div>
         <div class="s-time">Time ${formatTime(world.time)}</div>
       </div>
+      <div class="extras"></div>
       <button class="retry">Retry (R)</button><button class="newtown">New town (N)</button>`;
     this.panel.querySelector('.retry')!.addEventListener('click', () => this.callbacks.onRetry());
     this.panel.querySelector('.newtown')!.addEventListener('click', () => this.callbacks.onNewTown());
+  }
+
+  private renderExtras(x: NonNullable<HudWorld['endExtras']>) {
+    const box = this.panel.querySelector('.extras');
+    if (!box) return;
+    box.replaceChildren();
+    const add = (cls: string, text: string) => {
+      const d = document.createElement('div');
+      d.className = cls;
+      d.textContent = text;
+      box.appendChild(d);
+    };
+    add('coins', `+${x.coins} coins (wallet ${x.wallet})`);
+    for (const a of x.achievements) add('ach', `Achievement: ${a.name} — ${a.description}`);
+    if (x.unlocks.length > 0) add('unlock', `Unlocked: ${x.unlocks.join(', ')}`);
+    this.extrasShown = true;
   }
 
   warn(wave: number, sides: Side[]) {

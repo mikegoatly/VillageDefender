@@ -26,6 +26,8 @@ try {
   await page.goto(`${BASE}?${query}&speed=0`);
   await page.waitForFunction(() => typeof window.__vd?.step === 'function', null, { timeout: 30000 });
 
+  // Skip the planning phase (towns start paused for planning; ?plan=0 also skips it).
+  await page.evaluate(() => window.__vd.startTown?.());
   const ticksPerShot = Math.round((seconds * 60) / shots);
   for (let s = 1; s <= shots; s++) {
     await page.evaluate((ticks) => {

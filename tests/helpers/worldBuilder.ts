@@ -3,6 +3,7 @@
 import { DT } from '../../src/data/balance';
 import type { MonsterKind } from '../../src/data/monsters';
 import type { RookieKind } from '../../src/data/rookies';
+import type { RoleKind } from '../../src/data/roles';
 import { UPGRADE_BY_ID, type UpgradeOffer } from '../../src/data/upgrades';
 import type { WaveDef } from '../../src/data/waves';
 import type { TownMap } from '../../src/sim/map';
@@ -27,6 +28,8 @@ export class WorldBuilder {
   private monsterSpecs: { kind: MonsterKind; x: number; y: number }[] = [];
   private rookieSpecs: { kind: RookieKind; x: number; y: number }[] = [];
   private upgradeSpecs: Record<string, number> = {};
+  private plan: Record<number, RoleKind> | undefined;
+  private keepPlanning = false;
 
   withSeed(seed: number) { this.opts.seed = seed; return this; }
   withMap(rows: string[]) { this.mapVal = mapFromAscii(rows); return this; }
@@ -45,6 +48,25 @@ export class WorldBuilder {
   /** Upgrades to take (id → stacks) through the real pick path; applied after the world is built. */
   withUpgrades(levels: Record<string, number>) { this.upgradeSpecs = { ...levels }; return this; }
 
+  /**
+   * Creates the world in the planning phase with plenty of points, assigns these roles
+   * (building id → role) and then starts it, so the roles are live from the first tick.
+   */
+  withPlan(roles: Record<number, RoleKind>, points = 10) {
+    this.plan = roles;
+    this.opts.planning = true;
+    this.opts.planningPoints = points;
+    return this;
+  }
+  /** Leaves the world in the planning phase (no start()). Combine with withPlan or alone. */
+  inPlanning(points = 2, allowedRoles?: RoleKind[]) {
+    this.opts.planning = true;
+    this.opts.planningPoints = points;
+    if (allowedRoles) this.opts.allowedRoles = allowedRoles;
+    this.keepPlanning = true;
+    return this;
+  }
+
   build(): BuiltWorld {
     // Without an explicit map and not a default-options world, use an open field.
     const map = this.mapVal ?? (this.opts.noWaves ? openField() : undefined);
@@ -57,6 +79,12 @@ export class WorldBuilder {
     for (const [id, n] of Object.entries(this.upgradeSpecs)) for (let k = 0; k < n; k++) pickUpgrade(world, id);
     // Rookies are added after upgrades so they pick up army mods.
     const rookies = this.rookieSpecs.map((s) => world.addRookie(s.x, s.y, s.kind));
+    if (this.plan) {
+      for (const [id, role] of Object.entries(this.plan)) {
+        if (!world.setRole(Number(id), role)) throw new Error(`withPlan: could not set ${role} on building ${id}`);
+      }
+    }
+    if (this.opts.planning && !this.keepPlanning) world.start();
     return { world, knight, zombies, monsters, rookies };
   }
 }

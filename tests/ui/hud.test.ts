@@ -133,6 +133,48 @@ describe('Hud', () => {
     expect(onNewTown).toHaveBeenCalledTimes(1);
   });
 
+  describe('endExtras', () => {
+    const extras = {
+      coins: 12, wallet: 40,
+      achievements: [{ name: 'Slayer', description: 'Kill 100 monsters' }],
+      unlocks: ['Smithy'],
+    };
+
+    it('shows coins, achievements and unlocks when the run ended', () => {
+      hud.update(aHudWorld({ status: 'won', endExtras: extras }));
+      expect(text('.extras .coins')).toBe('+12 coins (wallet 40)');
+      expect(text('.extras .ach')).toBe('Achievement: Slayer — Kill 100 monsters');
+      expect(text('.extras .unlock')).toBe('Unlocked: Smithy');
+    });
+
+    it('omits the unlock line when nothing unlocked', () => {
+      hud.update(aHudWorld({ status: 'lost', lossReason: 'knight', endExtras: { ...extras, achievements: [], unlocks: [] } }));
+      expect(text('.extras .coins')).toContain('+12 coins');
+      expect(root.querySelector('.extras .ach')).toBeNull();
+      expect(root.querySelector('.extras .unlock')).toBeNull();
+    });
+
+    it('renders extras that arrive a frame after the end, without rebuilding the panel', () => {
+      hud.update(aHudWorld({ status: 'won' }));
+      expect(root.querySelector('.extras .coins')).toBeNull();
+      const star = root.querySelector('.star');
+      hud.update(aHudWorld({ status: 'won', endExtras: extras }));
+      expect(text('.extras .coins')).toBe('+12 coins (wallet 40)');
+      expect(root.querySelector('.star')).toBe(star);
+    });
+
+    it('is not shown while playing and resets for the next run', () => {
+      hud.update(aHudWorld({ endExtras: extras }));
+      expect(root.querySelector('.extras')).toBeNull();
+      hud.update(aHudWorld({ status: 'won', endExtras: extras }));
+      hud.update(aHudWorld());
+      hud.update(aHudWorld({ status: 'won' }));
+      expect(root.querySelector('.extras .coins')).toBeNull();
+      hud.update(aHudWorld({ status: 'won', endExtras: { ...extras, coins: 5 } }));
+      expect(text('.extras .coins')).toContain('+5 coins');
+    });
+  });
+
   it('destroy removes DOM and key listener', () => {
     hud.update(aHudWorld({ status: 'won' }));
     hud.destroy();

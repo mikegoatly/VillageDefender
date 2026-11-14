@@ -19,6 +19,10 @@ import { LevelUpPanel } from '../ui/LevelUpPanel';
 import { FxViews } from './FxViews';
 import { DebugPanel, debugEnabled, type DebugHost, type OverlayName } from '../ui/DebugPanel';
 import { DebugOverlay } from './DebugOverlay';
+import { PlanningPanel, type PlanningView } from '../ui/PlanningPanel';
+import { ROLE_ORDER, ROLES, type RoleKind } from '../data/roles';
+import { TOWNS, type TownDef } from '../data/towns';
+import { Profile } from '../meta/profile';
 import { BuildingViews, RUBBLE_TILES, type PlacedBlock } from './BuildingViews';
 import { createCharacterAnims, directionFor, preloadSheets, sheetMeta, sheetOrigin } from './sheets';
 
@@ -37,6 +41,12 @@ const ROTATE_CLASS = 'vd-rotate-active';
  * Debug state that survives scene restarts (the panel lives outside the scene; the scene object
  * itself is reused by Phaser on restart).
  */
+/** The player's persistent profile (coins, unlocks), shared across scene restarts. */
+let profile: Profile | null = null;
+function getProfile(): Profile {
+  return (profile ??= new Profile());
+}
+
 const debugState = {
   panel: null as DebugPanel | null,
   speed: null as number | null,
@@ -60,6 +70,8 @@ interface Params {
   speed: number;
   god: boolean;
   wave: number;
+  /** ?plan=0 skips the planning phase (automation). */
+  plan: boolean;
 }
 
 function readParams(): Params {
@@ -69,6 +81,7 @@ function readParams(): Params {
     speed: Number(q.get('speed') ?? 1),
     god: q.get('god') === '1',
     wave: Number(q.get('wave') ?? 1),
+    plan: q.get('plan') !== '0',
   };
 }
 
@@ -88,6 +101,11 @@ export class GameScene extends Phaser.Scene {
   private uninstallRotate?: () => void;
   private override: InputState | null = null;
   private debugOverlay?: DebugOverlay;
+  private planning?: PlanningPanel;
+  private town: TownDef = TOWNS[0];
+  /** House selected while planning (-1 none). */
+  private selected = -1;
+  private endExtras: HudWorld['endExtras'];
 
   constructor() {
     super('Game');
@@ -96,7 +114,14 @@ export class GameScene extends Phaser.Scene {
   init(data: { seed?: number }) {
     this.params = readParams();
     if (data.seed !== undefined) this.params.seed = data.seed;
-    this.world = new World({ seed: this.params.seed, god: this.params.god, startWave: this.params.wave });
+    this.town = TOWNS[0];
+    this.world = new World({
+      seed: this.params.seed, god: this.params.god, startWave: this.params.wave,
+      planning: this.params.plan, planningPoints: this.town.planningPoints,
+      allowedRoles: getProfile().data.roles, townId: this.town.id, waves: this.town.waves,
+    });
+    this.selected = -1;
+    this.endExtras = undefined;
     this.views.clear();
     this.decor = [];
     this.accumulator = 0;
@@ -129,6 +154,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.fx = new FxViews(this, (x, y) => this.toScreen(x, y));
     this.setupDebug();
+    this.setupPlanning();
 
     this.scale.on('resize', this.fitCamera, this);
     this.events.once('shutdown', () => {
@@ -138,6 +164,7 @@ export class GameScene extends Phaser.Scene {
       this.hud.destroy();
       this.levelUp.destroy();
       this.debugOverlay?.destroy();
+      this.planning?.destroy();
     });
     this.fitCamera();
     this.exposeDebug();
@@ -163,6 +190,92 @@ export class GameScene extends Phaser.Scene {
     debugState.panel?.update();
   }
 
+  /**
+   * Records the finished run in the profile exactly once, however it ended (normal play or the
+   * debug panel, whose events can be cleared by the next tick before the scene sees them).
+   */
+  private recordRunIfEnded() {
+    if (this.world.status === 'playing' || this.endExtras) return;
+    const outcome = getProfile().recordRun(this.world.runResult());
+    this.endExtras = {
+      coins: outcome.coins, wallet: getProfile().data.coins,
+      achievements: outcome.newAchievements.map((a) => ({ name: a.name, description: a.description })),
+      unlocks: outcome.unlockedRoles.map((r) => ROLES[r].name),
+    };
+  }
+
+  // ------------------------------------------------------------------ planning (3b)
+
+  private setupPlanning() {
+    if (this.world.phase !== 'planning') return;
+    this.planning = new PlanningPanel(document.body, {
+      onAssign: (id, role) => this.assignRole(id, role),
+      onSelectNext: (d) => this.selectBuilding(this.cycleBuilding(d)),
+      onStart: () => this.startTown(),
+    });
+    this.buildingViews.setAurasVisible(true);
+    document.body.classList.add('vd-planning');
+    this.events.once('shutdown', () => document.body.classList.remove('vd-planning'));
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (this.world.phase !== 'planning') return;
+      const g = screenToGround(p.worldX, p.worldY, MAP.tileScale);
+      // Buildings are tall: also try the cells just below the click (roofs sit above their footprint).
+      for (const [di, dj] of [[0, 0], [1, 1], [2, 2], [1, 0], [0, 1]]) {
+        const b = this.world.buildingAt(Math.round(g.x) + di, Math.round(g.y) + dj);
+        if (b) return this.selectBuilding(b.id);
+      }
+      this.selectBuilding(-1);
+    });
+    this.selectBuilding(-1);
+  }
+
+  private cycleBuilding(d: 1 | -1): number {
+    const n = this.world.buildings.length;
+    if (!n) return -1;
+    return this.selected < 0 ? (d > 0 ? 0 : n - 1) : (this.selected + d + n) % n;
+  }
+
+  private selectBuilding(id: number) {
+    this.selected = id;
+    this.buildingViews.highlight(id);
+    this.refreshPlanning();
+  }
+
+  private assignRole(id: number, role: RoleKind | null) {
+    if (this.world.setRole(id, role)) this.buildingViews.setRole(id, this.world.buildings[id].role);
+    this.refreshPlanning();
+  }
+
+  private startTown() {
+    if (this.world.phase !== 'planning') return;
+    this.world.start();
+    this.planning?.hide();
+    document.body.classList.remove('vd-planning');
+    this.buildingViews.setAurasVisible(false);
+    this.buildingViews.highlight(-1);
+    this.selected = -1;
+  }
+
+  private refreshPlanning() {
+    if (!this.planning || this.world.phase !== 'planning') return;
+    const w = this.world;
+    const b = this.selected >= 0 ? w.buildings[this.selected] : null;
+    const def = b ? w.map.buildings[b.id] : null;
+    const view: PlanningView = {
+      townName: this.town.name,
+      pointsLeft: w.planningPointsLeft,
+      pointsTotal: w.planningPoints,
+      selected: b && def ? { id: b.id, label: `House #${b.id + 1} (${def.kind})`, role: b.role } : null,
+      roles: ROLE_ORDER.map((k) => ({
+        kind: k, name: ROLES[k].name, description: ROLES[k].description, cost: ROLES[k].cost, icon: ROLES[k].icon,
+        locked: !w.allowedRoles.includes(k),
+        lockHint: k === 'smithy' ? 'Unlock: save a town' : k === 'watchtower' ? 'Unlock: save a town with 3 stars' : undefined,
+      })),
+      assigned: w.buildings.filter((x) => x.role).map((x) => ROLES[x.role!].name).join(', ') || 'none yet',
+    };
+    this.planning.show(view);
+  }
+
   /** Debug panel (dev builds or ?debug=1): created once, survives restarts; overlays per scene. */
   private setupDebug() {
     if (!debugEnabled()) return;
@@ -178,6 +291,7 @@ export class GameScene extends Phaser.Scene {
       world: () => scene.world,
       seed: () => scene.params.seed,
       restart: (seed?: number) => scene.restart(seed),
+      profile: () => getProfile(),
       get speed() { return scene.params.speed; },
       set speed(v: number) { scene.params.speed = v; debugState.speed = v; },
       get paused() { return debugState.paused; },
@@ -191,6 +305,7 @@ export class GameScene extends Phaser.Scene {
 
   /** HUD and the level-up panel (the sim pauses itself while a choice is open). */
   private syncUi() {
+    this.recordRunIfEnded();
     this.hud.update(this.hudView());
     const offers = this.world.progression.offers;
     if (offers && this.world.status === 'playing') this.levelUp.show(offers, this.world.progression.level);
@@ -204,6 +319,7 @@ export class GameScene extends Phaser.Scene {
       kills: w.kills, stars: w.stars, players: w.players, buildings: w.buildings,
       knightLevel: w.progression.level, xp: w.progression.xp, xpToNext: w.progression.xpToNext,
       rookies: w.rookies.filter((r) => r.state !== 'dead').length, rookieCap: w.rookieCap,
+      endExtras: this.endExtras,
     };
   }
 
@@ -256,7 +372,7 @@ export class GameScene extends Phaser.Scene {
     for (const b of map.buildings) {
       const placed: PlacedBlock[] = b.blocks.map((bl) => {
         const img = this.tile(bl.tile, bl.i, bl.j, bl.level);
-        return { img, baseX: img.x, level: bl.level };
+        return { img, baseX: img.x, level: bl.level, i: bl.i, j: bl.j };
       });
       this.buildingViews.add(b, placed);
     }
@@ -401,6 +517,7 @@ export class GameScene extends Phaser.Scene {
       } else if (e.type === 'buildingDestroyed') {
         this.buildingViews.destroyed(this.world.map.buildings[e.building]);
         this.cameras.main.shake(220, 0.006);
+
       } else if (e.type === 'levelUp') {
         const k = this.world.players[0];
         const p = this.toScreen(k.x, k.y);
@@ -440,6 +557,8 @@ export class GameScene extends Phaser.Scene {
     };
     vd.restart = (seed?: number) => this.restart(seed);
     vd.overlays = debugState.overlays;
+    vd.startTown = () => this.startTown();
+    vd.profile = () => getProfile();
     vd.choose = (i: number) => {
       this.world.chooseUpgrade(i);
       this.handleEvents();
@@ -472,6 +591,7 @@ function tileKeys(map: TownMap): Set<string> {
   for (const b of map.buildings) for (const bl of b.blocks) keys.add(bl.tile);
   for (const d of map.decor) keys.add(d.tile);
   for (const r of RUBBLE_TILES) keys.add(r);
+  for (const k of ROLE_ORDER) keys.add(`st:${ROLES[k].roof}_S`);
   return keys;
 }
 

@@ -4,6 +4,7 @@ import { KNIGHT } from '../../src/data/balance';
 import { UPGRADES } from '../../src/data/upgrades';
 import { DebugPanel, debugEnabled, type DebugHost, type OverlayName } from '../../src/ui/DebugPanel';
 import type { World } from '../../src/sim/world';
+import type { Profile } from '../../src/meta/profile';
 
 function aFakeWorld() {
   return {
@@ -22,9 +23,18 @@ function aFakeWorld() {
   };
 }
 
-function aHost(world = aFakeWorld()) {
-  const host: DebugHost & { fake: ReturnType<typeof aFakeWorld> } = {
+function aFakeProfile() {
+  return {
+    data: { coins: 5, roles: ['barracks', 'chapel'], achievements: ['first'] },
+    unlockAll: vi.fn(), addCoins: vi.fn(), reset: vi.fn(),
+  };
+}
+
+function aHost(world = aFakeWorld(), profile = aFakeProfile()) {
+  const host: DebugHost & { fake: ReturnType<typeof aFakeWorld>; fakeProfile: ReturnType<typeof aFakeProfile> } = {
     fake: world,
+    fakeProfile: profile,
+    profile: () => profile as unknown as Profile,
     world: () => world as unknown as World,
     seed: () => 7,
     restart: vi.fn(),
@@ -133,6 +143,20 @@ describe('DebugPanel', () => {
     KNIGHT.hp = original + 100;
     press('Reset balance');
     expect(KNIGHT.hp).toBe(original);
+  });
+
+  it('Profile folder shows coins/roles/achievements and its buttons call the Profile', () => {
+    expect(controller('coins').getValue()).toBe('5');
+    expect(controller('roles').getValue()).toBe('barracks, chapel');
+    expect(controller('achievements').getValue()).toBe('first');
+    press('Unlock all roles');
+    expect(host.fakeProfile.unlockAll).toHaveBeenCalledWith(['barracks', 'chapel', 'smithy', 'watchtower']);
+    host.fakeProfile.data.coins = 105;
+    press('+100 coins');
+    expect(host.fakeProfile.addCoins).toHaveBeenCalledWith(100);
+    expect(controller('coins').getValue()).toBe('105');
+    press('Reset profile');
+    expect(host.fakeProfile.reset).toHaveBeenCalledTimes(1);
   });
 
   it('destroy removes DOM and listeners', () => {

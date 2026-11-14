@@ -287,9 +287,9 @@ Built in from the first milestone:
 |---|---|---|
 | 0 | **Look test** | Bake script outputs knight + orc atlases; static scene with Sketch town + characters; decide Sketch vs 3D-baked town |
 | 1 | **Toy** | Knight moves and attacks on an iso map, one monster type swarms from edges, all three input methods work, resizes correctly |
-| 2 | **Core loop** | Buildings with HP, raiders target them, waves escalate, win/lose, star rating screen |
+| 2 | **Core loop** | Buildings with HP, raiders target them, waves escalate, win/lose, star rating screen (town 1) |
 | 3a | **Army & growth** | XP gems, pause-and-pick level-ups, 20 upgrades in knight/army/town pools, swordsman + archer rookies, Rally |
-| 3b | **Town planning** | Before a level, spend coins to upgrade chosen houses into role buildings (barracks, chapel, smithy, watchtower); coins from wave rewards + kills |
+| 3b | **Town planning** | Before a town, spend planning points to turn chosen houses into role buildings (barracks, chapel, smithy, watchtower); coins from wave rewards + kills, saved to a profile |
 | 4 | **Vertical slice** | Town 1 complete: 6 monster types, boss, 3 attacks, audio, juice (hit-stop, shake, numbers), bots prove it is beatable and losable |
 | 5 | **Meta** | Save data, unlocks, loadout screen, town 2 (proves data-driven towns) |
 | 6 | **Content** | Remaining towns, curses, endless, daily seed, badges |
@@ -346,7 +346,7 @@ Findings:
 
 - **Building HP:** 300 for a cottage + 120 per extra wall block (a 2×2 two-storey hall has 1140). Damage shows as darkening, hit shake/flash, an HP bar, smoke below 50%, and a dust burst into rubble when destroyed. Rubble still blocks movement.
 - **Monsters:** zombie (chases the knight within 4.5 cells, otherwise the nearest building); orc raider (ignores the knight, goes for buildings, peach tint); brute (1.6× size, red tint, 150 HP, slow, resists knockback, 20 damage per hit to buildings). Building-targeting uses one multi-source flow field to cells next to standing buildings, rebuilt when a building falls.
-- **Level:** 8 waves from a data table (`src/data/waves.ts`), 18 s apart, 1→3 sides. Win when all waves are spawned and cleared; lose if the knight dies or every building falls. Stars: 3 all standing, 2 ≥ two-thirds, 1 ≥ one. End panel with stars, stats, Retry (same town) and New town.
+- **Town:** 8 waves from a data table (`src/data/waves.ts`), 18 s apart, 1→3 sides. Win when all waves are spawned and cleared; lose if the knight dies or every building falls. Stars: 3 all standing, 2 ≥ two-thirds, 1 ≥ one. End panel with stars, stats, Retry (same town) and New town.
 - **Balance baseline (bots, seeds 1–5):** idle never wins; a fighter bot that ignores buildings wins 3/5 at 1 star average 0.6; a defender bot that prioritises monsters attacking buildings wins 5/5 averaging 1.0 star and 2 of ~10 buildings left. 2–3 stars should need skilled play or milestone 3 tools (rookies, upgrades).
 - **Bugs caught by tests:** building-targeting monsters idled forever at the centre of the cell next to a building (just outside their reach), so levels couldn't be won; bots walked into buildings (now path with a flow field).
 - **Known gaps:** rubble art is a placeholder (rock tiles); building HP bars are small on phones; balance numbers are bot-derived and need human play.
@@ -359,7 +359,7 @@ Findings:
 - **Rookies:** swordsman then archer alternate; earned at kill thresholds 12/30/55/85/…; cap 3 (+upgrades); fallen rookies are replaced after 15 s. They defend buildings first (targets attacking a building), then hunt within 6 cells, then return to their post. Archers keep distance and shoot arrows. Ranks: veteran at 8 kills, captain at 25 (×1.3 / ×1.7 stats, brighter halo).
 - **Rally** (R / LB / ⚑ button): rookies regroup on the knight for 4 s, 15 s cooldown.
 - **Readability:** knight gold halo, rookies blue halo (brighter with rank); floating text for level-ups, recruits, promotions and Rally.
-- **Bot balance (seeds 1–5, bots pick upgrades by pool preference):** idle never wins; fighter wins 5/5 at 1.0 star average; defender wins 5/5 at 2.4 stars average (9.2 of ~10 buildings standing). Level 1 is now comfortable for skilled play; later towns must ramp difficulty.
+- **Bot balance (seeds 1–5, bots pick upgrades by pool preference):** idle never wins; fighter wins 5/5 at 1.0 star average; defender wins 5/5 at 2.4 stars average (9.2 of ~10 buildings standing). Town 1 is now comfortable for skilled play; later towns must ramp difficulty.
 - **Bugs caught:** test bots hung because the world pauses for level-ups (helpers now resolve choices); Toughness double-healed; rookies lost track of building attackers between swings.
 - **Known gaps:** archer bow animation is subtle; no sound; touch Rally button has no cooldown display; rookie AI doesn't retreat to heal.
 
@@ -368,6 +368,16 @@ Findings:
 - User play-test: 3 stars on the first attempt with rookies — too easy.
 - Retune: XP curve 8 × 1.4^(level−1) (~6 level-ups per run, was ~9); rookie cap 2 (was 3), thresholds 20/50/90/135/…; rookie damage −25%; bigger waves 6–8 (3 sides on the final waves). Bot averages after: fighter 0.8★ (4/5 wins), defender 1.2★ (4/5 wins), was 1.0★ / 2.4★.
 - Debug panel (lil-gui, src/ui/DebugPanel.ts): run stats, speed/pause/step, god mode, retry/new town/load seed; spawn any monster at an edge/the knight/the last clicked point; kill all; jump to wave; win/lose now; heal, +XP, level up, grant any upgrade; add swordsman/archer; set building HP / destroy / repair all; overlays (flow fields, hitboxes, ranges, labels — src/render/DebugOverlay.ts); live balance editing of every balance table with Copy-as-JSON and Reset. Debug state (speed, pause, overlays) survives restarts.
+
+### Milestone 3b results (2026-11-14)
+
+- **Planning phase on the real map:** the sim waits in `planning` until `start()`. Tap a house, or keyboard ←→ to pick a house, 1–4 to assign a role, 0 to clear, Enter to start; gamepad LB/RB to pick, D-pad to choose a role, A to assign, Start to begin. Role roofs, icon badges and aura rings show while planning. Town 1 gives 2 planning points.
+- **Roles:** barracks (+1 rookie cap, rookies step out of it), chapel (heals the knight and rookies 3 HP/s within 3 cells), smithy (+25% knight and rookie damage within 3 cells), watchtower (an arrow every 2 s within 4 cells, and wave warnings come 2 s earlier). A role stops working when its building is ruined.
+- **Coins:** 1 per zombie/orc, 5 per brute, 3 × wave number for each cleared wave (paid when the next wave starts), and a win bonus of 3 × waves + 20 per star. Saved to a localStorage profile with lifetime stats, best stars per town and achievements (Defender, Not a scratch, Brute slayer, Seasoned). The end panel shows coins earned, wallet, new achievements and unlocked roles.
+- **Debug:** panel Profile folder; `?plan=0` skips planning; `window.__vd.startTown()`.
+- **Bot balance (seeds 1–5, 8 waves; coins per run):** idle 0/5 wins, 0.00 stars, 19 coins; fighter 4/5 wins, 0.80 stars, 265 coins; defender-unplanned 4/5 wins, 1.20 stars, 272 coins; defender with barracks + chapel on the two buildings nearest the centre 4/5 wins, 1.00 stars, 271 coins (1.8 rookies alive either way). The simple plan gives no measurable edge over seeds 1–5; coins are dominated by the fixed win bonus and kills.
+- **Tests:** planning accounting, each role's effect and ruin behaviour, coin sources and `runResult`, profile and achievements on an in-memory store; builders `withPlan`/`inPlanning` and bot `defenderPlan`.
+- **Known gaps:** coins buy nothing yet (milestone 5); card unlocks (decision 33) not yet implemented; only one town.
 
 ## 7. Decisions
 
@@ -400,7 +410,7 @@ Findings:
 18. **Touch attack:** hold the ⚔ button to attack (same as keyboard/pad). The always-on attack toggle stays available as an accessibility option.
 19. **Milestone 1 scope:** buildings are obstacles only; building HP and damage arrive in milestone 2.
 20. **Map size:** 18 diamonds across at 0.65× tiles (decision 11 variant).
-21. **Level 1 length:** 8 waves (~3 minutes), bosses arrive in milestone 4.
+21. **Town 1 length:** 8 waves (~3 minutes), bosses arrive in milestone 4.
 22. **Milestone 2 monsters:** zombie, orc raider, brute.
 23. **Building roles:** deferred to milestone 3.
 24. **Knight death:** game over for now (open item 13 is still to be revisited in milestone 4).
@@ -410,10 +420,13 @@ Findings:
 28. **Rookies:** swordsman + archer for now; Rally kept as a button.
 29. **Town planning (3b):** every building starts as a house. Before a level starts you spend coins to upgrade chosen houses into role buildings (barracks, chapel, smithy, watchtower). No building during the level — you survive all waves with the plan you made.
 30. **Coins:** from wave rewards plus kills.
-31. **Coins persist** in a wallet across attempts and levels and buy permanent meta upgrades and unlocks. Town planning (3b) uses a separate per-level planning budget so retries stay fair (budget scales with the level).
+31. **Coins persist** in a wallet across attempts and levels and buy permanent meta upgrades and unlocks. Town planning (3b) uses separate planning points fixed per town so retries stay fair (decision 36).
 32. **Levels reset each run** (roguelite): knight level and in-run upgrades start fresh every attempt; long-term power comes from the meta layer (decision 31, open item 12 small and capped).
 33. **Unlockable upgrade pool:** a new player starts with a small set of level-up upgrades; more are unlocked through progress and achievements (e.g. win a level, earn 3 stars, reach knight level 6, kill 10 brutes, win without losing a building), so the card pool grows over time. Needs save data — lands with 3b / milestone 5 meta.
 34. **Debug mode:** in dev builds always, in production with `?debug=1`. Toggle with ` (backtick), F2 or the 🐞 button.
+35. **Unlockable roles:** new profiles start with Barracks and Chapel; Smithy unlocks by saving a town (achievement "Defender"), Watchtower by saving a town with 3 stars ("Not a scratch").
+36. **Planning points per town:** fixed by the town (Town 1: 2), the same on every attempt; not tied to knight level or coins.
+37. **Terminology:** town = stage/map; knight level = in-run XP level.
 
 ### Open (decide later)
 

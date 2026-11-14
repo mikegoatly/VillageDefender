@@ -7,6 +7,8 @@ import { isWalkable } from '../../src/sim/map';
 import { emptyInput, type InputState } from '../../src/sim/types';
 import { World, type Unit } from '../../src/sim/world';
 import type { UpgradeOffer, UpgradePool } from '../../src/data/upgrades';
+import { STARTING_ROLES } from '../../src/data/roles';
+import { TOWNS } from '../../src/data/towns';
 import { stepWith, type Chooser } from './worldBuilder';
 
 export type Bot = (world: World) => InputState;
@@ -186,6 +188,20 @@ export const idleChooser: Chooser = () => 0;
 export const fighterChooser: Chooser = preferPools(['knight', 'army', 'town']);
 export const defenderChooser: Chooser = preferPools(['town', 'army', 'knight']);
 
+/** Assigns roles during planning, before the world starts. */
+export type PlanPolicy = (world: World) => void;
+
+/** Barracks + chapel on the two buildings nearest the map centre (nearest gets the barracks). */
+export const defenderPlan: PlanPolicy = (world) => {
+  const c = world.map.centre;
+  const dist = (b: World['buildings'][number]) => {
+    const n = b.cells.length;
+    return Math.hypot(b.cells.reduce((a, [i]) => a + i, 0) / n - c, b.cells.reduce((a, [, j]) => a + j, 0) / n - c);
+  };
+  const nearest = [...world.buildings].sort((a, b) => dist(a) - dist(b));
+  (['barracks', 'chapel'] as const).forEach((role, k) => { if (nearest[k]) world.setRole(nearest[k].id, role); });
+};
+
 export interface PlayResult {
   seed: number;
   bot: string;
@@ -203,17 +219,26 @@ export interface PlayResult {
   rookiesAlive: number;
   /** Upgrade id → stacks taken. */
   upgrades: Record<string, number>;
+  /** Coins earned this run. */
+  coins: number;
 }
 
 /** Plays a full default level with a bot until it ends or maxSeconds elapses. */
-export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300, choose: Chooser = idleChooser): PlayResult {
-  const world = new World({ seed });
+export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300, choose: Chooser = idleChooser, plan?: PlanPolicy): PlayResult {
+  // Planned runs use a fresh profile's roles and town 1's points; unplanned runs skip planning entirely.
+  const world = new World(plan
+    ? { seed, planning: true, planningPoints: TOWNS[0].planningPoints, allowedRoles: STARTING_ROLES }
+    : { seed });
+  if (plan) {
+    plan(world);
+    world.start();
+  }
   const maxTicks = Math.round(maxSeconds / DT);
   while (world.status === 'playing' && world.tickCount < maxTicks) stepWith(world, bot(world), choose);
   return {
     seed, bot: name, status: world.status, lossReason: world.lossReason, time: world.time, wave: world.wave,
     kills: world.kills, standing: world.standingBuildings(), total: world.buildings.length, stars: world.stars,
     level: world.progression.level, rookiesAlive: world.rookies.filter((r) => r.state !== 'dead').length,
-    upgrades: { ...world.progression.levels },
+    upgrades: { ...world.progression.levels }, coins: Math.round(world.coins),
   };
 }
