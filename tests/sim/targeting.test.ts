@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MONSTERS } from '../../src/data/monsters';
-import { FlowField } from '../../src/sim/flowField';
+import { damageBuilding } from '../../src/sim/combat';
 import { generateTown, isWalkable } from '../../src/sim/map';
+import type { BuildingState, Unit } from '../../src/sim/model';
 import { World } from '../../src/sim/world';
 import { fieldRows } from '../helpers/mapBuilder';
 import { aWorld, runSeconds } from '../helpers/worldBuilder';
@@ -68,7 +69,7 @@ describe('target preferences', () => {
 });
 
 describe('building flow field on generated maps', () => {
-  const buildingFlow = (w: World) => (w as unknown as { buildingFlow: FlowField }).buildingFlow;
+  const buildingFlow = (w: World) => w.buildingFlow;
 
   function walkableCells(w: World) {
     const out: [number, number][] = [];
@@ -87,7 +88,7 @@ describe('building flow field on generated maps', () => {
 
   it.each([1, 2, 3, 4, 5])('seed %i: still reaches every walkable cell with a single building left', (seed) => {
     const world = new World({ seed, noWaves: true });
-    const damage = (world as unknown as { damageBuilding(b: unknown, n: number, by: unknown): void }).damageBuilding.bind(world);
+    const damage = (b: BuildingState, n: number, by: Unit) => damageBuilding(world, b, n, by);
     for (const b of world.buildings.slice(1)) damage(b, b.maxHp, world.players[0]);
     expect(world.standingBuildings()).toBe(1);
     world.tick([]);

@@ -39,6 +39,8 @@ export interface Decor {
 }
 
 export type Side = 'top' | 'right' | 'bottom' | 'left';
+/** Every side, in the canonical order. */
+export const SIDES: readonly Side[] = ['top', 'right', 'bottom', 'left'];
 
 export interface TownMap {
   seed: number;

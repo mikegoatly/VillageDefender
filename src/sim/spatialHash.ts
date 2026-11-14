@@ -9,6 +9,8 @@ export interface HasPos {
 export class SpatialHash<T extends HasPos> {
   private buckets = new Map<number, T[]>();
   private used: T[][] = [];
+  /** Items inserted since the last clear. */
+  size = 0;
 
   constructor(private readonly cellSize = 1) {}
 
@@ -19,6 +21,7 @@ export class SpatialHash<T extends HasPos> {
   clear() {
     for (const b of this.used) b.length = 0;
     this.used.length = 0;
+    this.size = 0;
   }
 
   insert(item: T) {
@@ -30,6 +33,7 @@ export class SpatialHash<T extends HasPos> {
     }
     if (b.length === 0) this.used.push(b);
     b.push(item);
+    this.size++;
   }
 
   /** Calls fn for every item whose bucket overlaps the circle (x, y, r). Caller filters exact distance. */

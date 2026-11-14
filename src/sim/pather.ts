@@ -5,6 +5,8 @@ import { FlowField } from './flowField';
 import { isWalkable, type TownMap } from './map';
 import type { Vec2 } from './types';
 
+const LINE_OFFSETS = [0, 1, -1];
+
 /** True when a circle of `radius` can travel straight between the points without hitting blocked cells. */
 export function clearLine(map: TownMap, x0: number, y0: number, x1: number, y1: number, radius: number): boolean {
   const dx = x1 - x0;
@@ -18,7 +20,7 @@ export function clearLine(map: TownMap, x0: number, y0: number, x1: number, y1: 
     const t = s / steps;
     const x = x0 + dx * t;
     const y = y0 + dy * t;
-    for (const o of [0, 1, -1]) {
+    for (const o of LINE_OFFSETS) {
       if (!isWalkable(map, Math.round(x + px * o), Math.round(y + py * o))) return false;
     }
   }
