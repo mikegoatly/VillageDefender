@@ -1,41 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { DT } from '../../src/data/balance';
-import { World } from '../../src/sim/world';
-import { fighterBot, idleBot, type Bot } from '../helpers/bots';
+import { defenderBot, fighterBot, idleBot, playLevel, type Bot, type PlayResult } from '../helpers/bots';
 
-const MAX_SECONDS = 240;
 const SEEDS = [1, 2, 3, 4, 5];
+const MAX_SECONDS = 300;
 
-interface Result { seed: number; bot: string; survived: number; wave: number; kills: number; lost: boolean }
+const BOTS: Record<string, () => Bot> = { idle: idleBot, fighter: fighterBot, defender: defenderBot };
 
-function play(seed: number, name: string, bot: Bot): Result {
-  const world = new World({ seed });
-  const maxTicks = Math.round(MAX_SECONDS / DT);
-  while (world.status === 'playing' && world.tickCount < maxTicks) world.tick([bot(world)]);
-  return { seed, bot: name, survived: world.time, wave: world.wave, kills: world.kills, lost: world.status === 'lost' };
-}
+const results: Record<string, PlayResult[]> = {};
+for (const [name, make] of Object.entries(BOTS)) results[name] = SEEDS.map((s) => playLevel(s, name, make(), MAX_SECONDS));
 
-describe('bot play-tests', () => {
-  const idle = SEEDS.map((s) => play(s, 'idle', idleBot()));
-  const fighter = SEEDS.map((s) => play(s, 'fighter', fighterBot()));
+const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+const outcome = (r: PlayResult) =>
+  r.status === 'playing' ? 'timeout' : r.status === 'won' ? 'won' : `lost (${r.lossReason})`;
 
+describe('bot play-tests (default level, 8 waves)', () => {
   it('prints the results table', () => {
-    const rows = [...idle, ...fighter].map((r) =>
-      `seed ${r.seed}  ${r.bot.padEnd(8)} survived ${r.survived.toFixed(1).padStart(6)}s  wave ${String(r.wave).padStart(2)}  kills ${String(r.kills).padStart(4)}  ${r.lost ? 'lost' : 'alive'}`);
-    console.log('\n' + rows.join('\n'));
+    const header = 'seed  bot       result        time    wave  kills  buildings  stars';
+    const rows = Object.values(results).flat().map((r) =>
+      `${String(r.seed).padStart(4)}  ${r.bot.padEnd(8)}  ${outcome(r).padEnd(12)}  ${r.time.toFixed(1).padStart(6)}s  ${String(r.wave).padStart(4)}  ${String(r.kills).padStart(5)}  ${`${r.standing}/${r.total}`.padStart(9)}  ${String(r.stars).padStart(5)}`);
+    const avgs = Object.entries(results).map(([name, rs]) =>
+      `${name.padEnd(8)} avg stars ${avg(rs.map((r) => r.stars)).toFixed(2)}  avg kills ${avg(rs.map((r) => r.kills)).toFixed(1)}  avg standing ${avg(rs.map((r) => r.standing)).toFixed(1)}  wins ${rs.filter((r) => r.status === 'won').length}/${rs.length}`);
+    console.log(`\n${header}\n${rows.join('\n')}\n\n${avgs.join('\n')}`);
   });
 
-  it('idle loses on every seed before 120 s', () => {
-    for (const r of idle) {
-      expect(r.lost, `seed ${r.seed}`).toBe(true);
-      expect(r.survived, `seed ${r.seed}`).toBeLessThan(120);
+  it('idle never wins', () => {
+    for (const r of results.idle) expect(r.status, `seed ${r.seed}`).not.toBe('won');
+  });
+
+  it('every game ends or reaches the time cap with a consistent result', () => {
+    for (const r of Object.values(results).flat()) {
+      expect(r.standing).toBeLessThanOrEqual(r.total);
+      if (r.status === 'lost') expect(r.stars).toBe(0);
+      if (r.status === 'won') expect(r.stars).toBeGreaterThanOrEqual(1);
     }
   });
 
-  it('fighter outlives idle and scores at least 3x the kills', () => {
-    SEEDS.forEach((seed, k) => {
-      expect(fighter[k].survived, `seed ${seed} survival`).toBeGreaterThan(idle[k].survived);
-      expect(fighter[k].kills, `seed ${seed} kills`).toBeGreaterThanOrEqual(3 * idle[k].kills);
-    });
+  it('defender averages at least as many stars as fighter', () => {
+    expect(avg(results.defender.map((r) => r.stars))).toBeGreaterThanOrEqual(avg(results.fighter.map((r) => r.stars)));
   });
 });

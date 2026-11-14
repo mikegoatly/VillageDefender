@@ -338,6 +338,15 @@ Findings:
 - **Bot balance baseline (seeds 1–5):** idle bot dies at 22–31 s in wave 2; simple fighter bot survives 154–183 s, reaching wave 11–13 with 191–248 kills. Every run eventually loses — fine for a toy, needs tuning once upgrades exist.
 - **Known gaps / next:** zombie crowds overlap heavily in big waves; no hit-stop/damage numbers/audio yet; touch controls use placeholder CSS art (swap to Kenney Mobile Controls); occlusion check is approximate.
 
+### Milestone 2 results (2026-11-14)
+
+- **Building HP:** 300 for a cottage + 120 per extra wall block (a 2×2 two-storey hall has 1140). Damage shows as darkening, hit shake/flash, an HP bar, smoke below 50%, and a dust burst into rubble when destroyed. Rubble still blocks movement.
+- **Monsters:** zombie (chases the knight within 4.5 cells, otherwise the nearest building); orc raider (ignores the knight, goes for buildings, peach tint); brute (1.6× size, red tint, 150 HP, slow, resists knockback, 20 damage per hit to buildings). Building-targeting uses one multi-source flow field to cells next to standing buildings, rebuilt when a building falls.
+- **Level:** 8 waves from a data table (`src/data/waves.ts`), 18 s apart, 1→3 sides. Win when all waves are spawned and cleared; lose if the knight dies or every building falls. Stars: 3 all standing, 2 ≥ two-thirds, 1 ≥ one. End panel with stars, stats, Retry (same town) and New town.
+- **Balance baseline (bots, seeds 1–5):** idle never wins; a fighter bot that ignores buildings wins 3/5 at 1 star average 0.6; a defender bot that prioritises monsters attacking buildings wins 5/5 averaging 1.0 star and 2 of ~10 buildings left. 2–3 stars should need skilled play or milestone 3 tools (rookies, upgrades).
+- **Bugs caught by tests:** building-targeting monsters idled forever at the centre of the cell next to a building (just outside their reach), so levels couldn't be won; bots walked into buildings (now path with a flow field).
+- **Known gaps:** rubble art is a placeholder (rock tiles); building HP bars are small on phones; balance numbers are bot-derived and need human play.
+
 ## 7. Decisions
 
 ### Decided (2026-11-14)
@@ -369,6 +378,10 @@ Findings:
 18. **Touch attack:** hold the ⚔ button to attack (same as keyboard/pad). The always-on attack toggle stays available as an accessibility option.
 19. **Milestone 1 scope:** buildings are obstacles only; building HP and damage arrive in milestone 2.
 20. **Map size:** 18 diamonds across at 0.65× tiles (decision 11 variant).
+21. **Level 1 length:** 8 waves (~3 minutes), bosses arrive in milestone 4.
+22. **Milestone 2 monsters:** zombie, orc raider, brute.
+23. **Building roles:** deferred to milestone 3.
+24. **Knight death:** game over for now (open item 13 is still to be revisited in milestone 4).
 
 ### Open (decide later)
 

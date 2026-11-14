@@ -92,11 +92,11 @@ describe('dodge', () => {
   }
 
   it('control: without dodging the knight is bitten', () => {
-    expect(scenario(null).hp).toBe(100 - ZOMBIE.damage);
+    expect(scenario(null).hp).toBe(KNIGHT.hp - ZOMBIE.damage);
   });
 
   it('takes no damage while dodging', () => {
-    expect(scenario(18).hp).toBe(100);
+    expect(scenario(18).hp).toBe(KNIGHT.hp);
   });
 
   it('holding dodge does not retrigger until released', () => {

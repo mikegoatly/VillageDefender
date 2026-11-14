@@ -7,12 +7,14 @@
 import * as Phaser from 'phaser';
 import { DT, MAP } from '../data/balance';
 import { InputManager } from '../input/InputManager';
-import { groundDirToScreen, groundToScreen, ISO_HY } from '../sim/iso';
+import { MONSTERS, type MonsterKind } from '../data/monsters';
+import { groundDirToScreen, groundToScreen } from '../sim/iso';
 import { Ground, type TownMap } from '../sim/map';
 import { emptyInput, type InputState } from '../sim/types';
 import { World, type Unit } from '../sim/world';
 import { installRotateOverlay } from '../ui/RotateOverlay';
 import { Hud } from '../ui/Hud';
+import { BuildingViews, RUBBLE_TILES, type PlacedBlock } from './BuildingViews';
 import { createCharacterAnims, directionFor, preloadSheets, sheetMeta, sheetOrigin } from './sheets';
 
 /** Characters are drawn at this scale relative to a 120 px/unit bake (milestone 0 look test). */
@@ -20,7 +22,7 @@ const CHAR_SCALE_AT_120 = 1.4;
 /** Sketch tiles: height of one stacked block level, and the top-face centre within the image. */
 const SKETCH_LEVEL = 106;
 const SKETCH_ORIGIN = { x: 128 / 256, y: 185 / 352 };
-const SHEETS = ['knight', 'zombie'];
+const SHEETS = ['knight', 'zombie', 'orc'];
 const ROTATE_CLASS = 'vd-rotate-active';
 
 interface UnitView {
@@ -29,6 +31,8 @@ interface UnitView {
   halo?: Phaser.GameObjects.Ellipse;
   ghost?: Phaser.GameObjects.Sprite;
   flash: number;
+  /** Resting multiply tint (monster archetype colour). */
+  tint: number;
 }
 
 interface Params {
@@ -54,7 +58,9 @@ export class GameScene extends Phaser.Scene {
   private input2!: InputManager;
   private hud!: Hud;
   private views = new Map<number, UnitView>();
-  private blocks: Phaser.GameObjects.Image[] = [];
+  /** Decor images (trees, well) for occlusion; building blocks live in buildingViews. */
+  private decor: Phaser.GameObjects.Image[] = [];
+  private buildingViews!: BuildingViews;
   private accumulator = 0;
   private paused = false;
   private uninstallRotate?: () => void;
@@ -69,7 +75,7 @@ export class GameScene extends Phaser.Scene {
     if (data.seed !== undefined) this.params.seed = data.seed;
     this.world = new World({ seed: this.params.seed, god: this.params.god, startWave: this.params.wave });
     this.views.clear();
-    this.blocks = [];
+    this.decor = [];
     this.accumulator = 0;
   }
 
@@ -90,9 +96,9 @@ export class GameScene extends Phaser.Scene {
     const root = document.getElementById('game')!;
     this.input2 = new InputManager({ root });
     this.uninstallRotate = installRotateOverlay(document.body);
-    this.hud = new Hud(document.body, () => this.restart());
-    this.input.keyboard?.on('keydown-R', () => {
-      if (this.world.status !== 'playing') this.restart();
+    this.hud = new Hud(document.body, {
+      onRetry: () => this.restart(this.params.seed),
+      onNewTown: () => this.restart(),
     });
 
     this.scale.on('resize', this.fitCamera, this);
@@ -120,6 +126,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     this.sync(deltaMs / 1000);
+    this.buildingViews.update(this.world.buildings, this.time.now / 1000, deltaMs / 1000);
     this.hud.update(this.world);
   }
 
@@ -130,6 +137,7 @@ export class GameScene extends Phaser.Scene {
       this.handleEvents();
     }
     this.sync(0);
+    this.buildingViews.update(this.world.buildings, this.time.now / 1000, 0);
     this.hud.update(this.world);
   }
 
@@ -167,8 +175,15 @@ export class GameScene extends Phaser.Scene {
         this.tile(key, i, j, 0);
       }
     }
-    for (const b of map.buildings) for (const bl of b.blocks) this.blocks.push(this.tile(bl.tile, bl.i, bl.j, bl.level));
-    for (const d of map.decor) this.blocks.push(this.tile(d.tile, d.i, d.j, 1));
+    this.buildingViews = new BuildingViews(this, (k, i, j, l) => this.tile(k, i, j, l), (x, y) => this.toScreen(x, y));
+    for (const b of map.buildings) {
+      const placed: PlacedBlock[] = b.blocks.map((bl) => {
+        const img = this.tile(bl.tile, bl.i, bl.j, bl.level);
+        return { img, baseX: img.x, level: bl.level };
+      });
+      this.buildingViews.add(b, placed);
+    }
+    for (const d of map.decor) this.decor.push(this.tile(d.tile, d.i, d.j, 1));
   }
 
   private fitCamera() {
@@ -202,12 +217,14 @@ export class GameScene extends Phaser.Scene {
   private viewFor(u: Unit): UnitView {
     let v = this.views.get(u.id);
     if (v) return v;
-    const sheet = u.kind;
+    const def = u.kind === 'knight' ? null : MONSTERS[u.kind as MonsterKind];
+    const sheet = def ? def.sheet : 'knight';
     const meta = sheetMeta(this, sheet);
     const [ox, oy] = sheetOrigin(meta);
-    const scale = this.charScale(sheet);
-    const sprite = this.add.sprite(0, 0, sheet).setOrigin(ox, oy).setScale(scale);
-    v = { sprite, flash: 0 };
+    const scale = this.charScale(sheet) * (def?.scale ?? 1);
+    const tint = def?.tint ?? 0xffffff;
+    const sprite = this.add.sprite(0, 0, sheet).setOrigin(ox, oy).setScale(scale).setTint(tint);
+    v = { sprite, flash: 0, tint };
     if (u.team === 'player') {
       // Friendly halo (decision 8) and see-through silhouette for occlusion (decision 9).
       v.halo = this.add.ellipse(0, 0, 70 * MAP.tileScale * 1.4, 34 * MAP.tileScale * 1.4)
@@ -230,7 +247,7 @@ export class GameScene extends Phaser.Scene {
       const face = groundDirToScreen(u.facing.x, u.facing.y);
       const dir = directionFor(face.x, face.y);
       const anim = u.state === 'dead' ? 'die' : u.state === 'attack' ? 'attack' : u.state === 'dodge' ? 'walk' : u.moving ? 'walk' : 'idle';
-      const key = `${u.kind}:${anim}:${dir}`;
+      const key = `${v.sprite.texture.key}:${anim}:${dir}`;
       if (v.sprite.anims.currentAnim?.key !== key) {
         // Keep the walk cycle phase when only the facing changes.
         const keepPhase = v.sprite.anims.currentAnim?.key.split(':')[1] === anim && anim === 'walk';
@@ -244,7 +261,7 @@ export class GameScene extends Phaser.Scene {
       if (v.flash > 0) {
         v.flash -= dt;
         v.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
-        if (v.flash <= 0) v.sprite.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
+        if (v.flash <= 0) v.sprite.setTint(v.tint).setTintMode(Phaser.TintModes.MULTIPLY);
       }
       // Fade corpses out.
       v.sprite.setAlpha(u.state === 'dead' ? Math.max(0, 1 - Math.max(0, u.stateTime - 0.7) / 0.5) : u.invuln > 0 && u.team === 'player' && u.state !== 'dodge' ? 0.6 : 1);
@@ -271,7 +288,7 @@ export class GameScene extends Phaser.Scene {
     const b = sprite.getBounds();
     // Only the body matters, not the transparent margins of the cell.
     const body = new Phaser.Geom.Rectangle(b.centerX - b.width * 0.15, b.y + b.height * 0.35, b.width * 0.3, b.height * 0.4);
-    for (const img of this.blocks) {
+    for (const img of [...this.buildingViews.allBlocks(), ...this.decor]) {
       if (img.depth <= sprite.depth) continue;
       if (Math.abs(img.y - sprite.y) > 400 * MAP.tileScale) continue;
       const ib = img.getBounds();
@@ -293,6 +310,11 @@ export class GameScene extends Phaser.Scene {
         this.cameras.main.shake(120, 0.004);
         const v = this.views.get(e.unit);
         if (v) v.flash = 0.1;
+      } else if (e.type === 'buildingHit') {
+        this.buildingViews.hit(e.building);
+      } else if (e.type === 'buildingDestroyed') {
+        this.buildingViews.destroyed(this.world.map.buildings[e.building]);
+        this.cameras.main.shake(220, 0.006);
       } else if (e.type === 'waveWarning') {
         this.hud.warn(e.wave, e.sides);
       }
@@ -318,6 +340,8 @@ export class GameScene extends Phaser.Scene {
       monsters: this.world.monsters.filter((m) => m.state !== 'dead').length,
       hp: this.world.players[0]?.hp,
       status: this.world.status,
+      buildings: `${this.world.standingBuildings()}/${this.world.buildings.length}`,
+      stars: this.world.stars,
       zoom: +this.cameras.main.zoom.toFixed(3),
       charPx: Math.round(80 * (this.charScale('knight') * sheetMeta(this, 'knight').pixelsPerUnit / 120) * this.cameras.main.zoom),
       device: this.input2.activeDevice,
@@ -331,8 +355,7 @@ function tileKeys(map: TownMap): Set<string> {
   const keys = new Set(['st:grass_center_N', 'st:grass_path_E', 'st:grass_path_N', 'st:grass_pathCrossing_N']);
   for (const b of map.buildings) for (const bl of b.blocks) keys.add(bl.tile);
   for (const d of map.decor) keys.add(d.tile);
+  for (const r of RUBBLE_TILES) keys.add(r);
   return keys;
 }
 
-// Keep ISO_HY referenced for future depth tuning without tripping noUnusedLocals.
-void ISO_HY;

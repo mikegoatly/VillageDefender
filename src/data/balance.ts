@@ -1,5 +1,7 @@
 // Tunable numbers. Units: cells, seconds, hit points.
 
+import { MONSTERS } from './monsters';
+
 export const SIM_HZ = 60;
 export const DT = 1 / SIM_HZ;
 
@@ -19,11 +21,11 @@ export const MAP = {
 
 export const KNIGHT = {
   radius: 0.25,
-  hp: 100,
+  hp: 150,
   speed: 3.4,
   /** Move speed multiplier while swinging. */
   attackMoveFactor: 0.6,
-  attackCooldown: 0.55,
+  attackCooldown: 0.45,
   attackDuration: 0.35,
   /** Time into the swing when the hit lands. */
   attackHitTime: 0.12,
@@ -33,7 +35,7 @@ export const KNIGHT = {
   attackRange: 1.15,
   /** Half-angle of the swing arc, radians. */
   attackArc: (70 * Math.PI) / 180,
-  attackDamage: 12,
+  attackDamage: 15,
   knockback: 3.2,
   dodgeSpeed: 8.5,
   dodgeDuration: 0.26,
@@ -42,33 +44,32 @@ export const KNIGHT = {
   hurtInvuln: 0.5,
 };
 
-export const ZOMBIE = {
-  radius: 0.22,
-  hp: 24,
-  speed: 1.5,
-  speedJitter: 0.25,
-  damage: 8,
-  /** Wind-up before the hit lands; the knight can dodge out of range. */
-  attackWindup: 0.4,
-  attackCooldown: 1.1,
-  /** Extra reach beyond touching. */
-  attackReach: 0.18,
-  corpseTime: 1.2,
+/** Zombie stats live with the other archetypes in data/monsters.ts. */
+export const ZOMBIE = MONSTERS.zombie;
+
+export const BUILDING = {
+  /** HP of a one-block cottage. */
+  baseHp: 300,
+  /** Extra HP per additional wall block (a 2x2 two-storey hall has 7 extra → 1140). */
+  hpPerExtraBlock: 120,
+  /** Damaged look below this HP fraction. */
+  damagedAt: 0.5,
+};
+
+/** Star thresholds by fraction of buildings left standing (plan section 3.2). */
+export const STARS = {
+  three: 1,
+  two: 2 / 3,
 };
 
 export const WAVES = {
   /** First wave lands here; its warning shows `warning` seconds earlier. */
   firstAt: 6,
-  interval: 14,
+  interval: 18,
   warning: 3,
-  baseCount: 5,
-  perWave: 3,
   spawnSpacing: 0.12,
-  /** From this wave on, monsters arrive from two sides. */
-  twoSidesFrom: 4,
   maxAlive: 300,
 };
-
 /** Knockback velocity decays by this factor per second. */
 export const KNOCKBACK_DAMPING = 10;
 /** Fraction of the overlap between two units resolved per tick (0..1). */

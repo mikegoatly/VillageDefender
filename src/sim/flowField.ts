@@ -21,12 +21,20 @@ export class FlowField {
 
   /** Recomputes distances to (ti, tj). Cheap for ~1000 cells; call when the target changes cell. */
   compute(ti: number, tj: number) {
+    this.targetI = ti;
+    this.targetJ = tj;
+    this.computeMulti(isWalkable(this.map, ti, tj) ? [[ti, tj]] : []);
+  }
+
+  /** Distances to the nearest of several walkable source cells (e.g. every cell next to a building). */
+  computeMulti(sources: [number, number][]) {
     const { map, dist } = this;
     const n = map.size;
     dist.fill(Infinity);
-    this.targetI = ti;
-    this.targetJ = tj;
-    if (!isWalkable(map, ti, tj)) return;
+    if (sources.length !== 1) {
+      this.targetI = -1;
+      this.targetJ = -1;
+    }
 
     // Binary heap of [dist, index].
     const heap: number[] = [];
@@ -65,9 +73,13 @@ export class FlowField {
       return [d, idx];
     };
 
-    const start = tj * n + ti;
-    dist[start] = 0;
-    push(0, start);
+    for (const [si, sj] of sources) {
+      if (!isWalkable(map, si, sj)) continue;
+      const s = sj * n + si;
+      if (dist[s] === 0) continue;
+      dist[s] = 0;
+      push(0, s);
+    }
     while (heap.length) {
       const [d, idx] = pop();
       if (d > dist[idx]) continue;

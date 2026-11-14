@@ -1,6 +1,8 @@
 // Fluent World builder plus tick/input helpers for sim tests.
 
 import { DT } from '../../src/data/balance';
+import type { MonsterKind } from '../../src/data/monsters';
+import type { WaveDef } from '../../src/data/waves';
 import type { TownMap } from '../../src/sim/map';
 import { emptyInput, type InputState } from '../../src/sim/types';
 import { World, type Unit, type WorldOptions } from '../../src/sim/world';
@@ -10,23 +12,27 @@ export interface BuiltWorld {
   world: World;
   knight: Unit;
   zombies: Unit[];
+  /** Every monster added through the builder, in order. */
+  monsters: Unit[];
 }
 
 export class WorldBuilder {
   private opts: WorldOptions = { seed: 1, noWaves: true };
   private mapVal: TownMap | undefined;
   private knightPos: [number, number] | undefined;
-  private zombiePos: [number, number][] = [];
+  private monsterSpecs: { kind: MonsterKind; x: number; y: number }[] = [];
 
   withSeed(seed: number) { this.opts.seed = seed; return this; }
   withMap(rows: string[]) { this.mapVal = mapFromAscii(rows); return this; }
   withTownMap(map: TownMap) { this.mapVal = map; return this; }
   noWaves(v = true) { this.opts.noWaves = v; return this; }
-  withWaves() { this.opts.noWaves = false; return this; }
+  /** Enables wave spawning, optionally with a custom wave table. */
+  withWaves(table?: WaveDef[]) { this.opts.noWaves = false; if (table) this.opts.waves = table; return this; }
   god(v = true) { this.opts.god = v; return this; }
   startWave(n: number) { this.opts.startWave = n; return this; }
   withKnightAt(x: number, y: number) { this.knightPos = [x, y]; return this; }
-  withZombieAt(x: number, y: number) { this.zombiePos.push([x, y]); return this; }
+  withZombieAt(x: number, y: number) { return this.withMonster('zombie', x, y); }
+  withMonster(kind: MonsterKind, x: number, y: number) { this.monsterSpecs.push({ kind, x, y }); return this; }
 
   build(): BuiltWorld {
     // Without an explicit map and not a default-options world, use an open field.
@@ -35,8 +41,9 @@ export class WorldBuilder {
     const knight = world.players[0];
     if (this.knightPos) [knight.x, knight.y] = this.knightPos;
     else if (map) { knight.x = map.centre; knight.y = map.centre; }
-    const zombies = this.zombiePos.map(([x, y]) => world.addMonster(x, y));
-    return { world, knight, zombies };
+    const monsters = this.monsterSpecs.map((s) => world.addMonster(s.x, s.y, s.kind));
+    const zombies = monsters.filter((m) => m.kind === 'zombie');
+    return { world, knight, zombies, monsters };
   }
 }
 
