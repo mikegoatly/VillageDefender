@@ -25,7 +25,7 @@ const tilePacks = [
   { src: '2D assets/Sketch Desert/Tiles', dest: 'sketch-desert' },
 ];
 
-/** 3D models → assets-src/models/<dest> (bake input only, never served). */
+/** 3D models → public/assets/models/<dest> (loaded by the 3D renderer at runtime, and by the bake). */
 const modelPacks = [
   {
     src: '3D assets/Mini Dungeon/Models/GLB format',
@@ -84,7 +84,7 @@ for (const p of tilePacks) {
   console.log(`tiles  ${p.dest}: ${readdirSync(dest).length} files`);
 }
 
-const modelOut = 'assets-src/models';
+const modelOut = 'public/assets/models';
 for (const p of modelPacks) {
   const dest = join(modelOut, p.dest);
   mkdirSync(dest, { recursive: true });

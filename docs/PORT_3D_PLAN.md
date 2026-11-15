@@ -65,8 +65,8 @@ Sizes are relative: S = a sitting, M = a milestone-3-sized chunk, L = a mileston
 
 ### Phase 0 — device gate (S)
 
-Run the spike on a real mid-range phone (`vite --host`, `?look=3d&stress=300`, with and without
-`&shadows=0`). If 300 units cannot hold 30 fps without shadows, stop and rethink before any port
+Run the 3D renderer on a real mid-range phone (https://mikegoatly.github.io/VillageDefender/?look=3d&stress=300,
+with and without `&shadows=0`; the perf overlay is bottom-left). If 300 units cannot hold 30 fps without shadows, stop and rethink before any port
 work. Done when: numbers recorded here.
 
 ### Phase 1 — split game flow from drawing (M) — done 2026-11-15
@@ -81,9 +81,16 @@ Result: `src/game/` (`GameController`, `Renderer`, `session`), `src/render/Phase
 - Tests: controller logic that was untestable inside a Phaser scene gets unit tests with a fake
   renderer (run recorded once, level-up auto-pause, planning flow, hit-stop).
 
-### Phase 2 — three.js foundation (M)
+### Phase 2 — three.js foundation (M) — done 2026-11-15
 
-Turn the spike into modules, same feature set as the spike:
+Result: `src/render3d/` (`Stage`, `assets`, `camera`, `characters`, `poses`, `UnitBatches`,
+`TownView`, `ThreeRenderer`, `ThreeGame`). `?look=3d` now runs through `GameController`, so the
+menu, planning (with house picking), HUD, level-ups and the debug panel work in 3D; audio is
+silent until phase 5. Models live in `public/assets/models`. 23 unit tests in `tests/render3d`.
+`node tools/measure3d.mjs` (RTX 5070, 1600×900): 300 monsters 1.0 ms/frame, 8.1 ms at 4× CPU
+throttle; 600 monsters 13.2 ms throttled.
+
+Planned scope:
 
 - `Stage`: renderer, fixed fit-to-map camera, lights, shadows, resize, quality settings.
 - `Assets`: models copied to `public/assets/models` by `import-assets` (no more `/assets-src` at

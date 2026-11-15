@@ -26,7 +26,7 @@ renderer.setPixelRatio(SUPERSAMPLE);
 document.body.appendChild(renderer.domElement);
 
 function loadModel(path: string): Promise<GLTF> {
-  return loader.loadAsync(`/assets-src/models/${path}.glb`);
+  return loader.loadAsync(`/assets/models/${path}.glb`);
 }
 
 /** Unit vectors on the ground plane for screen-right and screen-down. */

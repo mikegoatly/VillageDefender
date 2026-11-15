@@ -2,8 +2,8 @@ import * as Phaser from 'phaser';
 import { GameScene } from './render/GameScene';
 
 if (new URLSearchParams(location.search).get('look') === '3d') {
-  // Spike: real-time three.js renderer using the Kenney GLB models (dev server only).
-  void import('./render3d/spike').then((m) => m.startSpike3d(document.getElementById('game')!));
+  // Real-time three.js renderer using the Kenney models (docs/PORT_3D_PLAN.md); Phaser stays the default until parity.
+  void import('./render3d/ThreeGame').then((m) => m.startThreeGame(document.getElementById('game')!));
 } else {
   const game = new Phaser.Game({
     type: Phaser.AUTO,

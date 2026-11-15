@@ -1,7 +1,7 @@
 // Shared between the bake page (browser) and run.mjs (node, via JSDoc only).
 
 export interface Attachment {
-  model: string;          // path under /assets-src/models, without .glb
+  model: string;          // path under public/assets/models, without .glb
   bone: string;           // node name in the character, e.g. 'arm-right'
   position?: [number, number, number];
   rotation?: [number, number, number]; // radians, XYZ euler
