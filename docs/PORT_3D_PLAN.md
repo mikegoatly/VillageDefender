@@ -1,6 +1,6 @@
 # 3D renderer port — plan
 
-Status: accepted 2026-11-15, waiting on phase 0 (real-phone test). Nothing started beyond the spike (`?look=3d`, `src/render3d/spike.ts`).
+Status: accepted 2026-11-15. Phases 0–2 done; phase 3 next. Started from the spike (`?look=3d`, `src/render3d/spike.ts`).
 
 ## Goal
 
@@ -63,7 +63,10 @@ src/
 
 Sizes are relative: S = a sitting, M = a milestone-3-sized chunk, L = a milestone-4-sized chunk.
 
-### Phase 0 — device gate (S)
+### Phase 0 — device gate (S) — passed 2026-11-15
+
+Result: 60 fps (the screen's refresh cap) on the user's phone with `?look=3d&stress=300`, shadows
+and silhouettes on. Phone model not recorded.
 
 Run the 3D renderer on a real mid-range phone (https://mikegoatly.github.io/VillageDefender/?look=3d&stress=300,
 with and without `&shadows=0`; the perf overlay is bottom-left). If 300 units cannot hold 30 fps without shadows, stop and rethink before any port
