@@ -51,20 +51,59 @@ export class ModelLibrary {
    * and materials stay owned by the library; dispose() on the meshes frees only instance data.
    */
   instanced(path: string, transforms: THREE.Matrix4[], castShadow = false): THREE.Group {
-    const group = new THREE.Group();
-    const src = this.gltf(path).scene;
+    const model = this.instancedModel(path, Math.max(1, transforms.length), castShadow);
+    transforms.forEach((t, k) => model.setMatrixAt(k, t));
+    model.setCount(transforms.length);
+    return model.group;
+  }
+
+  /** An instanced copy of a model whose instances are moved every frame (projectiles). */
+  instancedModel(path: string, capacity: number, castShadow = false): InstancedModel {
+    return new InstancedModel(this.gltf(path).scene, capacity, castShadow);
+  }
+}
+
+/** One InstancedMesh per mesh of a model, moved together. */
+export class InstancedModel {
+  readonly group = new THREE.Group();
+  private readonly parts: { mesh: THREE.InstancedMesh; local: THREE.Matrix4 }[] = [];
+  private readonly m = new THREE.Matrix4();
+  private count = -1;
+
+  constructor(src: THREE.Object3D, readonly capacity: number, castShadow: boolean) {
     src.updateMatrixWorld(true);
-    const m = new THREE.Matrix4();
     src.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      const im = new THREE.InstancedMesh(mesh.geometry, mesh.material, Math.max(1, transforms.length));
-      transforms.forEach((t, k) => im.setMatrixAt(k, m.multiplyMatrices(t, mesh.matrixWorld)));
-      im.count = transforms.length;
+      const im = new THREE.InstancedMesh(mesh.geometry, mesh.material, capacity);
       im.castShadow = castShadow;
       im.receiveShadow = true;
-      group.add(im);
+      im.frustumCulled = false;
+      im.count = 0;
+      this.parts.push({ mesh: im, local: mesh.matrixWorld.clone() });
+      this.group.add(im);
     });
-    return group;
+  }
+
+  setMatrixAt(k: number, t: THREE.Matrix4) {
+    for (const p of this.parts) p.mesh.setMatrixAt(k, this.m.multiplyMatrices(t, p.local));
+  }
+
+  setCount(n: number) {
+    // Nothing to upload when there was and is nothing to draw (most frames have no projectiles).
+    if (n === 0 && this.count === 0) return;
+    this.count = n;
+    for (const p of this.parts) {
+      p.mesh.count = n;
+      const m = p.mesh.instanceMatrix;
+      m.clearUpdateRanges();
+      m.addUpdateRange(0, Math.max(1, n) * 16);
+      m.needsUpdate = true;
+    }
+  }
+
+  dispose() {
+    this.group.removeFromParent();
+    for (const p of this.parts) p.mesh.dispose();
   }
 }

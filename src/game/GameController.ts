@@ -375,6 +375,7 @@ export class GameController {
     vd.profile = () => this.profile;
     vd.choose = (i: number) => this.choose(i);
     vd.stats = () => this.stats();
+    vd.screenOf = (x: number, y: number) => this.renderer.screenOf({ x, y });
   }
 
   stats() {

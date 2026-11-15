@@ -18,7 +18,7 @@
 - Commands: `npm run dev`, `npm test`, `npm run build`, `npm run import-assets` (needs `KENNEY_ROOT` set to the local Kenney assets folder),
   `npm run bake`, `node tools/screenshot.mjs "<query>"` (needs dev server on 5173),
   `node tools/measure3d.mjs` (3D renderer frame cost at full and 4× throttled CPU),
-  `node tools/playtest.mjs "<query>" <seconds> <shots>` (scripted play via `window.__vd`,
+  `node tools/playtest.mjs "<query>" <seconds> <shots>` (scripted play via `window.__vd`; add `look=3d` to the query for the 3D renderer,
   saves `screenshots/playtest-N.png` and `-close.png`, needs dev server).
 - URL debug params: `?seed= &speed= &god=1 &wave= &plan=0` (`plan=0` skips the planning phase).
   3D renderer (being ported, docs/PORT_3D_PLAN.md): `?look=3d`, plus `&stress=<monsters> &perf=1

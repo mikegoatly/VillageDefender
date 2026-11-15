@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fitView, frustumFor, projectGround } from '../../src/render3d/camera';
-import { animFor, characterModelPaths, lookFor } from '../../src/render3d/characters';
+import { animFor, characterModelPaths, CORPSE_SINK, lookFor, unitFx } from '../../src/render3d/characters';
 import { generateTown } from '../../src/sim/map';
 import { aWorld } from '../helpers/worldBuilder';
 
@@ -76,5 +76,42 @@ describe('characterModelPaths', () => {
     expect(new Set(paths).size).toBe(paths.length);
     expect(paths).toContain('mini-dungeon/shield-round');
     expect(paths).toContain('graveyard/character-zombie');
+  });
+});
+
+describe('unitFx', () => {
+  it('flashes white while hit', () => {
+    const { knight } = aWorld().build();
+    expect(unitFx(knight, true, 0).flash).toBe(1);
+    expect(unitFx(knight, false, 0).flash).toBe(0);
+  });
+
+  it('sinks corpses after the death animation, never before', () => {
+    const { monsters } = aWorld().withMonster('zombie', 3, 3).build();
+    const z = monsters[0];
+    z.state = 'dead';
+    z.stateTime = CORPSE_SINK.after;
+    expect(unitFx(z, false, 0).sink).toBe(0);
+    z.stateTime = CORPSE_SINK.after + CORPSE_SINK.time / 2;
+    expect(unitFx(z, false, 0).sink).toBeCloseTo(CORPSE_SINK.depth / 2);
+    z.stateTime = 99;
+    expect(unitFx(z, false, 0).sink).toBe(CORPSE_SINK.depth);
+  });
+
+  it('makes ghosts flicker and leaves other monsters opaque', () => {
+    const { monsters } = aWorld().withMonster('ghost', 3, 3).withMonster('zombie', 4, 4).build();
+    const alphas = [0, 0.5, 1, 1.5, 2].map((t) => unitFx(monsters[0], false, t).alpha);
+    expect(Math.max(...alphas) - Math.min(...alphas)).toBeGreaterThan(0.3);
+    expect(Math.min(...alphas)).toBeGreaterThanOrEqual(0.25);
+    expect(unitFx(monsters[1], false, 1).alpha).toBe(1);
+  });
+
+  it('blinks a hurt knight, but not while dodging', () => {
+    const { knight } = aWorld().build();
+    knight.invuln = 1;
+    const blink = [0, 0.03, 0.06, 0.09, 0.12].map((t) => unitFx(knight, false, t).flash);
+    expect(new Set(blink).size).toBeGreaterThan(1);
+    knight.state = 'dodge';
+    expect(unitFx(knight, false, 0.03).flash).toBe(0);
   });
 });

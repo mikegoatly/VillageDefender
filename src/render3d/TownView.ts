@@ -8,7 +8,7 @@ import { Ground, type Building, type TownMap } from '../sim/map';
 import type { BuildingState } from '../sim/world';
 import { markOccluder, type ModelLibrary } from './assets';
 import {
-  auraCells, buildingPieces, decorPiece, hash01, ROCK, smokeSources,
+  auraCells, buildingPieces, decorPiece, hash01, ROCK, smokeSources, wallLevels,
   type BuildingLook, type DamageState, type Piece, type SmokeSource,
 } from './buildings';
 import type { EmitterSpec, Particles } from './Particles';
@@ -23,6 +23,9 @@ const SMOKE: Record<SmokeSource['kind'], Omit<EmitterSpec, 'x' | 'y' | 'z'>> = {
 const DUST = 0xc9b29b;
 const DAMAGED = new THREE.Color(0x8f6f60);
 const HIGHLIGHT = 0x5a4818;
+const HIT_FLASH = 0x9a9a9a;
+/** Hit shake length (s) and how long the white flash lasts within it. */
+const SHAKE = { time: 0.18, flash: 0.06, amplitude: 0.05 };
 
 const GRASS = 0x8fc66a;
 const WATER = 0x4f9fd6;
@@ -39,6 +42,11 @@ interface BuildingView {
   look: BuildingLook | null;
   emitters: EmitterSpec[];
   lastFrac: number;
+  /** Seconds of hit shake left. */
+  shake: number;
+  /** Centre of the footprint. */
+  cx: number;
+  cz: number;
 }
 
 export class TownView {
@@ -54,7 +62,11 @@ export class TownView {
   constructor(private readonly library: ModelLibrary, private readonly map: TownMap, private readonly particles: Particles) {
     this.makeGround();
     this.makeDecor();
-    this.views = map.buildings.map((def) => ({ def, group: null, materials: [], look: null, emitters: [], lastFrac: 1 }));
+    this.views = map.buildings.map((def) => ({
+      def, group: null, materials: [], look: null, emitters: [], lastFrac: 1, shake: 0,
+      cx: def.cells.reduce((a, [i]) => a + i, 0) / def.cells.length,
+      cz: def.cells.reduce((a, [, j]) => a + j, 0) / def.cells.length,
+    }));
 
     // Role auras: one flat quad per covered cell, coloured per role.
     const cap = Math.max(1, map.size * map.size);
@@ -69,11 +81,12 @@ export class TownView {
     this.root.add(this.aura);
   }
 
-  /** Rebuilds buildings whose role or damage state changed; darkens with damage. */
-  sync(states: BuildingState[]) {
+  /** Rebuilds buildings whose role or damage state changed; darkens with damage; hit shake. */
+  sync(states: BuildingState[], dt: number) {
     for (const s of states) {
       const v = this.views[s.id];
       if (!v) continue;
+      if (v.shake > 0) this.updateShake(v, dt);
       const frac = Math.max(0, s.hp / s.maxHp);
       const damage: DamageState = s.ruined ? 'ruined' : frac < BUILDING.damagedAt ? 'damaged' : 'intact';
       if (!v.look || v.look.damage !== damage || v.look.role !== s.role) {
@@ -88,6 +101,20 @@ export class TownView {
       }
     }
     this.syncAura(states);
+  }
+
+  /** Shake and flash a building that was hit. */
+  hit(id: number) {
+    const v = this.views[id];
+    if (!v || v.look?.damage === 'ruined') return;
+    v.shake = SHAKE.time;
+    this.applyHighlight(v);
+  }
+
+  /** Point just above a building's roof (for its HP bar and role icon). */
+  topOf(id: number): { x: number; y: number; z: number } {
+    const v = this.views[id];
+    return { x: v.cx, y: wallLevels(v.def, v.look?.role ?? null) + 1.05, z: v.cz };
   }
 
   /** Planning shows auras strongly; during play they stay faint. */
@@ -141,8 +168,19 @@ export class TownView {
   }
 
   private applyHighlight(v: BuildingView) {
-    const on = v.def.id === this.highlighted && v.look?.damage !== 'ruined';
-    for (const m of v.materials) m.emissive.setHex(on ? HIGHLIGHT : 0);
+    const ruined = v.look?.damage === 'ruined';
+    const flash = !ruined && v.shake > SHAKE.time - SHAKE.flash;
+    const on = !ruined && v.def.id === this.highlighted;
+    for (const m of v.materials) m.emissive.setHex(flash ? HIT_FLASH : on ? HIGHLIGHT : 0);
+  }
+
+  private updateShake(v: BuildingView, dt: number) {
+    const wasFlashing = v.shake > SHAKE.time - SHAKE.flash;
+    v.shake = Math.max(0, v.shake - dt);
+    const offset = v.shake > 0 ? Math.sin(v.shake * 90) * SHAKE.amplitude * (v.shake / SHAKE.time) : 0;
+    // Shake along the screen's horizontal (+X/-Z).
+    v.group?.position.set(offset, 0, -offset);
+    if (wasFlashing !== v.shake > SHAKE.time - SHAKE.flash) this.applyHighlight(v);
   }
 
   private dustBurst(b: Building) {

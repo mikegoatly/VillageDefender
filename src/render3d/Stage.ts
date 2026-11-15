@@ -24,6 +24,11 @@ export class Stage {
   private view: View | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly basePosition = new THREE.Vector3();
+  private readonly projected = new THREE.Vector3();
+  private readonly shakeUp = new THREE.Vector3();
+  private shakeLeft = 0;
+  private shakeIntensity = 0;
 
   constructor(private readonly parent: HTMLElement, opts: StageOptions) {
     // Stencil is needed for the occlusion silhouettes.
@@ -63,10 +68,42 @@ export class Stage {
     this.resize();
   }
 
-  render(): DrawInfo {
+  render(dt = 0): DrawInfo {
+    this.applyShake(dt);
     this.renderer.info.reset();
     this.renderer.render(this.scene, this.camera);
     return { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles };
+  }
+
+  /** Screen shake like Phaser's camera.shake: `intensity` is a fraction of the view size. */
+  shake(ms: number, intensity: number) {
+    this.shakeLeft = Math.max(this.shakeLeft, ms / 1000);
+    this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
+  }
+
+  /** CSS pixel position (relative to the canvas) of a world point. */
+  toScreen(x: number, y: number, z: number): { x: number; y: number } {
+    const v = this.projected.set(x, y, z).project(this.camera);
+    return { x: ((v.x + 1) / 2) * this.canvas.clientWidth, y: ((1 - v.y) / 2) * this.canvas.clientHeight };
+  }
+
+  private applyShake(dt: number) {
+    if (!this.view) return;
+    const base = this.basePosition;
+    if (this.shakeLeft <= 0) {
+      if (this.shakeIntensity > 0) {
+        this.shakeIntensity = 0;
+        this.camera.position.copy(base);
+      }
+      return;
+    }
+    this.shakeLeft = Math.max(0, this.shakeLeft - dt);
+    const amp = this.shakeIntensity * (this.camera.top - this.camera.bottom);
+    const right = this.projected.set(1, 0, -1).normalize();
+    const up = this.shakeUp.crossVectors(CAMERA_DIR, right).normalize();
+    this.camera.position.copy(base)
+      .addScaledVector(right, (Math.random() * 2 - 1) * amp)
+      .addScaledVector(up, (Math.random() * 2 - 1) * amp);
   }
 
   /** Screen pixels per world unit. */
@@ -100,5 +137,7 @@ export class Stage {
     c.position.set(this.view.x, 0, this.view.z).addScaledVector(CAMERA_DIR, 60);
     c.lookAt(this.view.x, 0, this.view.z);
     c.updateProjectionMatrix();
+    c.updateMatrixWorld();
+    this.basePosition.copy(c.position);
   };
 }

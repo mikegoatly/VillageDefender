@@ -73,6 +73,26 @@ export function animFor(u: Pick<Unit, 'state' | 'moving'>): AnimName {
   return u.moving ? 'walk' : 'idle';
 }
 
+/** How far a corpse sinks, starting after its death animation (0.7 s) and taking 0.5 s. */
+export const CORPSE_SINK = { after: 0.7, time: 0.5, depth: 0.9 };
+
+/**
+ * Per-frame effects for a unit: hit flash (towards white), opacity and how far it has sunk.
+ * Ghosts flicker (decision 48); hurt friendlies blink; corpses sink into the ground (instances
+ * cannot fade unless their material is transparent, and only ghosts' is).
+ */
+export function unitFx(u: Pick<Unit, 'id' | 'team' | 'kind' | 'state' | 'stateTime' | 'invuln'>, flashing: boolean, clock: number) {
+  let flash = flashing ? 1 : 0;
+  let alpha = 1;
+  let sink = 0;
+  if (u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].phasing) {
+    alpha = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(clock * 2.2 + u.id * 1.7));
+  }
+  if (u.state === 'dead') sink = Math.min(1, Math.max(0, u.stateTime - CORPSE_SINK.after) / CORPSE_SINK.time) * CORPSE_SINK.depth;
+  else if (u.invuln > 0 && u.team === 'player' && u.state !== 'dodge' && !flashing) flash = Math.sin(clock * 30) > 0 ? 0.35 : 0;
+  return { flash, alpha, sink };
+}
+
 /** How one unit is drawn. Units with the same `key` share an instanced batch. */
 export interface UnitLook {
   key: string;

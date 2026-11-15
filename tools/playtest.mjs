@@ -53,11 +53,8 @@ try {
     await page.waitForTimeout(350); // let the renderer draw the synced state and hit flashes fade
     const stats = await page.evaluate(() => window.__vd.stats());
     const focus = await page.evaluate(() => {
-      const sc = window.__vd.scene;
-      const k = sc.world.players[0];
-      const cam = sc.cameras.main;
-      const p = { x: (k.x - k.y) * 116 * 0.65, y: (k.x + k.y) * 55 * 0.65 };
-      return { x: (p.x - cam.worldView.x) * cam.zoom, y: (p.y - cam.worldView.y) * cam.zoom };
+      const k = window.__vd.world().players[0];
+      return window.__vd.screenOf(k.x, k.y);
     });
     const base = `screenshots/playtest-${s}`;
     await page.screenshot({ path: `${base}.png` });

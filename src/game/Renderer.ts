@@ -31,6 +31,8 @@ export interface Renderer {
   knightWeaponChanged(): void;
   /** Debug overlays (flow fields, hitboxes...). Only called in debug mode. */
   updateDebugOverlay(world: World, overlays: Record<OverlayName, boolean>): void;
+  /** Where a ground point is drawn, in CSS pixels from the game area's top-left (automation crops). */
+  screenOf(ground: Vec2): Vec2;
   stats(): RendererStats;
   destroy(): void;
 }

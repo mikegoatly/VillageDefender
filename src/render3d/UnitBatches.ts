@@ -11,8 +11,9 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
-import { CHARACTER_MODELS, animFor, animLoops, clipNames, lookFor, type AnimName, type Attachment, type UnitLook } from './characters';
+import { CHARACTER_MODELS, animFor, animLoops, clipNames, lookFor, unitFx, type AnimName, type Attachment, type UnitLook } from './characters';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
+import { withFxAttribute, withUnitFx } from './unitFx';
 
 /** Character size relative to one ground cell (milestone 0 look test: ~1.5x reads well). */
 export const CHAR_SCALE = 1.5;
@@ -29,6 +30,8 @@ const SILHOUETTE_ORDER: Record<Unit['team'], number> = { player: 2, enemy: 3 };
 
 interface Batch {
   parts: THREE.InstancedMesh[];
+  /** Per unit: flash towards white, opacity (shared by all of the batch's part geometries). */
+  fx: THREE.InstancedBufferAttribute;
   ghosts: THREE.InstancedMesh[];
   clips: Map<AnimName, PoseClip>;
   count: number;
@@ -55,6 +58,9 @@ export class UnitBatches {
   private readonly owned: { dispose(): void }[] = [];
   private readonly silhouettes: Record<Unit['team'], THREE.MeshBasicMaterial>;
   private readonly halos: THREE.InstancedMesh;
+  /** Seconds of hit flash left, by unit id. */
+  private readonly flashes = new Map<number, number>();
+  private clock = 0;
 
   // Scratch objects (no per-frame allocation).
   private readonly unitM = new THREE.Matrix4();
@@ -88,7 +94,23 @@ export class UnitBatches {
     return this.anims.size;
   }
 
+  /** Restarts a unit's current animation from its first frame (flail pulses). */
+  restartAnim(unitId: number) {
+    const a = this.anims.get(unitId);
+    if (a) a.anim = null;
+  }
+
+  /** White hit flash on a unit for `seconds`. */
+  flash(unitId: number, seconds: number) {
+    this.flashes.set(unitId, Math.max(seconds, this.flashes.get(unitId) ?? 0));
+  }
+
   sync(world: World, dt: number) {
+    this.clock += dt;
+    for (const [id, t] of this.flashes) {
+      if (t - dt <= 0) this.flashes.delete(id);
+      else this.flashes.set(id, t - dt);
+    }
     for (const b of this.batches.values()) b.count = 0;
     let halos = 0;
     const live = new Set<number>();
@@ -108,6 +130,7 @@ export class UnitBatches {
       }
     }
     for (const id of this.anims.keys()) if (!live.has(id)) this.anims.delete(id);
+    for (const id of this.flashes.keys()) if (!live.has(id)) this.flashes.delete(id);
 
     this.halos.count = halos;
     this.halos.instanceMatrix.needsUpdate = true;
@@ -119,6 +142,7 @@ export class UnitBatches {
         if (im.instanceColor) im.instanceColor.needsUpdate = true;
       }
       for (const g of b.ghosts) g.count = b.count;
+      b.fx.needsUpdate = true;
     }
   }
 
@@ -159,8 +183,10 @@ export class UnitBatches {
     const clip = batch.clips.get(a.anim!) ?? batch.clips.get('idle')!;
     const frame = frameIndex(clip, a.t);
     const np = batch.parts.length;
+    const { flash, alpha, sink } = unitFx(u, this.flashes.has(u.id), this.clock);
+    batch.fx.setXY(n, flash, alpha);
     this.unitM.compose(
-      this.pos.set(u.x, 0, u.y),
+      this.pos.set(u.x, -sink, u.y),
       this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rot),
       this.scl.setScalar(CHAR_SCALE * look.scale),
     );
@@ -192,8 +218,10 @@ export class UnitBatches {
     }
     mixer.stopAllAction();
 
+    const fx = new THREE.InstancedBufferAttribute(new Float32Array(BATCH_CAPACITY * 2).fill(1), 2);
+    fx.setUsage(THREE.DynamicDrawUsage);
     const meshes = parts.map((p) => {
-      const im = new THREE.InstancedMesh(p.geometry, p.material, BATCH_CAPACITY);
+      const im = new THREE.InstancedMesh(this.own(withFxAttribute(p.geometry, fx)), p.material, BATCH_CAPACITY);
       im.castShadow = true;
       im.frustumCulled = false;
       im.count = 0;
@@ -210,7 +238,7 @@ export class UnitBatches {
       this.root.add(g);
       return g;
     });
-    this.batches.set(look.key, (batch = { parts: meshes, ghosts, clips, count: 0 }));
+    this.batches.set(look.key, (batch = { parts: meshes, fx, ghosts, clips, count: 0 }));
     return batch;
   }
 
@@ -231,7 +259,7 @@ export class UnitBatches {
     const key = `${src.uuid}:${alpha}`;
     let m = this.materials.get(key);
     if (!m) {
-      const c = this.own((src as THREE.MeshStandardMaterial).clone());
+      const c = this.own(withUnitFx((src as THREE.MeshStandardMaterial).clone()));
       if (alpha < 1) {
         c.transparent = true;
         c.opacity = alpha;

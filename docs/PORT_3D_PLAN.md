@@ -134,9 +134,26 @@ Planned scope:
 - Ground: grass with variation, road pieces, river and bridges (Town 2), decor.
 - Static scenery merged or instanced so the town costs tens of draw calls, not hundreds.
 
-### Phase 4 — gameplay visuals to parity (L)
+### Phase 4 — gameplay visuals to parity (L) — done 2026-11-15
 
-Gems, arrows/axes/boulders, HP bars, halos, rank chevrons, hit flash and death fade (per-instance
+Result: `Effects` (arrows, spinning axes, telegraphs, shockwaves, charge line, flail ring, rally
+pulse), `Labels` (HTML damage numbers, floating text, building HP bars, role icons, rank
+chevrons), `unitFx` shader patch (per-instance hit flash and opacity), `DebugOverlay3D`, building
+hit shake/flash, camera shake. `Renderer.screenOf` lets `tools/playtest.mjs` crop either renderer;
+`playtest.mjs "look=3d&seed=42"` gives the same run as the sprite renderer.
+
+- Differences from the sprite renderer: corpses sink into the ground instead of fading (instanced
+  opaque meshes cannot fade without sorting), and hurt friendlies blink white instead of turning
+  half transparent. Ghosts still flicker in opacity.
+- Boulders have no projectile in the sim (warning, then impact), so 3D shows the telegraph, a
+  shockwave and a dust burst, like the sprites.
+- Fixed while checking: the arrow/axe models were not preloaded, which stopped the 3D session from
+  starting; the host no longer throws every frame after a failed start.
+- Measuring: 4× CPU throttle numbers on this machine swing widely between identical runs (300
+  monsters: 10–23 ms; the sim's own time, the same work, varied 2.5×), so they can no longer show
+  small changes. The phone is the reference.
+
+Planned scope: gems, arrows/axes/boulders, HP bars, halos, rank chevrons, hit flash and death fade (per-instance
 attributes), ghost flicker, role auras and planning highlight, building picking, boss telegraphs,
 shockwaves, charge line, flail ring, floating text and damage numbers, camera shake. Debug
 overlays (flow fields, hitboxes, ranges, labels).

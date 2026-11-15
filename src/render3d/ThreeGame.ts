@@ -11,6 +11,7 @@ import { createSession, getProfile, type SessionData } from '../game/session';
 import type { World } from '../sim/world';
 import { ModelLibrary } from './assets';
 import { characterModelPaths } from './characters';
+import { EFFECT_MODELS } from './Effects';
 import { Stage } from './Stage';
 import { ThreeRenderer } from './ThreeRenderer';
 import { TOWN_MODELS } from './buildings';
@@ -21,7 +22,7 @@ export async function startThreeGame(root: HTMLElement) {
   const silhouettes = q.get('sil') !== '0';
   const stage = new Stage(root, { shadows: q.get('shadows') !== '0', maxPixelRatio: Number(q.get('dpr') ?? 2) });
   const library = new ModelLibrary();
-  await library.load([...characterModelPaths(), ...TOWN_MODELS]);
+  await library.load([...characterModelPaths(), ...TOWN_MODELS, ...EFFECT_MODELS]);
   // Stress runs skip the menu and planning, and the knight cannot die.
   const search = stress > 0 ? `${location.search}&god=1&plan=0` : location.search;
 
@@ -52,9 +53,11 @@ export async function startThreeGame(root: HTMLElement) {
       pendingRestart = null;
       start(d);
     }
+    // A session that failed to start has thrown already; don't throw again every frame.
+    if (!controller || !renderer || !world) return;
     const t0 = performance.now();
-    controller!.update(now - last);
-    meter.frame(now - last, performance.now() - t0, renderer!.perf(), world!);
+    controller.update(now - last);
+    meter.frame(now - last, performance.now() - t0, renderer.perf(), world);
     last = now;
   };
   requestAnimationFrame(frame);

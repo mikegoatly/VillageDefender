@@ -116,6 +116,12 @@ export class PhaserRenderer implements Renderer {
     this.debugOverlay?.update(world, overlays);
   }
 
+  screenOf(ground: Vec2): Vec2 {
+    const p = this.toScreen(ground.x, ground.y);
+    const cam = this.scene.cameras.main;
+    return { x: (p.x - cam.worldView.x) * cam.zoom, y: (p.y - cam.worldView.y) * cam.zoom };
+  }
+
   stats(): RendererStats {
     const zoom = this.scene.cameras.main.zoom;
     return { zoom, charPx: 80 * (this.charScale('knight') * sheetMeta(this.scene, 'knight').pixelsPerUnit / 120) * zoom };

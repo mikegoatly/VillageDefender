@@ -22,6 +22,7 @@ export function fakeRenderer() {
     setRole: vi.fn<Renderer['setRole']>(),
     knightWeaponChanged: vi.fn<Renderer['knightWeaponChanged']>(),
     updateDebugOverlay: vi.fn<Renderer['updateDebugOverlay']>(),
+    screenOf: vi.fn<Renderer['screenOf']>((g) => g),
     stats: vi.fn<Renderer['stats']>(() => ({ zoom: 1, charPx: 50 })),
     destroy: vi.fn<Renderer['destroy']>(),
   } satisfies Renderer;
