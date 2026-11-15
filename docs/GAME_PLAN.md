@@ -154,7 +154,7 @@ Start with town 1 only. The rest are content once the engine is data-driven.
 
 ## 4. Art & assets (scan results)
 
-Asset root: `Kenney Game Assets` (all CC0).
+Asset root: a local copy of the Kenney Game Assets bundle, passed to the tools as `KENNEY_ROOT` (all CC0).
 
 ### 4.1 Environment — Sketch packs
 

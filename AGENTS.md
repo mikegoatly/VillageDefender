@@ -15,7 +15,7 @@
 ## Project pointers
 
 - Plan and decisions: `docs/GAME_PLAN.md`.
-- Commands: `npm run dev`, `npm test`, `npm run build`, `npm run import-assets`,
+- Commands: `npm run dev`, `npm test`, `npm run build`, `npm run import-assets` (needs `KENNEY_ROOT` set to the local Kenney assets folder),
   `npm run bake`, `node tools/screenshot.mjs "<query>"` (needs dev server on 5173),
   `node tools/playtest.mjs "<query>" <seconds> <shots>` (scripted play via `window.__vd`,
   saves `screenshots/playtest-N.png` and `-close.png`, needs dev server).

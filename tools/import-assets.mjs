@@ -2,16 +2,17 @@
 // Kenney assets are CC0, so copies are committed; this script documents provenance
 // and makes re-importing (or adding packs) repeatable.
 //
-// Usage: npm run import-assets            (uses default KENNEY_ROOT)
-//        KENNEY_ROOT=... npm run import-assets
+// Usage: KENNEY_ROOT="<path to your Kenney Game Assets folder>" npm run import-assets
 
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const root =
-  process.env.KENNEY_ROOT ??
-  'Kenney Game Assets';
+const root = process.env.KENNEY_ROOT;
 
+if (!root) {
+  console.error('Set KENNEY_ROOT to your local Kenney Game Assets folder.');
+  process.exit(1);
+}
 if (!existsSync(root)) {
   console.error(`Kenney asset root not found: ${root}`);
   process.exit(1);
