@@ -1,6 +1,6 @@
 // Renderer implementation that draws the world in real time with three.js and the Kenney models.
-// Phase 2 of docs/PORT_3D_PLAN.md: units, town and gems. Effects, auras, role buildings and debug
-// overlays are still no-ops here (phases 3–4).
+// Units, town (role buildings, damage states, auras), smoke and gems. Combat effects and debug
+// overlays are still no-ops here (phase 4 of docs/PORT_3D_PLAN.md).
 
 import * as THREE from 'three';
 import { ISO_HX } from '../sim/iso';
@@ -12,6 +12,7 @@ import type { SimEvent, World } from '../sim/world';
 import type { OverlayName } from '../ui/DebugPanel';
 import type { ModelLibrary } from './assets';
 import { ELEVATION, fitView } from './camera';
+import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
 import { CHAR_HEIGHT, CHAR_SCALE, UnitBatches } from './UnitBatches';
@@ -35,6 +36,7 @@ export class ThreeRenderer implements Renderer {
   private readonly root = new THREE.Group();
   private readonly town: TownView;
   private readonly units: UnitBatches;
+  private readonly particles = new Particles();
   private readonly gems: THREE.InstancedMesh;
   private readonly gemM = new THREE.Matrix4();
   private readonly handlers: ((g: Vec2) => void)[] = [];
@@ -43,12 +45,12 @@ export class ThreeRenderer implements Renderer {
 
   constructor(private readonly stage: Stage, library: ModelLibrary, world: World, opts: ThreeRendererOptions) {
     stage.setView(fitView(world.map));
-    this.town = new TownView(library, world.map);
+    this.town = new TownView(library, world.map, this.particles);
     this.units = new UnitBatches(library, { silhouettes: opts.silhouettes });
     this.gems = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.1), new THREE.MeshBasicMaterial({ color: 0x4fe0a0 }), MAX_GEMS);
     this.gems.frustumCulled = false;
     this.gems.count = 0;
-    this.root.add(this.town.root, this.units.root, this.gems);
+    this.root.add(this.town.root, this.units.root, this.gems, this.particles.mesh);
     stage.scene.add(this.root);
     stage.canvas.addEventListener('pointerdown', this.onPointerDown);
   }
@@ -58,6 +60,7 @@ export class ThreeRenderer implements Renderer {
     this.clock += dt;
     this.units.sync(world, dt);
     this.town.sync(world.buildings);
+    this.particles.update(dt);
     this.syncGems(world);
     const draw = this.stage.render();
     this.lastPerf = { renderMs: performance.now() - t0, calls: draw.calls, triangles: draw.triangles, units: this.units.size };
@@ -71,8 +74,8 @@ export class ThreeRenderer implements Renderer {
     this.handlers.push(handler);
   }
 
-  setPlanning(_on: boolean) {
-    // Phase 4: role auras.
+  setPlanning(on: boolean) {
+    this.town.setPlanning(on);
   }
 
   highlightBuilding(id: number) {
@@ -80,7 +83,7 @@ export class ThreeRenderer implements Renderer {
   }
 
   setRole(_id: number, _role: RoleKind | null) {
-    // Phase 3: role buildings get their own kit pieces.
+    // Nothing to do: TownView rebuilds a building when its role in the sim changes.
   }
 
   knightWeaponChanged() {
@@ -106,6 +109,7 @@ export class ThreeRenderer implements Renderer {
     this.root.removeFromParent();
     this.town.dispose();
     this.units.dispose();
+    this.particles.dispose();
     this.gems.geometry.dispose();
     (this.gems.material as THREE.Material).dispose();
     this.gems.dispose();

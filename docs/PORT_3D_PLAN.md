@@ -104,7 +104,26 @@ Planned scope:
   fit, building → piece list.
 - Remove the spike file and `tools/spike3d-measure.mjs` (keep the measuring as a proper tool).
 
-### Phase 3 — town (L)
+### Phase 3 — town (L) — done 2026-11-15, with two items moved
+
+Result: `src/render3d/buildings.ts` holds the piece rules (tested in
+`tests/render3d/buildingLooks.test.ts`), `TownView` rebuilds a building when its role or damage
+state changes, `Particles` does smoke and dust.
+
+- Roles: barracks = battlements, red banners, pennant, weapon rack; chapel = tall red roof, cross,
+  candles; smithy = smoking chimney, anvil; watchtower = extra storey, blue castle roofs, flag.
+- Damage: below half HP some walls swap to broken pieces and dark smoke rises; ruins become low
+  walls and debris with a dust burst.
+- Ground: noise-shaded grass, kit road pieces, river and wooden bridges, sparse grass tufts.
+- Role auras (planned for phase 4) came early: strong while planning, faint in play.
+- Moved to phase 5: semantic blocks in `map.ts`. The sprite renderer still needs the Sketch tile
+  names until it is deleted, and the 3D side only needs footprint, kind and storeys, so the change
+  is simplest when Sketch goes.
+- Not done: merging static scenery. Each building piece is still its own draw call (about 250
+  calls in wave 1); performance is fine on the test phone, so this waits until it is needed.
+- Measured: 300 monsters 1.0 ms/frame, 10.1 ms at 4× CPU throttle (was 8.1 ms in phase 2).
+
+Planned scope:
 
 - `map.ts` stops emitting Sketch tile names: blocks become semantic (`wall | door | window | roof`,
   material, level). RNG call order is kept so seeds and the golden fingerprint do not change.

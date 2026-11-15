@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildingPieces, decorPiece, ROCK, wallLevels, type Piece } from '../../src/render3d/TownView';
+import { buildingPieces, decorPiece, ROCK, wallLevels, type Piece } from '../../src/render3d/buildings';
 import { aBuilding, aDecor } from '../helpers/town3d';
 
 const walls = (ps: Piece[]) => ps.filter((p) => p.model.includes('/wall'));

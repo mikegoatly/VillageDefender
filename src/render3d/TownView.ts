@@ -1,202 +1,290 @@
-// Ground, buildings and decor built from Kenney Fantasy Town Kit pieces.
-// Phase 2 (docs/PORT_3D_PLAN.md) reads the Sketch block data the sim still emits; phase 3 replaces
-// it with semantic pieces, role buildings and real damage states.
+// Ground, buildings, decor and role auras, built from Kenney kit pieces (rules in buildings.ts).
+// A building is rebuilt whenever its role or damage state changes.
 
 import * as THREE from 'three';
-import { Ground, type Building, type Decor, type TownMap } from '../sim/map';
+import { BUILDING } from '../data/balance';
+import { ROLES, type RoleKind } from '../data/roles';
+import { Ground, type Building, type TownMap } from '../sim/map';
 import type { BuildingState } from '../sim/world';
 import { markOccluder, type ModelLibrary } from './assets';
+import {
+  auraCells, buildingPieces, decorPiece, hash01, ROCK, smokeSources,
+  type BuildingLook, type DamageState, type Piece, type SmokeSource,
+} from './buildings';
+import type { EmitterSpec, Particles } from './Particles';
 
-/** A model placed in the town (world units; rotY about +Y). */
-export interface Piece {
-  model: string;
-  x: number;
-  y: number;
-  z: number;
-  rotY: number;
-  scale?: number;
-}
-
-/** Not a GLB: decor rocks are a generated mesh. */
-export const ROCK = 'rock';
-
-export const TOWN_MODELS = [
-  'wall', 'wall-door', 'wall-window-shutters', 'wall-wood', 'wall-wood-door', 'wall-wood-window-shutters',
-  'roof-gable', 'roof-point', 'roof-high-point', 'tree', 'stall-red',
-].map((m) => `fantasy-town/${m}`);
-
-// Fantasy Town wall pieces sit on the +X edge of their cell; rotations turn them to the other edges.
-const EDGE = { px: 0, pz: -Math.PI / 2, nx: Math.PI, nz: Math.PI / 2 };
-
-/** Wall levels: houses have their walls below a roof block; towers are two blocks of wall. */
-export function wallLevels(b: Building): number {
-  const top = Math.max(...b.blocks.map((bl) => bl.level));
-  return b.kind === 'tower' ? top : Math.max(1, top - 1);
-}
-
-/**
- * The pieces of one building: a wall on every outside edge of every cell at every level (none
- * between the building's own cells), one door on the camera-facing (+X) side of the front cell,
- * windows on the camera-facing sides, and a roof on every cell.
- */
-export function buildingPieces(b: Building): Piece[] {
-  const has = (i: number, j: number) => b.cells.some(([ci, cj]) => ci === i && cj === j);
-  const tower = b.kind === 'tower';
-  const wall = !tower && b.id % 2 === 1 ? 'fantasy-town/wall-wood' : 'fantasy-town/wall';
-  const facing = tower ? wall : `${wall}-window-shutters`;
-  const levels = wallLevels(b);
-  const frontI = Math.max(...b.cells.map(([i]) => i));
-  const roof = tower ? 'fantasy-town/roof-high-point' : b.cells.length === 1 ? 'fantasy-town/roof-point' : 'fantasy-town/roof-gable';
-  const out: Piece[] = [];
-  let door = false;
-  for (const [i, j] of b.cells) {
-    for (let y = 0; y < levels; y++) {
-      if (!has(i + 1, j)) {
-        const isDoor: boolean = !door && y === 0 && i === frontI;
-        door ||= isDoor;
-        out.push({ model: isDoor ? `${wall}-door` : facing, x: i, y, z: j, rotY: EDGE.px });
-      }
-      if (!has(i, j + 1)) out.push({ model: facing, x: i, y, z: j, rotY: EDGE.pz });
-      if (!has(i - 1, j)) out.push({ model: wall, x: i, y, z: j, rotY: EDGE.nx });
-      if (!has(i, j - 1)) out.push({ model: wall, x: i, y, z: j, rotY: EDGE.nz });
-    }
-    out.push({ model: roof, x: i, y: levels, z: j, rotY: 0 });
-  }
-  return out;
-}
-
-/** Trees, the well (a market stall for now) and rocks, with a stable pseudo-random turn and size. */
-export function decorPiece(d: Decor): Piece {
-  const turn = ((d.i * 7 + d.j * 13) % 8) * (Math.PI / 4);
-  if (d.tile.includes('tree')) return { model: 'fantasy-town/tree', x: d.i, y: 0, z: d.j, rotY: turn, scale: 0.9 + ((d.i * 3 + d.j) % 4) * 0.1 };
-  if (d.tile.includes('well')) return { model: 'fantasy-town/stall-red', x: d.i, y: 0, z: d.j, rotY: 0 };
-  return { model: ROCK, x: d.i, y: 0.15, z: d.j, rotY: turn };
-}
-
-const GROUND_COLORS = { grass: 0x8fc66a, path: 0xd8b98a, water: 0x5fa8d8, bridge: 0x9a6b44 };
+/** Aura tile colours (same as the sprite renderer): chapel gold, smithy orange, watchtower blue. */
+const AURA_COLORS: Record<RoleKind, number> = { barracks: 0xffffff, chapel: 0xfff27a, smithy: 0xff7a2e, watchtower: 0x4f9dff };
+const AURA_OPACITY = { planning: 0.38, playing: 0.1 };
+const SMOKE: Record<SmokeSource['kind'], Omit<EmitterSpec, 'x' | 'y' | 'z'>> = {
+  chimney: { every: 0.4, color: 0xb0aaa4, size: 0.14, rise: 0.5, life: 2.4 },
+  fire: { every: 0.14, color: 0x5b4a44, size: 0.2, rise: 0.8, life: 1.8 },
+};
+const DUST = 0xc9b29b;
 const DAMAGED = new THREE.Color(0x8f6f60);
-const RUINED = 0x6f5a50;
 const HIGHLIGHT = 0x5a4818;
 
+const GRASS = 0x8fc66a;
+const WATER = 0x4f9fd6;
+/** Non-blocking ground clutter: [model, chance weight, scale]. */
+const SCATTER: [string, number, number][] = [
+  ['survival/grass', 0.5, 1.4], ['survival/grass-large', 0.3, 1.2], ['mini-forest/plant', 0.2, 1.0],
+];
+const SCATTER_CHANCE = 0.16;
+
 interface BuildingView {
-  group: THREE.Group;
+  def: Building;
+  group: THREE.Group | null;
   materials: THREE.MeshStandardMaterial[];
-  ruined: boolean;
+  look: BuildingLook | null;
+  emitters: EmitterSpec[];
   lastFrac: number;
 }
 
 export class TownView {
   readonly root = new THREE.Group();
-  private readonly buildings: BuildingView[];
+  private readonly views: BuildingView[];
   private readonly owned: { dispose(): void }[] = [];
+  private readonly instanced: THREE.InstancedMesh[] = [];
+  private readonly aura: THREE.InstancedMesh;
+  private auraKey = '';
+  private planning = false;
   private highlighted = -1;
 
-  constructor(private readonly library: ModelLibrary, map: TownMap) {
-    this.root.add(this.makeGround(map));
-    this.buildings = map.buildings.map((b) => this.makeBuilding(b));
-    const rockGeo = this.own(new THREE.DodecahedronGeometry(0.35));
-    const rockMat = this.own(new THREE.MeshStandardMaterial({ color: 0x9a948c, flatShading: true }));
-    markOccluder(rockMat);
-    for (const d of map.decor) {
-      const p = decorPiece(d);
-      const o = p.model === ROCK ? new THREE.Mesh(rockGeo, rockMat) : this.library.clone(p.model);
-      if (p.model === ROCK) o.castShadow = true;
-      this.placePiece(o, p);
-      this.root.add(o);
-    }
+  constructor(private readonly library: ModelLibrary, private readonly map: TownMap, private readonly particles: Particles) {
+    this.makeGround();
+    this.makeDecor();
+    this.views = map.buildings.map((def) => ({ def, group: null, materials: [], look: null, emitters: [], lastFrac: 1 }));
+
+    // Role auras: one flat quad per covered cell, coloured per role.
+    const cap = Math.max(1, map.size * map.size);
+    this.aura = new THREE.InstancedMesh(
+      this.own(new THREE.PlaneGeometry(0.96, 0.96).rotateX(-Math.PI / 2)),
+      this.own(new THREE.MeshBasicMaterial({ transparent: true, opacity: AURA_OPACITY.playing, depthWrite: false })),
+      cap,
+    );
+    this.aura.count = 0;
+    this.aura.frustumCulled = false;
+    this.aura.renderOrder = 1;
+    this.root.add(this.aura);
   }
 
-  /** Darkens buildings with damage; flattens ruins (placeholder until phase 3's ruin pieces). */
+  /** Rebuilds buildings whose role or damage state changed; darkens with damage. */
   sync(states: BuildingState[]) {
-    for (const b of states) {
-      const v = this.buildings[b.id];
-      if (!v || v.ruined) continue;
-      if (b.ruined) {
-        v.ruined = true;
-        v.group.scale.y = 0.22;
-        for (const m of v.materials) {
-          m.color.setHex(RUINED);
-          m.emissive.setHex(0);
-        }
-        continue;
+    for (const s of states) {
+      const v = this.views[s.id];
+      if (!v) continue;
+      const frac = Math.max(0, s.hp / s.maxHp);
+      const damage: DamageState = s.ruined ? 'ruined' : frac < BUILDING.damagedAt ? 'damaged' : 'intact';
+      if (!v.look || v.look.damage !== damage || v.look.role !== s.role) {
+        const wasStanding = v.look && v.look.damage !== 'ruined';
+        this.rebuild(v, { role: s.role, damage });
+        if (damage === 'ruined' && wasStanding) this.dustBurst(v.def);
+        v.lastFrac = -1;
       }
-      const frac = Math.max(0, b.hp / b.maxHp);
-      if (frac === v.lastFrac) continue;
-      v.lastFrac = frac;
-      for (const m of v.materials) m.color.setHex(0xffffff).lerp(DAMAGED, 1 - frac);
+      if (damage !== 'ruined' && frac !== v.lastFrac) {
+        v.lastFrac = frac;
+        for (const m of v.materials) m.color.setHex(0xffffff).lerp(DAMAGED, 1 - frac);
+      }
     }
+    this.syncAura(states);
+  }
+
+  /** Planning shows auras strongly; during play they stay faint. */
+  setPlanning(on: boolean) {
+    this.planning = on;
+    (this.aura.material as THREE.MeshBasicMaterial).opacity = on ? AURA_OPACITY.planning : AURA_OPACITY.playing;
   }
 
   /** Planning selection glow (-1 clears). */
   highlight(id: number) {
     if (id === this.highlighted) return;
-    const set = (i: number, hex: number) => {
-      const v = this.buildings[i];
-      if (v && !v.ruined) for (const m of v.materials) m.emissive.setHex(hex);
-    };
-    set(this.highlighted, 0);
-    set(id, HIGHLIGHT);
+    const prev = this.highlighted;
     this.highlighted = id;
+    for (const i of [prev, id]) if (this.views[i]) this.applyHighlight(this.views[i]);
   }
 
   dispose() {
     this.root.removeFromParent();
+    for (const v of this.views) {
+      for (const e of v.emitters) this.particles.removeEmitter(e);
+      for (const m of v.materials) m.dispose();
+    }
+    for (const im of this.instanced) im.dispose();
     for (const o of this.owned) o.dispose();
   }
 
-  private makeGround(map: TownMap): THREE.InstancedMesh {
-    const cells: [number, number, Ground][] = [];
-    for (let j = 0; j < map.size; j++) {
-      for (let i = 0; i < map.size; i++) {
-        const g = map.ground[j * map.size + i] as Ground;
-        if (g !== Ground.None) cells.push([i, j, g]);
-      }
-    }
-    const mesh = new THREE.InstancedMesh(
-      this.own(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)), this.own(new THREE.MeshLambertMaterial()), cells.length,
-    );
-    mesh.receiveShadow = true;
-    const m = new THREE.Matrix4();
-    const c = new THREE.Color();
-    cells.forEach(([i, j, g], n) => {
-      m.makeTranslation(i, g === Ground.Water ? -0.08 : 0, j);
-      mesh.setMatrixAt(n, m);
-      const path = i === map.centre || j === map.centre;
-      const base = g === Ground.Water ? GROUND_COLORS.water : g === Ground.Bridge ? GROUND_COLORS.bridge : path ? GROUND_COLORS.path : GROUND_COLORS.grass;
-      // Checker shading so the grid still reads.
-      mesh.setColorAt(n, c.setHex(base).multiplyScalar((i + j) % 2 ? 1 : 0.94));
-    });
-    return mesh;
-  }
+  // ------------------------------------------------------------------ buildings
 
-  private makeBuilding(b: Building): BuildingView {
+  private rebuild(v: BuildingView, look: BuildingLook) {
+    if (v.group) this.root.remove(v.group);
+    for (const m of v.materials) m.dispose();
+    for (const e of v.emitters) this.particles.removeEmitter(e);
+
     const group = new THREE.Group();
-    for (const p of buildingPieces(b)) {
-      const o = this.library.clone(p.model);
-      this.placePiece(o, p);
-      group.add(o);
-    }
+    for (const p of buildingPieces(v.def, look)) group.add(this.place(this.library.clone(p.model), p));
     // Own materials so this building can darken and glow on its own.
     const cloned = new Map<THREE.Material, THREE.MeshStandardMaterial>();
     group.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       const src = mesh.material as THREE.MeshStandardMaterial;
-      if (!cloned.has(src)) cloned.set(src, this.own(src.clone()));
+      if (!cloned.has(src)) cloned.set(src, src.clone());
       mesh.material = cloned.get(src)!;
     });
     this.root.add(group);
-    return { group, materials: [...cloned.values()], ruined: false, lastFrac: 1 };
+    v.group = group;
+    v.materials = [...cloned.values()];
+    v.look = look;
+    v.emitters = smokeSources(v.def, look).map((s) => this.particles.addEmitter({ x: s.x, y: s.y, z: s.z, ...SMOKE[s.kind] }));
+    this.applyHighlight(v);
   }
 
-  private placePiece(o: THREE.Object3D, p: Piece) {
-    o.position.set(p.x, p.y, p.z);
+  private applyHighlight(v: BuildingView) {
+    const on = v.def.id === this.highlighted && v.look?.damage !== 'ruined';
+    for (const m of v.materials) m.emissive.setHex(on ? HIGHLIGHT : 0);
+  }
+
+  private dustBurst(b: Building) {
+    for (const [i, j] of b.cells) this.particles.burst(i, 0.4, j, 10, DUST, 0.32, 1.6, 1.3);
+  }
+
+  private syncAura(states: BuildingState[]) {
+    // Rebuild only when the set of live role buildings changes.
+    const live = states.filter((s) => s.role && !s.ruined && ROLES[s.role].radius > 0);
+    const key = live.map((s) => `${s.id}:${s.role}`).join(',');
+    if (key === this.auraKey) return;
+    this.auraKey = key;
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    let n = 0;
+    for (const s of live) {
+      const role = s.role!;
+      for (const [i, j] of auraCells(this.views[s.id].def, ROLES[role].radius)) {
+        if (i < 0 || j < 0 || i >= this.map.size || j >= this.map.size || this.map.ground[j * this.map.size + i] === Ground.None) continue;
+        if (n >= this.aura.instanceMatrix.count) break;
+        this.aura.setMatrixAt(n, m.makeTranslation(i, 0.05, j));
+        this.aura.setColorAt(n, c.setHex(AURA_COLORS[role]));
+        n++;
+      }
+    }
+    this.aura.count = n;
+    this.aura.instanceMatrix.needsUpdate = true;
+    if (this.aura.instanceColor) this.aura.instanceColor.needsUpdate = true;
+    this.setPlanning(this.planning);
+  }
+
+  // ------------------------------------------------------------------ ground and decor
+
+  private makeGround() {
+    const map = this.map;
+    const at = (i: number, j: number) => map.ground[j * map.size + i] as Ground;
+    const grass: [number, number][] = [];
+    const water: THREE.Matrix4[] = [];
+    const roads: THREE.Matrix4[] = [];
+    const bridges: THREE.Matrix4[] = [];
+    const scatter = new Map<string, THREE.Matrix4[]>();
+    for (let j = 0; j < map.size; j++) {
+      for (let i = 0; i < map.size; i++) {
+        const g = at(i, j);
+        if (g === Ground.None) continue;
+        if (g === Ground.Water || g === Ground.Bridge) {
+          water.push(new THREE.Matrix4().makeTranslation(i, -0.12, j));
+          if (g === Ground.Bridge) bridges.push(new THREE.Matrix4().makeTranslation(i, -0.1, j));
+          continue;
+        }
+        grass.push([i, j]);
+        if (g === Ground.Road) roads.push(new THREE.Matrix4().makeTranslation(i, 0, j));
+        else if (map.blocked[j * map.size + i] === 0) this.scatterOn(i, j, scatter);
+      }
+    }
+
+    // Grass: one quad per cell, colour varied with smooth noise so it reads as a meadow, not a grid.
+    const ground = new THREE.InstancedMesh(
+      this.own(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)), this.own(new THREE.MeshLambertMaterial()), Math.max(1, grass.length),
+    );
+    ground.receiveShadow = true;
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    grass.forEach(([i, j], n) => {
+      ground.setMatrixAt(n, m.makeTranslation(i, 0, j));
+      const shade = 0.9 + 0.12 * smoothNoise(i / 4, j / 4) + 0.03 * hash01(i, j, 7);
+      ground.setColorAt(n, c.setHex(GRASS).multiplyScalar(shade));
+    });
+    ground.count = grass.length;
+    this.instanced.push(ground);
+    this.root.add(ground);
+
+    if (water.length) {
+      const w = new THREE.InstancedMesh(
+        this.own(new THREE.PlaneGeometry(1.02, 1.02).rotateX(-Math.PI / 2)),
+        this.own(new THREE.MeshLambertMaterial({ color: WATER })), water.length,
+      );
+      water.forEach((t, k) => w.setMatrixAt(k, t));
+      w.receiveShadow = true;
+      this.instanced.push(w);
+      this.root.add(w);
+    }
+    this.addInstanced('fantasy-town/road', roads);
+    this.addInstanced('mini-forest/bridge', bridges, true);
+    for (const [model, ts] of scatter) this.addInstanced(model, ts);
+  }
+
+  /** Maybe one small plant or stone on a free grass cell, placed by hash (same every session). */
+  private scatterOn(i: number, j: number, out: Map<string, THREE.Matrix4[]>) {
+    if (hash01(i, j, 11) >= SCATTER_CHANCE) return;
+    let pick = hash01(i, j, 12);
+    const entry = SCATTER.find(([, w]) => (pick -= w) < 0) ?? SCATTER[0];
+    const [model, , scale] = entry;
+    const t = new THREE.Matrix4().compose(
+      new THREE.Vector3(i + (hash01(i, j, 13) - 0.5) * 0.7, 0, j + (hash01(i, j, 14) - 0.5) * 0.7),
+      new THREE.Quaternion().setFromAxisAngle(THREE.Object3D.DEFAULT_UP, hash01(i, j, 15) * Math.PI * 2),
+      new THREE.Vector3().setScalar(scale * (0.85 + hash01(i, j, 16) * 0.3)),
+    );
+    if (!out.has(model)) out.set(model, []);
+    out.get(model)!.push(t);
+  }
+
+  private makeDecor() {
+    const rockGeo = this.own(new THREE.DodecahedronGeometry(0.35));
+    const rockMat = this.own(new THREE.MeshStandardMaterial({ color: 0x9a948c, flatShading: true }));
+    markOccluder(rockMat);
+    for (const d of this.map.decor) {
+      const p = decorPiece(d);
+      const o = p.model === ROCK ? new THREE.Mesh(rockGeo, rockMat) : this.library.clone(p.model);
+      o.castShadow = true;
+      this.root.add(this.place(o, p));
+    }
+  }
+
+  private addInstanced(model: string, transforms: THREE.Matrix4[], castShadow = false) {
+    if (!transforms.length) return;
+    const g = this.library.instanced(model, transforms, castShadow);
+    g.traverse((o) => { if ((o as THREE.InstancedMesh).isInstancedMesh) this.instanced.push(o as THREE.InstancedMesh); });
+    this.root.add(g);
+  }
+
+  private place(o: THREE.Object3D, p: Piece): THREE.Object3D {
+    const out = p.out ?? 0;
+    o.position.set(p.x + Math.cos(p.rotY) * out, p.y, p.z - Math.sin(p.rotY) * out);
     o.rotation.y = p.rotY;
     if (p.scale) o.scale.setScalar(p.scale);
+    return o;
   }
 
   private own<T extends { dispose(): void }>(o: T): T {
     this.owned.push(o);
     return o;
   }
+}
+
+/** Smooth value noise in about [-0.5, 0.5]. */
+function smoothNoise(x: number, y: number): number {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const fx = x - xi, fy = y - yi;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const v = (a: number, b: number) => hash01(a, b, 99) - 0.5;
+  const top = v(xi, yi) * (1 - sx) + v(xi + 1, yi) * sx;
+  const bottom = v(xi, yi + 1) * (1 - sx) + v(xi + 1, yi + 1) * sx;
+  return top * (1 - sy) + bottom * sy;
 }

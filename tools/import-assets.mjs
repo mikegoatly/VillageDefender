@@ -42,6 +42,8 @@ const modelPacks = [
     files: [
       'character-zombie', 'character-skeleton', 'character-ghost', 'character-vampire',
       'character-keeper',
+      // Town props (role buildings, ruins).
+      'cross', 'candle-multiple', 'debris', 'debris-wood',
     ],
   },
   {
@@ -52,12 +54,12 @@ const modelPacks = [
   {
     src: '3D assets/Mini Forest/Models/GLB format',
     dest: 'mini-forest',
-    files: ['character-archer', 'weapon-bow', 'weapon-arrow'],
+    files: ['character-archer', 'weapon-bow', 'weapon-arrow', 'bridge', 'plant'],
   },
   {
     src: '3D assets/Mini Arena/Models/GLB format',
     dest: 'mini-arena',
-    files: ['character-soldier', 'weapon-sword', 'weapon-spear'],
+    files: ['character-soldier', 'weapon-sword', 'weapon-spear', 'weapon-rack'],
   },
   {
     src: 'Early access/Medieval Weapons/Models/GLB format',
@@ -72,7 +74,18 @@ const modelPacks = [
       'wall-wood', 'wall-wood-door', 'wall-wood-window-shutters', 'wall-wood-corner',
       'roof-gable', 'roof-gable-end', 'roof-point', 'roof-high-point', 'roof',
       'tree', 'tree-high', 'fence', 'road', 'chimney', 'lantern', 'stall-red',
+      'wall-broken', 'wall-wood-broken', 'wall-half', 'wall-wood-half', 'roof-high-gable', 'banner-red',
     ],
+  },
+  {
+    src: '3D assets/Castle Kit/Models/GLB format',
+    dest: 'castle',
+    files: ['flag', 'flag-pennant', 'tower-square-top', 'tower-square-top-roof'],
+  },
+  {
+    src: '3D assets/Survival Kit/Models/GLB format',
+    dest: 'survival',
+    files: ['workbench-anvil', 'grass', 'grass-large', 'resource-stone', 'resource-planks'],
   },
 ];
 

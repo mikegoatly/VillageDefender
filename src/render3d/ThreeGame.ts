@@ -13,7 +13,7 @@ import { ModelLibrary } from './assets';
 import { characterModelPaths } from './characters';
 import { Stage } from './Stage';
 import { ThreeRenderer } from './ThreeRenderer';
-import { TOWN_MODELS } from './TownView';
+import { TOWN_MODELS } from './buildings';
 
 export async function startThreeGame(root: HTMLElement) {
   const q = new URLSearchParams(location.search);
