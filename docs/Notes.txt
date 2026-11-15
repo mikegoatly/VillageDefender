@@ -1,17 +1,5 @@
 Issues
-* Need to differentiate visually between rookies and veterans
-* Can we use the actual 3d models?
-* Archers can shoot through buildings
-* Can we make the vampires and ghosts more interesting? Ghosts phase in and out of visibility? Vampires can sprint and attack to land the first blow if the player's not careful?
-* Increased "sword" damage/reach - shouldn't mention the sword
-* Soldiers too far away from a boss don't engage
-* Thrown axe is tiny compared to the player's axe! Same for the shot arrows.
-* Flail doesn't repeat attack animation; it does keep doing damage though
-* Big monster never seems interested in attacking the player - fine when they're attacking a building, but if the player gets in the way on the way to a building, maybe they should at least hit them then?
 
 Longer term:
-* Can we use the actual 3d models?
-* We need to redraw the graphics - special tiles for special buildings
-* Upgrades for weapons with coins?
 * Effects for arc attack upgrade?
 * Customise your knight; girl or boy, skin tone
