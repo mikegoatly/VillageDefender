@@ -50,7 +50,7 @@ try {
         if (w.status !== 'playing') break;
       }
     }, ticksPerShot);
-    await page.waitForTimeout(150); // let the renderer draw the synced state
+    await page.waitForTimeout(350); // let the renderer draw the synced state and hit flashes fade
     const stats = await page.evaluate(() => window.__vd.stats());
     const focus = await page.evaluate(() => {
       const sc = window.__vd.scene;
