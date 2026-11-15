@@ -2,7 +2,7 @@
 
 import { DT } from '../data/balance';
 import { MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
-import { updateWarlord } from './boss';
+import { updateBoss } from './boss';
 import { damageBuilding, damageUnit, hurtFriendly } from './combat';
 import type { FlowField } from './flowField';
 import { isWalkable } from './map';
@@ -23,7 +23,7 @@ export function updateMonster(w: World, m: Unit) {
     return;
   }
   // Boss abilities take over the unit while they run.
-  if (m.boss && updateWarlord(w, m, m.boss)) {
+  if (m.boss && updateBoss(w, m, m.boss)) {
     setState(m, m.moving ? 'walk' : 'idle', true);
     return;
   }
@@ -53,10 +53,32 @@ export function updateMonster(w: World, m: Unit) {
       else setState(m, 'idle', true);
       return;
     }
+    // Lunge: a short sprint at a close target.
+    if (def.lunge) {
+      m.lungeCooldown = Math.max(0, m.lungeCooldown - DT);
+      m.lungeTime = Math.max(0, m.lungeTime - DT);
+      if (m.lungeCooldown <= 0 && d <= def.lunge.range) {
+        m.lungeTime = def.lunge.duration;
+        m.lungeCooldown = def.lunge.cooldown;
+      }
+    }
     // The knight field only leads to the knight; rookies are always close, so go straight.
     const useField = !def.phasing && friend.kind === 'knight' && d > 1.5;
-    steer(w, m, useField ? w.knightFlow : null, dx, dy);
+    steer(w, m, useField ? w.knightFlow : null, dx, dy, m.lungeTime > 0 && def.lunge ? def.lunge.speedMul : 1);
     return;
+  }
+
+  // Big wreckers swat anyone standing in their way before carrying on to the buildings.
+  if (def.swatsBlockers && m.attackCooldown <= 0) {
+    const blocker = nearestFriendly(w, m.x, m.y);
+    if (blocker) {
+      const bx = blocker.x - m.x;
+      const by = blocker.y - m.y;
+      if (Math.hypot(bx, by) <= m.radius + blocker.radius + def.attackReach) {
+        startAttack(m, def, { x: bx, y: by }, -1, blocker.id);
+        return;
+      }
+    }
   }
 
   // Building attack: any standing building cell within reach?
@@ -80,7 +102,8 @@ export function updateMonster(w: World, m: Unit) {
     return;
   }
   const near = nearestBuildingCell(w, m);
-  steer(w, m, w.buildingFlow, near ? near[0] - m.x : 0, near ? near[1] - m.y : 0);
+  // Waders path through the river on their own field.
+  steer(w, m, def.wades ? w.wadeFlow : w.buildingFlow, near ? near[0] - m.x : 0, near ? near[1] - m.y : 0);
 }
 
 function startAttack(m: Unit, def: MonsterDef, dir: Vec2, building: number, target: number) {
@@ -123,7 +146,7 @@ function continueAttack(w: World, m: Unit, def: MonsterDef) {
 }
 
 /** Moves along a flow field (or straight along (dx, dy) when field is null or exhausted). */
-function steer(w: World, m: Unit, field: FlowField | null, dx: number, dy: number) {
+function steer(w: World, m: Unit, field: FlowField | null, dx: number, dy: number, speedMul = 1) {
   let sx = dx;
   let sy = dy;
   if (field) {
@@ -139,7 +162,7 @@ function steer(w: World, m: Unit, field: FlowField | null, dx: number, dy: numbe
   }
   // Tar pits: slowed next to buildings.
   const slow = w.progression.mods.town.slow;
-  const speed = m.speed * (slow > 0 && adjacentBuilding(w, m, 0.6) ? 1 - slow : 1);
+  const speed = m.speed * (slow > 0 && adjacentBuilding(w, m, 0.6) ? 1 - slow : 1) * speedMul;
   const dir = norm({ x: sx, y: sy });
   m.x += dir.x * speed * DT;
   m.y += dir.y * speed * DT;
@@ -166,18 +189,27 @@ export function updateFlowFields(w: World) {
     const tj = Math.round(p.y);
     if (ti !== w.knightFlow.targetI || tj !== w.knightFlow.targetJ) w.knightFlow.compute(ti, tj);
   }
+  // The wade field is only needed while a wader is alive (no cost in towns without one).
+  if (w.wadeFlowDirty && w.monsters.some((m) => m.state !== 'dead' && MONSTERS[m.kind as MonsterKind].wades)) {
+    w.wadeFlowDirty = false;
+    w.wadeFlow.computeMulti(buildingSources(w));
+  }
   if (w.buildingFlowDirty) {
     w.buildingFlowDirty = false;
-    // Sources: walkable cells 4-adjacent to any standing building.
-    const sources: [number, number][] = [];
-    for (const b of w.buildings) {
-      if (b.ruined) continue;
-      for (const [i, j] of b.cells) {
-        for (const [di, dj] of NEIGHBOURS) {
-          if (isWalkable(w.map, i + di, j + dj)) sources.push([i + di, j + dj]);
-        }
+    w.buildingFlow.computeMulti(buildingSources(w));
+  }
+}
+
+/** Flow-field sources: walkable cells 4-adjacent to any standing building. */
+function buildingSources(w: World): [number, number][] {
+  const sources: [number, number][] = [];
+  for (const b of w.buildings) {
+    if (b.ruined) continue;
+    for (const [i, j] of b.cells) {
+      for (const [di, dj] of NEIGHBOURS) {
+        if (isWalkable(w.map, i + di, j + dj)) sources.push([i + di, j + dj]);
       }
     }
-    w.buildingFlow.computeMulti(sources);
   }
+  return sources;
 }

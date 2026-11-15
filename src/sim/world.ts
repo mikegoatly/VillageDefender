@@ -6,15 +6,16 @@ import type { MonsterKind } from '../data/monsters';
 import { ROLE_EFFECTS, ROLES, type RoleKind } from '../data/roles';
 import { ARMY, type RookieKind } from '../data/rookies';
 import { COINS } from '../data/towns';
+import { noBoosts, type MetaBoosts } from '../data/shop';
 import type { UpgradeHost } from '../data/upgrades';
 import { TOWN1_WAVES, type WaveDef } from '../data/waves';
-import { WEAPONS, type WeaponDef, type WeaponKind } from '../data/weapons';
+import { rankedWeapon, type WeaponDef, type WeaponKind } from '../data/weapons';
 import type { RunResult } from '../data/achievements';
 import { debugAddRookie, debugEnd, debugGiveUpgrade, debugGiveXp, debugHealKnight, debugInfo, debugJumpToWave, debugKillAll, debugSetBuildingHp, debugSpawn } from './debug';
 import { FlowField } from './flowField';
 import { updateGems } from './gems';
 import { makeKnight, updateKnight, updateRally } from './knight';
-import { generateTown, type Side, type TownMap } from './map';
+import { generateTown, isWadeable, type Side, type TownMap } from './map';
 import { reapMonsters, updateFlowFields, updateMonster } from './monsters';
 import { Pather } from './pather';
 import { integrate, separate } from './physics';
@@ -66,6 +67,9 @@ export class World implements UpgradeHost {
   readonly killsByKind: Record<string, number> = {};
   /** Basic attack; can change during planning (decision 39). */
   weapon: WeaponKind;
+  /** Shop ranks per weapon (decision 49). */
+  readonly weaponRanks: Partial<Record<WeaponKind, number>>;
+  private rankedDef: WeaponDef | null = null;
 
   /** @internal */ nextId = 1;
   /** @internal */ readonly rng: Rng;
@@ -74,6 +78,12 @@ export class World implements UpgradeHost {
   /** Toward the nearest walkable cell next to any standing building. @internal */
   readonly buildingFlow: FlowField;
   /** @internal */ buildingFlowDirty = true;
+  /** Like buildingFlow, but through river water (waders, decision 45). Computed only when a wader is alive. @internal */
+  readonly wadeFlow: FlowField;
+  /** @internal */ wadeFlowDirty = true;
+  /** Permanent shop boosts for this run (decision 43). */
+  readonly boosts: MetaBoosts;
+  private startBoostsApplied = false;
   /** Building id per cell, -1 for none. Ruined buildings keep their cells (rubble blocks). */
   private readonly cellBuilding: Int32Array;
   /** Living monsters only, rebuilt at the start of each tick (targeting and hits). @internal */
@@ -96,10 +106,12 @@ export class World implements UpgradeHost {
 
   constructor(opts: WorldOptions) {
     this.rng = new Rng(opts.seed * 7919 + 17);
-    this.progression = new Progression(new Rng(opts.seed * 104729 + 3));
+    this.progression = new Progression(new Rng(opts.seed * 104729 + 3), opts.cards);
     this.map = opts.map ?? generateTown(opts.seed, opts.mapOptions);
     this.knightFlow = new FlowField(this.map);
     this.buildingFlow = new FlowField(this.map);
+    this.wadeFlow = new FlowField(this.map, isWadeable);
+    this.boosts = { ...noBoosts(), ...opts.boosts };
     this.god = !!opts.god;
     this.noWaves = !!opts.noWaves;
     this.noRookies = !!opts.noRookies;
@@ -110,6 +122,7 @@ export class World implements UpgradeHost {
     this.allowedRoles = opts.allowedRoles ?? (Object.keys(ROLES) as RoleKind[]);
     this.townId = opts.townId ?? 'village';
     this.weapon = opts.weapon ?? 'sword';
+    this.weaponRanks = { ...(opts.weaponRanks ?? {}) };
 
     this.cellBuilding = new Int32Array(this.map.size * this.map.size).fill(-1);
     this.buildings = this.map.buildings.map((b) => {
@@ -118,7 +131,8 @@ export class World implements UpgradeHost {
       const wallBlocks = Math.max(1, b.blocks.length - b.cells.length);
       const hp = BUILDING.baseHp + (wallBlocks - 1) * BUILDING.hpPerExtraBlock;
       for (const [i, j] of b.cells) this.cellBuilding[j * this.map.size + i] = b.id;
-      return { id: b.id, hp, maxHp: hp, baseMaxHp: hp, ruined: false, cells: b.cells, lastHit: -1, shotIn: 0, role: null, towerShotIn: 0 };
+      const max = hp * this.boosts.buildingHpMul;
+      return { id: b.id, hp: max, maxHp: max, baseMaxHp: max, ruined: false, cells: b.cells, lastHit: -1, shotIn: 0, role: null, towerShotIn: 0 };
     });
 
     const c = this.map.centre;
@@ -130,6 +144,7 @@ export class World implements UpgradeHost {
     const first = Math.min(Math.max(1, opts.startWave ?? 1), this.totalWaves);
     this.wave = first - 1;
     this.pending = { wave: first, at: WAVES.firstAt, sides: pickSides(this, first), warned: false };
+    if (this.phase === 'running') this.applyStartBoosts();
   }
 
   // ------------------------------------------------------------------ queries
@@ -206,6 +221,14 @@ export class World implements UpgradeHost {
   /** Ends planning; the first wave's countdown starts now. */
   start() {
     this.phase = 'running';
+    this.applyStartBoosts();
+  }
+
+  /** Start-of-run boosts (once): starting level-ups. Knight and building HP boosts apply at creation. */
+  private applyStartBoosts() {
+    if (this.startBoostsApplied) return;
+    this.startBoostsApplied = true;
+    this.progression.grantLevels(this.boosts.startLevels);
   }
 
   /** Standing buildings with a role. */
@@ -234,11 +257,17 @@ export class World implements UpgradeHost {
 
   /** The living boss, if one is on the field. */
   get boss(): Unit | null {
-    return this.monsters.find((m) => m.kind === 'warlord' && m.state !== 'dead') ?? null;
+    return this.monsters.find((m) => m.boss && m.state !== 'dead') ?? null;
   }
 
+  /** The current weapon at its shop rank (cached; it only changes during planning). */
   get weaponDef(): WeaponDef {
-    return WEAPONS[this.weapon];
+    if (this.rankedDef?.kind !== this.weapon) this.rankedDef = rankedWeapon(this.weapon, this.weaponRanks[this.weapon] ?? 0);
+    return this.rankedDef;
+  }
+
+  get weaponRank(): number {
+    return this.weaponRanks[this.weapon] ?? 0;
   }
 
   /** Kills needed for the next rookie, or null when all thresholds are used. */

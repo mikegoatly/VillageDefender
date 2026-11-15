@@ -70,10 +70,10 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 
 export const UPGRADES: UpgradeDef[] = [
   // ---- knight
-  { id: 'blade', name: 'Sharpened Blade', pool: 'knight', max: 5, describe: () => `+${pct(0.2)} sword damage`, apply: (m) => { m.knight.damageMul += 0.2; } },
+  { id: 'blade', name: 'Sharpened Blade', pool: 'knight', max: 5, describe: () => `+${pct(0.2)} weapon damage`, apply: (m) => { m.knight.damageMul += 0.2; } },
   { id: 'swift', name: 'Swift Strikes', pool: 'knight', max: 5, describe: () => `Swing ${pct(0.1)} faster`, apply: (m) => { m.knight.cooldownMul *= 0.9; } },
   { id: 'arc', name: 'Wide Sweep', pool: 'knight', max: 3, describe: () => `+${pct(0.25)} swing arc`, apply: (m) => { m.knight.arcMul += 0.25; } },
-  { id: 'reach', name: 'Long Reach', pool: 'knight', max: 3, describe: () => `+${pct(0.15)} sword reach`, apply: (m) => { m.knight.rangeMul += 0.15; } },
+  { id: 'reach', name: 'Long Reach', pool: 'knight', max: 3, describe: () => `+${pct(0.15)} weapon reach`, apply: (m) => { m.knight.rangeMul += 0.15; } },
   { id: 'boots', name: 'Fleet Foot', pool: 'knight', max: 3, describe: () => `+${pct(0.1)} move speed`, apply: (m) => { m.knight.speedMul += 0.1; } },
   { id: 'tough', name: 'Toughness', pool: 'knight', max: 5, describe: () => '+25 max HP and heal 25', apply: (m) => { m.knight.maxHpAdd += 25; } }, // raising max HP also adds the 25 to current HP (World.applyMods)
   { id: 'regen', name: 'Second Wind', pool: 'knight', max: 3, describe: () => 'Regenerate 1 HP per second', apply: (m) => { m.knight.regen += 1; } },
@@ -95,6 +95,9 @@ export const UPGRADES: UpgradeDef[] = [
 ];
 
 export const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
+
+/** Cards a new profile can be offered (decision 44); the other 12 unlock via the shop or achievements. */
+export const STARTING_CARDS: string[] = ['blade', 'swift', 'tough', 'boots', 'recruit', 'garrison', 'walls', 'slits'];
 
 /** Modifiers for a set of upgrade levels. */
 export function computeMods(levels: Record<string, number>): Mods {

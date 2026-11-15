@@ -1,21 +1,85 @@
-// Orc Warlord (Town 1 boss, decision 41): the boss abilities, run from the monster update.
+// Boss abilities, run from the monster update. Which set a boss uses comes from its MonsterDef.boss:
+// Orc Warlord (Town 1, decision 41) and River Troll (Town 2, decision 46).
 
 import { DT } from '../data/balance';
-import { BOSS, MONSTERS } from '../data/monsters';
+import { BOSS, MONSTERS, TROLL } from '../data/monsters';
 import type { BossState } from './bossState';
 import { applyKnockback, damageBuilding, hurtFriendly } from './combat';
-import { SIDES } from './map';
+import { Ground, SIDES } from './map';
 import type { BuildingState, Unit } from './model';
 import { adjacentBuilding, nearestFriendly } from './queries';
 import { centreOf } from './units';
 import { spawnMonster } from './waves';
 import type { World } from './world';
 
+/** Runs a boss's abilities; true when an ability controlled the unit this tick. */
+export function updateBoss(w: World, m: Unit, s: BossState): boolean {
+  return s.kind === 'troll' ? updateTroll(w, m, s) : updateWarlord(w, m, s);
+}
+
+/**
+ * River Troll: regenerates while standing in the river, and lobs boulders at buildings in range
+ * (telegraphed on the target, then damages the building and anyone nearby).
+ */
+function updateTroll(w: World, m: Unit, s: BossState): boolean {
+  const k = Math.round(m.y) * w.map.size + Math.round(m.x);
+  if (w.map.ground[k] === Ground.Water) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * TROLL.waterRegen * DT);
+  s.boulderIn -= DT;
+  const bd = TROLL.boulder;
+
+  if (s.ability === 'boulderWindup') {
+    s.abilityTime += DT;
+    m.moving = false;
+    if (s.abilityTime < bd.telegraph) return true;
+    s.ability = 'none';
+    s.boulderIn = bd.every;
+    const b = w.buildings[s.boulderTarget];
+    if (b && !b.ruined) {
+      const [cx, cy] = centreOf(b.cells);
+      w.events.push({ type: 'bossBoulder', unit: m.id, x: cx, y: cy, radius: bd.radius });
+      damageBuilding(w, b, bd.buildingDamage, m);
+      for (const list of [w.players, w.rookies]) {
+        for (const f of list) {
+          if (f.state === 'dead' || Math.hypot(f.x - cx, f.y - cy) > bd.radius + f.radius) continue;
+          hurtFriendly(w, f, bd.unitDamage);
+        }
+      }
+    }
+    return true;
+  }
+
+  if (s.boulderIn <= 0) {
+    // Nearest standing building in range that the troll isn't already wrecking up close.
+    let best = -1;
+    let bestD = bd.range;
+    for (const b of w.buildings) {
+      if (b.ruined) continue;
+      const [cx, cy] = centreOf(b.cells);
+      const d = Math.hypot(cx - m.x, cy - m.y);
+      if (d < bestD && d > 2) {
+        bestD = d;
+        best = b.id;
+      }
+    }
+    if (best >= 0) {
+      const [cx, cy] = centreOf(w.buildings[best].cells);
+      s.ability = 'boulderWindup';
+      s.abilityTime = 0;
+      s.boulderTarget = best;
+      m.facing = { x: (cx - m.x) / bestD, y: (cy - m.y) / bestD };
+      w.events.push({ type: 'bossBoulderWarn', unit: m.id, x: cx, y: cy, radius: bd.radius, time: bd.telegraph });
+      return true;
+    }
+    s.boulderIn = 1;
+  }
+  return false;
+}
+
 /**
  * Runs the Warlord's abilities. Returns true when an ability controlled the unit this tick (the
  * normal monster AI is skipped), false to let the normal building-wrecking AI run.
  */
-export function updateWarlord(w: World, m: Unit, s: BossState): boolean {
+function updateWarlord(w: World, m: Unit, s: BossState): boolean {
   s.slamCd = Math.max(0, s.slamCd - DT);
   s.chargeIn = Math.max(0, s.chargeIn - DT);
   s.summonIn -= DT;

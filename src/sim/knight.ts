@@ -123,6 +123,6 @@ export function updateRally(w: World, input: InputState | undefined) {
 export function makeKnight(w: World, x: number, y: number): Unit {
   return {
     ...unitBase(w.nextId++, x, y),
-    kind: 'knight', team: 'player', radius: KNIGHT.radius, hp: KNIGHT.hp, maxHp: KNIGHT.hp, speed: KNIGHT.speed,
+    kind: 'knight', team: 'player', radius: KNIGHT.radius, hp: KNIGHT.hp * w.boosts.knightHpMul, maxHp: KNIGHT.hp * w.boosts.knightHpMul, speed: KNIGHT.speed,
   };
 }

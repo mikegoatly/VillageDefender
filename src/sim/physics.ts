@@ -2,7 +2,7 @@
 
 import { DT, KNOCKBACK_DAMPING, SEPARATION } from '../data/balance';
 import { MONSTERS, type MonsterKind } from '../data/monsters';
-import { inBounds, isWalkable } from './map';
+import { inBounds, isWadeable, isWalkable, type TownMap } from './map';
 import type { Unit } from './model';
 import { clamp } from './units';
 import type { World } from './world';
@@ -55,8 +55,9 @@ export function integrate(w: World, u: Unit) {
     if (Math.abs(u.vx) < 0.01 && Math.abs(u.vy) < 0.01) u.vx = u.vy = 0;
   }
   // Phasing monsters (ghosts) ignore buildings and trees; only the map edge contains them.
-  if (u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].phasing) keepOnMap(w, u);
-  else collideCells(w, u);
+  const def = u.team === 'enemy' ? MONSTERS[u.kind as MonsterKind] : null;
+  if (def?.phasing) keepOnMap(w, u);
+  else collideCells(w, u, def?.wades ? isWadeable : isWalkable);
 }
 
 /** Off the map entirely: walk back toward the centre rather than being shoved further out. */
@@ -69,13 +70,13 @@ function keepOnMap(w: World, u: Unit) {
 }
 
 /** Pushes a circle out of every non-walkable cell it overlaps. Cell (i, j) spans i±0.5, j±0.5. */
-export function collideCells(w: World, u: Unit) {
+export function collideCells(w: World, u: Unit, walkable: (map: TownMap, i: number, j: number) => boolean = isWalkable) {
   for (let pass = 0; pass < 2; pass++) {
     const ci = Math.round(u.x);
     const cj = Math.round(u.y);
     for (let j = cj - 1; j <= cj + 1; j++) {
       for (let i = ci - 1; i <= ci + 1; i++) {
-        if (isWalkable(w.map, i, j)) continue;
+        if (walkable(w.map, i, j)) continue;
         const nx = clamp(u.x, i - 0.5, i + 0.5);
         const ny = clamp(u.y, j - 0.5, j + 0.5);
         const dx = u.x - nx;

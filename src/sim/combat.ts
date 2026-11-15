@@ -45,6 +45,7 @@ export function damageBuilding(w: World, b: BuildingState, amount: number, by: U
   if (b.hp <= 0 && !b.ruined) {
     b.ruined = true;
     w.buildingFlowDirty = true;
+    w.wadeFlowDirty = true;
     w.events.push({ type: 'buildingDestroyed', building: b.id });
   }
 }

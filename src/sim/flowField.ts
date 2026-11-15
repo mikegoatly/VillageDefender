@@ -15,7 +15,8 @@ export class FlowField {
   targetI = -1;
   targetJ = -1;
 
-  constructor(private readonly map: TownMap) {
+  /** walkable lets a field path through terrain others can't (river-wading bosses). */
+  constructor(private readonly map: TownMap, private readonly walkable: (map: TownMap, i: number, j: number) => boolean = isWalkable) {
     this.dist = new Float64Array(map.size * map.size).fill(Infinity);
   }
 
@@ -23,7 +24,7 @@ export class FlowField {
   compute(ti: number, tj: number) {
     this.targetI = ti;
     this.targetJ = tj;
-    this.computeMulti(isWalkable(this.map, ti, tj) ? [[ti, tj]] : []);
+    this.computeMulti(this.walkable(this.map, ti, tj) ? [[ti, tj]] : []);
   }
 
   /** Distances to the nearest of several walkable source cells (e.g. every cell next to a building). */
@@ -74,7 +75,7 @@ export class FlowField {
     };
 
     for (const [si, sj] of sources) {
-      if (!isWalkable(map, si, sj)) continue;
+      if (!this.walkable(map, si, sj)) continue;
       const s = sj * n + si;
       if (dist[s] === 0) continue;
       dist[s] = 0;
@@ -88,8 +89,8 @@ export class FlowField {
       for (const [di, dj, cost] of DIRS) {
         const ni = i + di;
         const nj = j + dj;
-        if (!isWalkable(map, ni, nj)) continue;
-        if (di !== 0 && dj !== 0 && (!isWalkable(map, i + di, j) || !isWalkable(map, i, j + dj))) continue;
+        if (!this.walkable(map, ni, nj)) continue;
+        if (di !== 0 && dj !== 0 && (!this.walkable(map, i + di, j) || !this.walkable(map, i, j + dj))) continue;
         const nd = d + cost;
         const nIdx = nj * n + ni;
         if (nd < dist[nIdx]) {
@@ -117,7 +118,7 @@ export class FlowField {
     for (const [di, dj] of DIRS) {
       const ni = i + di;
       const nj = j + dj;
-      if (di !== 0 && dj !== 0 && (!isWalkable(this.map, i + di, j) || !isWalkable(this.map, i, j + dj))) continue;
+      if (di !== 0 && dj !== 0 && (!this.walkable(this.map, i + di, j) || !this.walkable(this.map, i, j + dj))) continue;
       const d = this.distanceAt(ni, nj);
       if (d < best) {
         best = d;

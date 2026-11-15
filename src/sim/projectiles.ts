@@ -3,6 +3,7 @@
 import { DT } from '../data/balance';
 import type { WeaponDef } from '../data/weapons';
 import { damageUnit } from './combat';
+import { isWalkable } from './map';
 import type { Projectile, Unit } from './model';
 import { norm } from './units';
 import type { World } from './world';
@@ -40,6 +41,10 @@ export function updateProjectiles(w: World) {
     p.x += p.vx * DT;
     p.y += p.vy * DT;
     p.ttl -= DT;
+    if (p.owner >= 0 && !isWalkable(w.map, Math.round(p.x), Math.round(p.y))) {
+      w.projectiles.splice(k, 1);
+      continue;
+    }
     let hit: Unit | null = null;
     w.enemyHash.query(p.x, p.y, 0.6, (m) => {
       if (hit || m.state === 'dead') return;

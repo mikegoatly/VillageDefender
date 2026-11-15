@@ -44,6 +44,8 @@ export const ARMY = {
   /** Rookies look for building attackers within this range, then any monster within huntRange. */
   defendRange: 10,
   huntRange: 6,
+  /** Rookies go after a living boss within this range (after building attackers). */
+  bossRange: 14,
   /** Seconds between target re-evaluations. */
   retargetEvery: 0.25,
 };

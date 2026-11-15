@@ -20,10 +20,11 @@ import { FxViews } from './FxViews';
 import { DebugPanel, debugEnabled, type DebugHost, type OverlayName } from '../ui/DebugPanel';
 import { DebugOverlay } from './DebugOverlay';
 import { PlanningPanel, type PlanningView } from '../ui/PlanningPanel';
+import { MainMenu } from '../ui/MainMenu';
 import { ROLE_ORDER, ROLES, type RoleKind } from '../data/roles';
-import { TOWNS, type TownDef } from '../data/towns';
+import { TOWN_BY_ID, TOWNS, type TownDef } from '../data/towns';
 import { Profile } from '../meta/profile';
-import { WEAPON_ORDER, WEAPONS, type WeaponKind } from '../data/weapons';
+import { WEAPON_ORDER, WEAPONS, type WeaponKind, RANK_NUMERALS } from '../data/weapons';
 import { GameAudio } from '../audio/GameAudio';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { BuildingViews, RUBBLE_TILES, type PlacedBlock } from './BuildingViews';
@@ -67,6 +68,8 @@ interface UnitView {
   sprite: Phaser.GameObjects.Sprite;
   /** Player only: ring under the feet and see-through copy when behind buildings. */
   halo?: Phaser.GameObjects.Ellipse;
+  /** Rookie rank chevrons (veteran ▲, captain ▲▲). */
+  badge?: Phaser.GameObjects.Text;
   ghost?: Phaser.GameObjects.Sprite;
   flash: number;
   /** Resting multiply tint (monster archetype colour). */
@@ -80,6 +83,8 @@ interface Params {
   wave: number;
   /** ?plan=0 skips the planning phase (automation). */
   plan: boolean;
+  /** ?town=riverside picks a town directly (automation/debug). */
+  town?: string;
 }
 
 function readParams(): Params {
@@ -90,6 +95,7 @@ function readParams(): Params {
     god: q.get('god') === '1',
     wave: Number(q.get('wave') ?? 1),
     plan: q.get('plan') !== '0',
+    town: q.get('town') ?? undefined,
   };
 }
 
@@ -110,6 +116,9 @@ export class GameScene extends Phaser.Scene {
   private override: InputState | null = null;
   private debugOverlay?: DebugOverlay;
   private planning?: PlanningPanel;
+  private menu?: MainMenu;
+  /** True while the front-end menu is showing over the background town. */
+  private inMenu = false;
   private town: TownDef = TOWNS[0];
   /** House selected while planning (-1 none). */
   private selected = -1;
@@ -122,14 +131,22 @@ export class GameScene extends Phaser.Scene {
     super('Game');
   }
 
-  init(data: { seed?: number }) {
+  init(data: { seed?: number; town?: string; menu?: boolean }) {
+    // The menu shows on a normal launch; URL params (automation, debug links) go straight in.
+    const q = new URLSearchParams(location.search);
+    const automation = ['town', 'seed', 'plan', 'wave', 'god'].some((k) => q.has(k));
+    this.inMenu = data.menu ?? !automation;
     this.params = readParams();
     if (data.seed !== undefined) this.params.seed = data.seed;
-    this.town = TOWNS[0];
+    // Town: scene data (menu / retry) > ?town= > the first town.
+    this.town = TOWN_BY_ID[data.town ?? this.params.town ?? ''] ?? TOWNS[0];
+    const profile = getProfile();
+    const boosts = profile.boosts();
     this.world = new World({
       seed: this.params.seed, god: this.params.god, startWave: this.params.wave,
-      planning: this.params.plan, planningPoints: this.town.planningPoints,
-      allowedRoles: getProfile().data.roles, townId: this.town.id, waves: this.town.waves,
+      planning: this.params.plan || this.inMenu, planningPoints: this.town.planningPoints + boosts.planningPoints,
+      allowedRoles: profile.data.roles, townId: this.town.id, waves: this.town.waves,
+      mapOptions: this.town.map, cards: profile.data.cards, boosts, weaponRanks: profile.weaponRanks(),
       weapon: getProfile().data.weapons.includes(getProfile().data.weapon) ? getProfile().data.weapon : 'sword',
     });
     this.selected = -1;
@@ -160,6 +177,7 @@ export class GameScene extends Phaser.Scene {
     this.hud = new Hud(document.body, {
       onRetry: () => this.restart(this.params.seed),
       onNewTown: () => this.restart(),
+      onMenu: () => this.scene.restart({ menu: true }),
     });
     this.levelUp = new LevelUpPanel(document.body, (i) => {
       this.world.chooseUpgrade(i);
@@ -170,7 +188,8 @@ export class GameScene extends Phaser.Scene {
     this.audio.music(this.world.phase === 'planning' ? 'plan' : 'play');
     this.hitStop = 0;
     this.setupDebug();
-    this.setupPlanning();
+    if (this.inMenu) this.setupMenu();
+    else this.setupPlanning();
 
     this.scale.on('resize', this.fitCamera, this);
     this.events.once('shutdown', () => {
@@ -181,6 +200,8 @@ export class GameScene extends Phaser.Scene {
       this.levelUp.destroy();
       this.debugOverlay?.destroy();
       this.planning?.destroy();
+      this.menu?.destroy();
+      document.body.classList.remove('vd-menu-open');
       this.audio.destroy();
     });
     this.fitCamera();
@@ -224,6 +245,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ------------------------------------------------------------------ planning (3b)
+
+  /** Front-end menu over the (frozen) background town. */
+  private setupMenu() {
+    document.body.classList.add('vd-menu-open');
+    this.menu = new MainMenu(document.body, {
+      profile: () => getProfile(),
+      audioSettings: () => ({ ...this.audio.settings }),
+      setAudioSettings: (p) => this.audio.setSettings(p),
+      onPlay: (town) => this.scene.restart({ seed: Math.floor(Math.random() * 1e6), town, menu: false }),
+      onResetProgress: () => getProfile().reset(),
+      uiSound: () => this.audio.play('uiClick'),
+    });
+    this.menu.show('title');
+  }
 
   private setupPlanning() {
     if (this.world.phase !== 'planning') return;
@@ -285,6 +320,8 @@ export class GameScene extends Phaser.Scene {
   private startTown() {
     if (this.world.phase !== 'planning') return;
     this.world.start();
+    // Shop boosts are for one run: used up the moment it starts.
+    getProfile().consumeBoosts();
     this.audio.music('play');
     this.planning?.hide();
     document.body.classList.remove('vd-planning');
@@ -310,7 +347,7 @@ export class GameScene extends Phaser.Scene {
       })),
       assigned: w.buildings.filter((x) => x.role).map((x) => ROLES[x.role!].name).join(', ') || 'none yet',
       weapons: WEAPON_ORDER.map((k) => ({
-        kind: k, name: WEAPONS[k].name, description: WEAPONS[k].description, icon: WEAPON_ICONS[k],
+        kind: k, name: `${WEAPONS[k].name} ${RANK_NUMERALS[w.weaponRanks[k] ?? 0]}`.trim(), description: WEAPONS[k].description, icon: WEAPON_ICONS[k],
         locked: !getProfile().data.weapons.includes(k),
         lockHint: weaponHint(k),
       })),
@@ -363,7 +400,7 @@ export class GameScene extends Phaser.Scene {
       knightLevel: w.progression.level, xp: w.progression.xp, xpToNext: w.progression.xpToNext,
       rookies: w.rookies.filter((r) => r.state !== 'dead').length, rookieCap: w.rookieCap,
       endExtras: this.endExtras,
-      boss: w.boss ? { name: 'Orc Warlord', hp: w.boss.hp, maxHp: w.boss.maxHp } : null,
+      boss: w.boss ? { name: MONSTERS[w.boss.kind as MonsterKind].name ?? this.town.bossName, hp: w.boss.hp, maxHp: w.boss.maxHp } : null,
     };
   }
 
@@ -378,8 +415,8 @@ export class GameScene extends Phaser.Scene {
     this.syncUi();
   }
 
-  restart(seed?: number) {
-    this.scene.restart({ seed: seed ?? Math.floor(Math.random() * 1e6) });
+  restart(seed?: number, town = this.town.id) {
+    this.scene.restart({ seed: seed ?? Math.floor(Math.random() * 1e6), town });
   }
 
   // ------------------------------------------------------------------ map
@@ -406,7 +443,9 @@ export class GameScene extends Phaser.Scene {
         const g = map.ground[j * map.size + i];
         if (g === Ground.None) continue;
         let key = 'st:grass_center_N';
-        if (i === c && j === c) key = 'st:grass_pathCrossing_N';
+        if (g === Ground.Water) key = 'st:grass_river_E';
+        else if (g === Ground.Bridge) key = 'st:grass_riverBridge_E';
+        else if (i === c && j === c) key = 'st:grass_pathCrossing_N';
         else if (i === c) key = 'st:grass_path_E';
         else if (j === c) key = 'st:grass_path_N';
         this.tile(key, i, j, 0);
@@ -503,13 +542,25 @@ export class GameScene extends Phaser.Scene {
         v.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
         if (v.flash <= 0) v.sprite.setTint(v.tint).setTintMode(Phaser.TintModes.MULTIPLY);
       }
-      // Fade corpses out.
-      v.sprite.setAlpha(u.state === 'dead' ? Math.max(0, 1 - Math.max(0, u.stateTime - 0.7) / 0.5) : u.invuln > 0 && u.team === 'player' && u.state !== 'dodge' ? 0.6 : 1);
+      // Alpha: corpses fade out; ghosts flicker in and out of view; hurt friendlies blink.
+      const mdef = u.team === 'enemy' ? MONSTERS[u.kind as MonsterKind] : null;
+      let alpha = mdef?.alpha ?? 1;
+      if (mdef?.phasing) alpha *= 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(this.time.now / 1000 * 2.2 + u.id * 1.7));
+      if (u.state === 'dead') alpha *= Math.max(0, 1 - Math.max(0, u.stateTime - 0.7) / 0.5);
+      else if (u.invuln > 0 && u.team === 'player' && u.state !== 'dodge') alpha = 0.6;
+      v.sprite.setAlpha(alpha);
 
       if (v.halo && u.kind !== 'knight') {
         // Promotions: brighter halo and slightly bigger body.
         v.halo.setStrokeStyle(3 + u.rank, HALO_ROOKIE[u.rank], 0.95);
         v.sprite.setScale(this.charScale(v.sprite.texture.key) * (1 + 0.06 * u.rank));
+        // Rank chevrons above the head so veterans/captains read at a glance (play-test note).
+        if (u.rank > 0 && u.state !== 'dead') {
+          const text = u.rank === 1 ? '▲' : '▲▲';
+          v.badge ??= this.add.text(0, 0, text, { fontFamily: 'system-ui, sans-serif', fontSize: '40px', fontStyle: 'bold', color: '#ffd75e', stroke: '#3b2418', strokeThickness: 7 }).setOrigin(0.5, 1).setScale(MAP.tileScale);
+          if (v.badge.text !== text) v.badge.setText(text).setColor(u.rank === 2 ? '#ffffff' : '#ffd75e');
+          v.badge.setPosition(s.x, s.y - 105 * MAP.tileScale * (1 + 0.06 * u.rank)).setDepth(s.y + 0.6).setVisible(true);
+        } else v.badge?.setVisible(false);
       }
       if (v.halo) {
         v.halo.setPosition(s.x, s.y + 4 * MAP.tileScale).setDepth(s.y + 0.4).setVisible(u.state !== 'dead');
@@ -529,6 +580,7 @@ export class GameScene extends Phaser.Scene {
       v.sprite.destroy();
       v.halo?.destroy();
       v.ghost?.destroy();
+      v.badge?.destroy();
       this.views.delete(id);
     }
   }
@@ -573,6 +625,8 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       case 'swing':
+        // Flail: restart the swing animation on every damage pulse so it keeps spinning.
+        if (e.weapon === 'flail') this.views.get(e.unit)?.sprite.anims.restart();
         if (e.weapon === 'hammer') {
           // Shockwave where the slam lands, timed with the hit.
           const k = this.world.players[0];
@@ -586,7 +640,13 @@ export class GameScene extends Phaser.Scene {
         this.cameras.main.shake(500, 0.008);
         return;
       case 'bossSlamWarn':
+      case 'bossBoulderWarn':
         this.fx.telegraph(e.x, e.y, e.radius, e.time);
+        return;
+      case 'bossBoulder':
+        this.fx.shockwave(e.x, e.y, e.radius, 0x8a7a6a);
+        this.cameras.main.shake(260, 0.01);
+        this.hitStop = Math.max(this.hitStop, 0.06);
         return;
       case 'bossSlam':
         this.fx.shockwave(e.x, e.y, e.radius, 0xb8322c);
@@ -698,7 +758,7 @@ function weaponHint(k: WeaponKind): string | undefined {
 
 /** Every texture key the map needs. */
 function tileKeys(map: TownMap): Set<string> {
-  const keys = new Set(['st:grass_center_N', 'st:grass_path_E', 'st:grass_path_N', 'st:grass_pathCrossing_N']);
+  const keys = new Set(['st:grass_center_N', 'st:grass_path_E', 'st:grass_path_N', 'st:grass_pathCrossing_N', 'st:grass_river_E', 'st:grass_riverBridge_E']);
   for (const b of map.buildings) for (const bl of b.blocks) keys.add(bl.tile);
   for (const d of map.decor) keys.add(d.tile);
   for (const r of RUBBLE_TILES) keys.add(r);

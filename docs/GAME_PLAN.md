@@ -401,6 +401,14 @@ Findings:
   The new level is much harder for the bots than the 8-wave one (fighter 1/5, was 4/5). Spear is weakest (narrow arc), axes and flail strongest; seed 4 is lost to the town by every weapon. Real play-testing is still needed: the bots are crude.
 - **Known gaps:** the flail model is a spiked mace; weapons look small on screen; sounds were chosen by filename and need a listen; no audio settings UI yet, only the persisted defaults.
 
+### Milestone 5 results (2026-11-14)
+
+- Front end: title (Play / Shop / Settings), town select with best stars and lock hints, shop (boosts, cards, roles), settings (audio sliders, mute, reset progress). The game map renders behind the menu; end panel has Menu (M).
+- Meta: profile stores unlocked cards and shop purchases; World takes cards (offer pool) and oosts; planning points include the shop boost.
+- Town 2 Riverside Market (3 planning points, 10 waves + River Troll), river/bridge tiles, wading flow field, boulder telegraph + impact effects; boss bar/banner use the boss's name.
+- Bot balance (planned defender, all cards, no boosts, seeds 1–5): Town 1 sword 4/5 wins 1.2★ (other weapons 3–4/5, 1.0★); Town 2 2/5 wins 0.4★ — intentionally a step up, players will have boosts and cards by then. Most Town 2 losses are crowd deaths in waves 9–10 that kiting avoids.
+- Golden fingerprint re-recorded once, deliberately, for the play-test behaviour changes (decision 48).
+- Known gaps: MainMenu has no unit tests yet (agent stopped at a usage limit); shop/card-pool/boost sim tests pending; troll uses the zombie model scaled up.
 ## 7. Decisions
 
 ### Decided (2026-11-14)
@@ -454,11 +462,16 @@ Findings:
 40. **Town 1 length:** 10 waves + boss (~5 min).
 41. **Boss:** Orc Warlord — telegraphed ground slam, charges buildings, summons raiders; arrives in wave 10.
 42. **Knight death:** game over (open item 13 closed).
+43. **Shop (decision 12 closed):** coins buy card unlocks (also earnable through achievements), weapon ranks (decision 49), and boosts that are readied for the next run only and consumed when it starts (save up, then push for a good run): +10% knight HP ×3, +10% building HP ×2, +1 planning point ×1, start with one level-up ×1. Weapons and roles are never sold, only earned through achievements (src/data/shop.ts).
+44. **Card pool:** new profiles can be offered 8 of the 20 level-up cards (blade, swift, tough, boots, recruit, garrison, walls, slits); the other 12 unlock through the shop or achievements.
+45. **Town 2 terrain:** a one-cell river along a grid column with three bridges; water blocks everyone except waders; monsters never spawn in it.
+46. **Town 2 boss:** River Troll — wades the river, lobs telegraphed boulders at buildings (splash hurts units), regenerates slowly while in the water, swats blockers. Boss ability sets are data-driven (MonsterDef.boss).
+47. **Town unlocks:** a town opens with 1★ in the previous town. URL params (?town, ?seed, ?plan, ?wave, ?god) skip the menu for automation.
+48. **Play-test fixes (docs/Notes.txt, 2026-11-14):** archers need line of sight and rookie arrows stop at walls (tower/slit arrows fly over); rookies engage a boss within 14 cells; brutes and the troll swat a knight/rookie in their way (the Warlord doesn't — his slam already punishes melee); vampires lunge; ghosts flicker; rank chevrons over veterans/captains; bigger arrows/axes; flail swing animation repeats; cards say "weapon", not "sword".
+49. **Weapon ranks:** each weapon you own can be ranked I–III in the shop (150/300/500 coins, permanent). Per rank: +8% damage plus a signature perk — sword wider sweep, spear longer thrust, hammer bigger slam, axes longer/faster throw, flail wider spin. Ranks show in the planning weapon picker (src/data/weapons.ts `rankedWeapon`).
 
 ### Open (decide later)
 
-12. **Meta progression strength:** small and capped (recommended) vs Survivors-style grind.
-    Before milestone 5.
 15. **Distribution target:** web only first, or stores/Steam from the start.
     Affects packaging and save storage only.
 16. **Name.**

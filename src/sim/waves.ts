@@ -68,8 +68,8 @@ export function addMonster(w: World, x: number, y: number, kind: MonsterKind = '
     kind, team: 'enemy', radius: def.radius, hp: def.hp, maxHp: def.hp,
     speed: def.speed + w.rng.range(-def.speedJitter, def.speedJitter),
   };
-  if (kind === 'warlord') {
-    m.boss = newBossState();
+  if (def.boss) {
+    m.boss = newBossState(def.boss);
     w.events.push({ type: 'bossSpawn', unit: m.id });
   }
   w.monsters.push(m);

@@ -30,13 +30,13 @@ export interface AchievementDef {
   description: string;
   /** True once earned; sees this run and lifetime stats (already including this run). */
   check(run: RunResult, life: LifetimeStats): boolean;
-  reward?: { role?: RoleKind; weapon?: WeaponKind };
+  reward?: { role?: RoleKind; weapon?: WeaponKind; card?: string };
 }
 
 export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'first-win', name: 'Defender', description: 'Save a town',
-    check: (r) => r.won, reward: { role: 'smithy' },
+    check: (r) => r.won, reward: { role: 'smithy', card: 'regen' },
   },
   {
     id: 'three-stars', name: 'Not a scratch', description: 'Save a town with every building standing',
@@ -52,10 +52,14 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   },
   {
     id: 'hold-the-line', name: 'Holding the line', description: 'Reach wave 6',
-    check: (r) => r.wave >= 6, reward: { weapon: 'axes' },
+    check: (r) => r.wave >= 6, reward: { weapon: 'axes', card: 'drill' },
   },
   {
     id: 'kingslayer', name: 'Kingslayer', description: 'Defeat the Orc Warlord',
     check: (r) => (r.kills.warlord ?? 0) > 0, reward: { weapon: 'flail' },
+  },
+  {
+    id: 'troll-hunter', name: 'Troll hunter', description: 'Defeat the River Troll',
+    check: (r) => (r.kills.troll ?? 0) > 0, reward: { card: 'veterans' },
   },
 ];

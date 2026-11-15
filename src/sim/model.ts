@@ -6,6 +6,7 @@ import type { RookieKind } from '../data/rookies';
 import type { RoleKind } from '../data/roles';
 import type { WaveDef } from '../data/waves';
 import type { WeaponKind } from '../data/weapons';
+import type { MetaBoosts } from '../data/shop';
 import type { BossState } from './bossState';
 import type { MapOptions, Side, TownMap } from './map';
 import type { Vec2 } from './types';
@@ -52,6 +53,9 @@ export interface Unit {
   /** AI: where a rookie returns to when idle. */
   postX: number;
   postY: number;
+  /** Lunging monsters (vampire): seconds of sprint left, and its cooldown. */
+  lungeTime: number;
+  lungeCooldown: number;
   /** Orc Warlord only. */
   boss?: BossState;
 }
@@ -125,6 +129,8 @@ export type SimEvent =
   | { type: 'bossSlamWarn'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'bossSlam'; unit: number; x: number; y: number; radius: number }
   | { type: 'bossCharge'; unit: number; building: number }
+  | { type: 'bossBoulderWarn'; unit: number; x: number; y: number; radius: number; time: number }
+  | { type: 'bossBoulder'; unit: number; x: number; y: number; radius: number }
   | { type: 'bossSummon'; unit: number; count: number; side: Side }
   | { type: 'levelEnd'; won: boolean; stars: number; reason: 'knight' | 'town' | null };
 
@@ -152,6 +158,12 @@ export interface WorldOptions {
   /** Roles the player has unlocked; defaults to all. */
   allowedRoles?: RoleKind[];
   townId?: string;
+  /** Level-up cards that may be offered (decision 44); defaults to all. */
+  cards?: string[];
+  /** Shop ranks per weapon (decision 49); missing means rank 0. */
+  weaponRanks?: Partial<Record<WeaponKind, number>>;
+  /** Permanent shop boosts (decision 43); defaults to none. */
+  boosts?: Partial<MetaBoosts>;
   /** Basic attack (decision 39); defaults to the sword. */
   weapon?: WeaponKind;
 }

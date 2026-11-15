@@ -5,7 +5,7 @@ import { ARMY, RALLY, ROOKIES, type RookieKind } from '../data/rookies';
 import { swingHits } from './combat';
 import { isWalkable } from './map';
 import type { BuildingState, Unit } from './model';
-import { Pather } from './pather';
+import { clearLine, Pather } from './pather';
 import { shoot } from './projectiles';
 import { monsterById, nearestMonster } from './queries';
 import { makeRookie, rookieDamage } from './rookieStats';
@@ -139,7 +139,7 @@ export function updateRookie(w: World, r: Unit) {
       moveRookie(w, r, r.x + away.x, r.y + away.y, def.speed);
       return;
     }
-    if (d <= def.range) {
+    if (d <= def.range && clearLine(w.map, r.x, r.y, target.x, target.y, 0.05)) {
       r.facing = norm({ x: dx, y: dy });
       if (r.attackCooldown <= 0) startRookieAttack(r, def.attackCooldown);
       else setState(r, 'idle', true);
@@ -192,5 +192,8 @@ function pickRookieTarget(w: World, r: Unit): Unit | null {
     }
   }
   if (best) return best;
+  // A boss on the field is worth walking further for (play-test note: rookies ignored a distant boss).
+  const boss = w.boss;
+  if (boss && Math.hypot(boss.x - r.x, boss.y - r.y) <= ARMY.bossRange) return boss;
   return nearestMonster(w, r.x, r.y, ARMY.huntRange);
 }

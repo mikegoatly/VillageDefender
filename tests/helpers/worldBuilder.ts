@@ -34,6 +34,7 @@ export class WorldBuilder {
 
   /** Knight's basic attack (default sword). */
   withWeapon(kind: WeaponKind) { this.opts.weapon = kind; return this; }
+  withWeaponRanks(ranks: Partial<Record<WeaponKind, number>>) { this.opts.weaponRanks = ranks; return this; }
   withSeed(seed: number) { this.opts.seed = seed; return this; }
   withMap(rows: string[]) { this.mapVal = mapFromAscii(rows); return this; }
   withTownMap(map: TownMap) { this.mapVal = map; return this; }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DT } from '../../src/data/balance';
-import { WEAPON_ORDER, WEAPONS, type WeaponKind } from '../../src/data/weapons';
+import { MAX_WEAPON_RANK, RANK_DAMAGE, rankedWeapon, WEAPON_ORDER, WEAPONS, type WeaponKind } from '../../src/data/weapons';
 import type { World, Unit } from '../../src/sim/world';
 import { aWorld, collectEvents, dummy, holdAttack, runTicks, type WorldBuilder } from '../helpers/worldBuilder';
 import { emptyInput } from '../../src/sim/types';
@@ -262,3 +262,43 @@ describe('choosing a weapon', () => {
     expect(world.weapon).toBe('hammer');
   });
 });
+
+describe('weapon ranks (decision 49)', () => {
+  it('rank 0 is the base weapon; ranks add damage and the signature perk, capped at MAX_WEAPON_RANK', () => {
+    for (const kind of WEAPON_ORDER) expect(rankedWeapon(kind, 0)).toBe(WEAPONS[kind]);
+    const r2 = rankedWeapon('sword', 2);
+    expect(r2.damage).toBeCloseTo(WEAPONS.sword.damage * (1 + 2 * RANK_DAMAGE));
+    expect(r2.arc).toBeGreaterThan(WEAPONS.sword.arc);
+    expect(rankedWeapon('spear', 3).range).toBeGreaterThan(WEAPONS.spear.range);
+    expect(rankedWeapon('sword', 9)).toEqual(rankedWeapon('sword', MAX_WEAPON_RANK));
+    expect(WEAPONS.sword.damage).toBe(15); // base table not mutated
+  });
+
+  it('the world uses the rank of the selected weapon, including after switching in planning', () => {
+    const { world } = aWorld().inPlanning().withWeaponRanks({ sword: 1, hammer: 3 }).build();
+    expect(world.weaponDef).toEqual(rankedWeapon('sword', 1));
+    world.setWeapon('hammer');
+    expect(world.weaponDef).toEqual(rankedWeapon('hammer', 3));
+    world.setWeapon('spear');
+    expect(world.weaponDef).toBe(WEAPONS.spear);
+  });
+
+  it('a ranked sword hits harder', () => {
+    const { world, zombies: [z] } = arena('sword', [[1.0, 0]], (b) => b.withWeaponRanks({ sword: 3 }));
+    singleStrike(world);
+    expect(damageTaken(z)).toBeCloseTo(WEAPONS.sword.damage * (1 + 3 * RANK_DAMAGE));
+  });
+
+  it('a rank III sword reaches a zombie outside the base sweep', () => {
+    // Auto-aim locks onto the zombie dead ahead; the other sits just outside the base half-angle,
+    // inside rank III's, and beyond body overlap (which always counts).
+    const a = WEAPONS.sword.arc + (WEAPON_RANK_DELTA_SWORD * MAX_WEAPON_RANK) / 2;
+    const offs: [number, number][] = [[1.2, 0], [1.3 * Math.cos(a), 1.3 * Math.sin(a)]];
+    const base = arena('sword', offs);
+    expect(singleStrike(base.world).hits(base.zombies[1])).toHaveLength(0);
+    const ranked = arena('sword', offs, (b) => b.withWeaponRanks({ sword: 3 }));
+    expect(singleStrike(ranked.world).hits(ranked.zombies[1]).length).toBeGreaterThan(0);
+  });
+});
+
+const WEAPON_RANK_DELTA_SWORD = rankedWeapon('sword', 1).arc - WEAPONS.sword.arc;

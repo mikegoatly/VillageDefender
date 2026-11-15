@@ -59,7 +59,7 @@ function healWithin(list: Unit[], cx: number, cy: number, radius: number, heal: 
 export function applyMods(w: World) {
   const m = w.progression.mods;
   for (const p of w.players) {
-    const max = KNIGHT.hp + m.knight.maxHpAdd;
+    const max = (KNIGHT.hp + m.knight.maxHpAdd) * w.boosts.knightHpMul;
     if (p.state !== 'dead') p.hp += max - p.maxHp;
     p.maxHp = max;
     p.speed = KNIGHT.speed * m.knight.speedMul;

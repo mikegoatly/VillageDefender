@@ -33,10 +33,14 @@ export interface HudWorld {
 export interface HudCallbacks {
   onRetry: () => void;
   onNewTown: () => void;
+  /** When given, the end panel also offers 'Menu (M)'. */
+  onMenu?: () => void;
 }
 
 const STYLE = `
 .vd-hud { position: fixed; inset: 0; pointer-events: none; font: 600 15px system-ui, sans-serif; color: #3b2418; }
+/* The menu hides the HUD entirely. */
+.vd-menu-open .vd-hud { display: none; }
 /* The planning banner replaces the HUD pill until the town starts. */
 .vd-planning .vd-hud .bar { display: none; }
 .vd-hud .bar { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
@@ -151,6 +155,7 @@ export class Hud {
     const k = e.key.toLowerCase();
     if (k === 'r') this.callbacks.onRetry();
     else if (k === 'n') this.callbacks.onNewTown();
+    else if (k === 'm' && this.callbacks.onMenu) this.callbacks.onMenu();
   };
 
   constructor(root: HTMLElement, private callbacks: HudCallbacks) {
@@ -248,6 +253,7 @@ export class Hud {
       this.bossEl.classList.add('show');
       void this.bossEl.offsetWidth;
       this.bossEl.classList.add('in');
+      this.bossBanner.textContent = `The ${boss.name} approaches!`;
       this.bossBanner.classList.add('show');
       clearTimeout(this.bossBannerTimer);
       this.bossBannerTimer = window.setTimeout(() => this.bossBanner.classList.remove('show'), 2500);
@@ -283,9 +289,10 @@ export class Hud {
         <div class="s-time">Time ${formatTime(world.time)}</div>
       </div>
       <div class="extras"></div>
-      <button class="retry">Retry (R)</button><button class="newtown">New town (N)</button>`;
+      <button class="retry">Retry (R)</button><button class="newtown">New town (N)</button>${this.callbacks.onMenu ? '<button class="menu">Menu (M)</button>' : ''}`;
     this.panel.querySelector('.retry')!.addEventListener('click', () => this.callbacks.onRetry());
     this.panel.querySelector('.newtown')!.addEventListener('click', () => this.callbacks.onNewTown());
+    this.panel.querySelector('.menu')?.addEventListener('click', () => this.callbacks.onMenu?.());
   }
 
   private renderExtras(x: NonNullable<HudWorld['endExtras']>) {

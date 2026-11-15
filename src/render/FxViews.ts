@@ -81,8 +81,8 @@ export class FxViews {
       let img = this.arrows.get(a.id);
       if (!img) {
         img = a.kind === 'axe'
-          ? this.scene.add.image(0, 0, AXE_TEX).setOrigin(0.5, 0.5).setScale(s * 2.2)
-          : this.scene.add.image(0, 0, ARROW_TEX).setOrigin(0.85, 0.5).setScale(s * 1.4);
+          ? this.scene.add.image(0, 0, AXE_TEX).setOrigin(0.5, 0.5).setScale(s * 4)
+          : this.scene.add.image(0, 0, ARROW_TEX).setOrigin(0.85, 0.5).setScale(s * 2.4);
         this.arrows.set(a.id, img);
       }
       const p = this.toScreen(a.x, a.y);

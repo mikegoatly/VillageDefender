@@ -12,6 +12,10 @@ export const enum Ground {
   None = 0,
   Grass = 1,
   Road = 2,
+  /** River: blocked for everyone except waders (decision 45). */
+  Water = 3,
+  /** Walkable crossing over the river. */
+  Bridge = 4,
 }
 
 /** One stacked Sketch block: tile name without rotation suffix is presentation data. */
@@ -58,6 +62,8 @@ export interface TownMap {
 export interface MapOptions {
   across?: number;
   aspect?: number;
+  /** A river through the town with bridges (Town 2). */
+  river?: boolean;
 }
 
 export function cellIndex(map: TownMap, i: number, j: number): number {
@@ -70,6 +76,23 @@ export function inBounds(map: TownMap, i: number, j: number): boolean {
 
 export function isWalkable(map: TownMap, i: number, j: number): boolean {
   return inBounds(map, i, j) && map.blocked[j * map.size + i] === 0;
+}
+
+/** Walkable for river-wading monsters: like isWalkable, but water is passable. */
+export function isWadeable(map: TownMap, i: number, j: number): boolean {
+  if (!inBounds(map, i, j)) return false;
+  const k = j * map.size + i;
+  return map.blocked[k] === 0 || map.ground[k] === Ground.Water;
+}
+
+/** Grid column of the river (Town 2): the lane between the first and second building columns east of the road. */
+export function riverColumn(centre: number): number {
+  return centre + 3;
+}
+
+/** Rows where bridges cross the river: the main road plus one bridge either side. */
+export function bridgeRows(centre: number): number[] {
+  return [centre - 8, centre, centre + 8];
 }
 
 export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
@@ -96,6 +119,21 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
     }
   }
 
+  if (opts.river) {
+    // A one-cell river along a grid column, crossed by bridges (decision 45).
+    const ri = riverColumn(c);
+    const bridges = bridgeRows(c);
+    for (let j = 0; j < size; j++) {
+      const k = j * size + ri;
+      if (ground[k] === Ground.None) continue;
+      if (bridges.includes(j)) ground[k] = Ground.Bridge;
+      else {
+        ground[k] = Ground.Water;
+        blocked[k] = 1;
+      }
+    }
+  }
+
   const map: TownMap = {
     seed, size, centre: c, ground, blocked, buildings: [], decor: [],
     edges: { top: [], right: [], bottom: [], left: [] },
@@ -108,6 +146,8 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
   for (let j = 0; j < size; j++) {
     for (let i = 0; i < size; i++) {
       if (!inBounds(map, i, j) || !isEdge(i, j)) continue;
+      // Never spawn in the river.
+      if (blocked[j * size + i]) continue;
       edgeSet.add(j * size + i);
       const x = sx(i, j) / halfW;
       const y = sy(i, j) / halfH;
@@ -132,7 +172,7 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
       const i0 = c + a * 4 + 1;
       const j0 = c + b * 4 + 1;
       const fp: [number, number][] = [[i0, j0], [i0 + 1, j0], [i0, j0 + 1], [i0 + 1, j0 + 1]];
-      if (!fp.every(([i, j]) => inBounds(map, i, j) && inTown(i, j))) continue;
+      if (!fp.every(([i, j]) => inBounds(map, i, j) && inTown(i, j) && !blocked[j * size + i])) continue;
       if (!plazaPlaced && a === -1 && b === -1) {
         // Well on the plaza by the crossroads.
         map.decor.push({ i: i0 + 1, j: j0 + 1, tile: 'ste:well_N', blocks: true });

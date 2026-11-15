@@ -1,6 +1,9 @@
 // Monster archetypes. Target preference matters more than stats (plan §3.3).
 
-export type MonsterKind = 'zombie' | 'orc' | 'brute' | 'skeleton' | 'ghost' | 'vampire' | 'warlord';
+export type MonsterKind = 'zombie' | 'orc' | 'brute' | 'skeleton' | 'ghost' | 'vampire' | 'warlord' | 'troll';
+
+/** Boss ability sets (sim/boss.ts). */
+export type BossKind = 'warlord' | 'troll';
 
 /**
  * - nearest: chases the nearest knight/rookie within aggroRange, otherwise the nearest building
@@ -39,6 +42,16 @@ export interface MonsterDef {
   corpseTime: number;
   /** Walks straight through buildings and trees (ghost). */
   phasing?: boolean;
+  /** Crosses river water (troll). */
+  wades?: boolean;
+  /** Boss ability set; bosses get a health bar and arrival banner. */
+  boss?: BossKind;
+  /** Display name (bosses). */
+  name?: string;
+  /** Big building-wreckers swat a knight or rookie standing in their way (play-test note). */
+  swatsBlockers?: boolean;
+  /** Sprints at its target when close (vampire): lands the first bite if you're not careful. */
+  lunge?: { range: number; speedMul: number; duration: number; cooldown: number };
   /** Heals this fraction of damage dealt (vampire). */
   lifesteal?: number;
   /** XP gem value dropped on death. */
@@ -66,7 +79,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     sheet: 'orc', scale: 1.6, tint: 0xd98a8a, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.36, hp: 150, speed: 0.95, speedJitter: 0.05,
     damage: 20, buildingDamage: 20, attackWindup: 0.8, attackCooldown: 1.8, attackReach: 0.25,
-    knockbackResist: 0.85, corpseTime: 1.6, xp: 6, coins: 5,
+    knockbackResist: 0.85, corpseTime: 1.6, xp: 6, coins: 5, swatsBlockers: true,
   },
   skeleton: {
     // Stalker: fast, fragile, always hunts the knight. Pressure on the player.
@@ -88,14 +101,30 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     radius: 0.23, hp: 55, speed: 2.0, speedJitter: 0.15,
     damage: 10, buildingDamage: 3, attackWindup: 0.35, attackCooldown: 0.9, attackReach: 0.2,
     knockbackResist: 0.3, corpseTime: 1.2, lifesteal: 1, xp: 4, coins: 3,
+    lunge: { range: 3, speedMul: 2.6, duration: 0.45, cooldown: 4 },
   },
   warlord: {
     // Town 1 boss (decision 41). Abilities live in BOSS below.
     sheet: 'orc', scale: 2.5, tint: 0xb06060, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.55, hp: 1400, speed: 0.85, speedJitter: 0,
     damage: 25, buildingDamage: 35, attackWindup: 0.9, attackCooldown: 1.6, attackReach: 0.3,
-    knockbackResist: 1, corpseTime: 3, xp: 40, coins: 50,
+    knockbackResist: 1, corpseTime: 3, xp: 40, coins: 50, boss: 'warlord', name: 'Orc Warlord', // no swat: his ground slam already punishes melee
   },
+  troll: {
+    // Town 2 boss (decision 46): wades the river, lobs boulders at buildings, regenerates in water.
+    sheet: 'zombie', scale: 2.8, tint: 0x8fae9a, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.58, hp: 1000, speed: 0.8, speedJitter: 0,
+    damage: 8, buildingDamage: 30, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
+    knockbackResist: 1, corpseTime: 3, xp: 50, coins: 60, wades: true, boss: 'troll', name: 'River Troll', swatsBlockers: true,
+  },
+};
+
+/** River Troll abilities. */
+export const TROLL = {
+  /** Lobs a boulder at a standing building within range: telegraphed, then hits the building and anyone nearby. */
+  boulder: { every: 5, range: 9, telegraph: 1.2, radius: 1.3, buildingDamage: 90, unitDamage: 12 },
+  /** Fraction of max HP regenerated per second while standing in the river. */
+  waterRegen: 0.008,
 };
 
 /** Orc Warlord abilities. */

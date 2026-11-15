@@ -63,3 +63,31 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
 
 export const WEAPON_ORDER: WeaponKind[] = ['sword', 'spear', 'hammer', 'axes', 'flail'];
 export const STARTING_WEAPONS: WeaponKind[] = ['sword'];
+
+// ---------------------------------------------------------------- ranks (decision 49)
+
+/** Ranks bought in the shop per weapon; rank 0 is the base weapon. */
+export const MAX_WEAPON_RANK = 3;
+/** Damage bonus per rank (small, so Town 1 balance holds). */
+export const RANK_DAMAGE = 0.08;
+
+/** Each weapon's signature improvement per rank, on top of the damage bonus. */
+export const WEAPON_RANK_PERK: Record<WeaponKind, { text: string; apply(d: WeaponDef): void }> = {
+  sword: { text: 'wider sweep', apply: (d) => { d.arc += deg(8); } },
+  spear: { text: 'longer thrust', apply: (d) => { d.range += 0.2; d.acquireRange += 0.2; } },
+  hammer: { text: 'bigger slam', apply: (d) => { d.arc += 0.12; } },
+  axes: { text: 'longer, faster throw', apply: (d) => { d.range += 0.35; d.acquireRange += 0.35; d.projectileSpeed += 0.6; } },
+  flail: { text: 'wider spin', apply: (d) => { d.range += 0.1; d.acquireRange += 0.1; } },
+};
+
+/** The weapon at a rank (0 returns the base definition itself). */
+export function rankedWeapon(kind: WeaponKind, rank: number): WeaponDef {
+  const base = WEAPONS[kind];
+  const r = Math.max(0, Math.min(MAX_WEAPON_RANK, Math.floor(rank)));
+  if (r === 0) return base;
+  const d: WeaponDef = { ...base, damage: base.damage * (1 + RANK_DAMAGE * r) };
+  for (let k = 0; k < r; k++) WEAPON_RANK_PERK[kind].apply(d);
+  return d;
+}
+
+export const RANK_NUMERALS = ['', 'I', 'II', 'III'];

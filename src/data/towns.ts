@@ -1,17 +1,34 @@
 // Towns (stages). "Town" is the playable map; "knight level" is the in-run XP level (decision 37).
 
-import { TOWN1_WAVES, type WaveDef } from './waves';
+import type { MapOptions } from '../sim/map';
+import { TOWN1_WAVES, TOWN2_WAVES, type WaveDef } from './waves';
 
 export interface TownDef {
   id: string;
   name: string;
+  /** One line for the town select screen. */
+  blurb: string;
   /** Planning points: how many houses may be turned into role buildings (decision 36). */
   planningPoints: number;
   waves: WaveDef[];
+  /** Map generator options (terrain features). */
+  map: MapOptions;
+  /** Stars needed in the previous town to unlock this one (0 = always open). */
+  unlockStars: number;
+  /** Name shown on the boss bar. */
+  bossName: string;
 }
 
 export const TOWNS: TownDef[] = [
-  { id: 'village', name: 'Medieval Village', planningPoints: 2, waves: TOWN1_WAVES },
+  {
+    id: 'village', name: 'Medieval Village', blurb: 'A quiet crossroads village. The Orc Warlord is coming.',
+    planningPoints: 2, waves: TOWN1_WAVES, map: {}, unlockStars: 0, bossName: 'Orc Warlord',
+  },
+  {
+    id: 'riverside', name: 'Riverside Market',
+    blurb: 'A river splits the town; hold the bridges. The River Troll wades where others can’t.',
+    planningPoints: 3, waves: TOWN2_WAVES, map: { river: true }, unlockStars: 1, bossName: 'River Troll',
+  },
 ];
 
 export const TOWN_BY_ID: Record<string, TownDef> = Object.fromEntries(TOWNS.map((t) => [t.id, t]));
@@ -20,6 +37,5 @@ export const TOWN_BY_ID: Record<string, TownDef> = Object.fromEntries(TOWNS.map(
 export const COINS = {
   /** Paid when a wave is cleared (next wave starts or the town is won): × wave number. */
   perWaveCleared: 3,
-  perKill: { zombie: 1, orc: 1, brute: 5 } as Record<string, number>,
   perStar: 20,
 };

@@ -236,3 +236,63 @@ describe('grant (debug)', () => {
     expect(aProgression().grant('nope', host())).toBe(false);
   });
 });
+
+describe('allowed cards', () => {
+  it('only offers cards in the allowed list', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const allowed = ['blade', 'swift', 'tough', 'boots'];
+      const p = new Progression(new Rng(seed), allowed);
+      p.addXp(xpToNext(1));
+      expect(p.offers!.length).toBe(3);
+      for (const o of p.offers!) expect(allowed, `seed ${seed}`).toContain(o.id);
+    }
+  });
+
+  it('offers fewer cards when the allowed list is short, and nothing when empty', () => {
+    const p = new Progression(new Rng(1), ['blade']);
+    p.addXp(xpToNext(1));
+    expect(p.offers!.map((o) => o.id)).toEqual(['blade']);
+    const q = new Progression(new Rng(1), []);
+    q.addXp(xpToNext(1));
+    expect(q.offers).toBeNull();
+    expect(q.level).toBe(2);
+  });
+
+  it('omitting the list allows every card', () => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 200; seed++) {
+      const p = aProgression(seed);
+      p.addXp(xpToNext(1));
+      p.offers!.forEach((o) => seen.add(o.id));
+    }
+    expect(seen.size).toBe(UPGRADES.length);
+  });
+});
+
+describe('grantLevels', () => {
+  it('raises the level by n and queues one choice per level', () => {
+    const p = aProgression();
+    p.grantLevels(2);
+    expect(p.level).toBe(3);
+    expect(p.xp).toBe(0);
+    expect(p.offers).toHaveLength(3);
+    p.choose(0, host());
+    expect(p.offers).toHaveLength(3);
+    p.choose(0, host());
+    expect(p.offers).toBeNull();
+  });
+
+  it('ignores zero or negative amounts', () => {
+    const p = aProgression();
+    p.grantLevels(0);
+    p.grantLevels(-1);
+    expect(p.level).toBe(1);
+    expect(p.offers).toBeNull();
+  });
+
+  it('respects the allowed list', () => {
+    const p = new Progression(new Rng(4), ['walls', 'slits', 'arc']);
+    p.grantLevels(1);
+    expect(p.offers!.map((o) => o.id).sort()).toEqual(['arc', 'slits', 'walls']);
+  });
+});

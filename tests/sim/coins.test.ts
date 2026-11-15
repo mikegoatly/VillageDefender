@@ -1,3 +1,4 @@
+import { MONSTERS } from '../../src/data/monsters';
 import { describe, expect, it } from 'vitest';
 import { COINS } from '../../src/data/towns';
 import type { WaveDef } from '../../src/data/waves';
@@ -14,7 +15,7 @@ describe('coins', () => {
   it('pays per kill by kind', () => {
     const { world } = town().withMonster('zombie', 3, 3).withMonster('orc', 4, 3).withMonster('brute', 5, 3).build();
     world.debugKillAll();
-    expect(world.coins).toBe(COINS.perKill.zombie + COINS.perKill.orc + COINS.perKill.brute);
+    expect(world.coins).toBe(MONSTERS.zombie.coins + MONSTERS.orc.coins + MONSTERS.brute.coins);
     expect(world.killsByKind).toEqual({ zombie: 1, orc: 1, brute: 1 });
   });
 
@@ -62,7 +63,7 @@ describe('coins', () => {
     }
     expect(world.status).toBe('won');
     expect(world.stars).toBe(3);
-    expect(world.coins).toBe(COINS.perKill.zombie + COINS.perWaveCleared + COINS.perStar * 3);
+    expect(world.coins).toBe(MONSTERS.zombie.coins + COINS.perWaveCleared + COINS.perStar * 3);
   });
 });
 
@@ -81,7 +82,7 @@ describe('runResult', () => {
     });
     expect(r.knightLevel).toBe(world.progression.level);
     expect(r.knightLevel).toBeGreaterThan(1);
-    expect(r.coins).toBe(2 * COINS.perKill.zombie + COINS.perKill.brute + COINS.perWaveCleared * 4 + COINS.perStar * 2);
+    expect(r.coins).toBe(2 * MONSTERS.zombie.coins + MONSTERS.brute.coins + COINS.perWaveCleared * 4 + COINS.perStar * 2);
   });
 
   it('reports a loss', () => {

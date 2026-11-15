@@ -22,7 +22,8 @@ export class Progression {
   /** Level-ups earned but not yet chosen (several can queue from one big pickup). */
   private pending = 0;
 
-  constructor(private readonly rng: Rng) {}
+  /** llowed: card ids that may be offered (unlocked cards); all cards when omitted. */
+  constructor(private readonly rng: Rng, private readonly allowed?: readonly string[]) {}
 
   get xpToNext(): number {
     return xpToNext(this.level);
@@ -56,6 +57,14 @@ export class Progression {
     return def.id;
   }
 
+  /** Grants whole levels (shop 'start with a level-up'): each opens a card choice. */
+  grantLevels(n: number) {
+    if (n <= 0) return;
+    this.level += n;
+    this.pending += n;
+    if (!this.offers) this.roll();
+  }
+
   /** Debug: takes one stack of an upgrade directly, without spending a level. */
   grant(id: string, host: UpgradeHost): boolean {
     const def = UPGRADE_BY_ID[id];
@@ -67,7 +76,7 @@ export class Progression {
   }
 
   private roll() {
-    const available = UPGRADES.filter((u) => (this.levels[u.id] ?? 0) < u.max);
+    const available = UPGRADES.filter((u) => (this.levels[u.id] ?? 0) < u.max && (!this.allowed || this.allowed.includes(u.id)));
     if (available.length === 0) {
       // Everything maxed: nothing to offer; drop the pending level-ups.
       this.pending = 0;
