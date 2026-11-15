@@ -69,7 +69,11 @@ Run the spike on a real mid-range phone (`vite --host`, `?look=3d&stress=300`, w
 `&shadows=0`). If 300 units cannot hold 30 fps without shadows, stop and rethink before any port
 work. Done when: numbers recorded here.
 
-### Phase 1 — split game flow from drawing (M)
+### Phase 1 — split game flow from drawing (M) — done 2026-11-15
+
+Result: `src/game/` (`GameController`, `Renderer`, `session`), `src/render/PhaserRenderer.ts`,
+`GameScene` reduced to a thin Phaser host; 14 controller tests with a fake renderer
+(`tests/helpers/game.ts`). Scripted playtest output unchanged.
 
 - Extract `GameController` from `GameScene`; define `Renderer`; wrap current drawing as
   `PhaserRenderer`.
