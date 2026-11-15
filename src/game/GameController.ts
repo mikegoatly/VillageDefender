@@ -10,8 +10,9 @@ import type { TownDef } from '../data/towns';
 import { RANK_NUMERALS, WEAPON_ORDER, WEAPONS, type WeaponKind } from '../data/weapons';
 import type { GameAudio } from '../audio/GameAudio';
 import { InputManager } from '../input/InputManager';
+import { dirVec } from '../input/PadNav';
 import type { Profile } from '../meta/profile';
-import { emptyInput, type InputState } from '../sim/types';
+import { emptyInput, type InputState, type Vec2 } from '../sim/types';
 import type { SimEvent, World } from '../sim/world';
 import { DebugPanel, debugEnabled, type DebugHost, type OverlayName } from '../ui/DebugPanel';
 import { Hud, type HudWorld } from '../ui/Hud';
@@ -20,6 +21,7 @@ import { MainMenu } from '../ui/MainMenu';
 import { PlanningPanel, type PlanningView } from '../ui/PlanningPanel';
 import { installRotateOverlay } from '../ui/RotateOverlay';
 import type { Renderer } from './Renderer';
+import { pickInDirection } from './spatialPick';
 import { randomSeed, type Params, type Session, type SessionData } from './session';
 
 /** Weapon picker glyphs. */
@@ -255,6 +257,7 @@ export class GameController {
     this.planning = new PlanningPanel(this.uiRoot, {
       onAssign: (id, role) => this.assignRole(id, role),
       onSelectNext: (d) => this.selectBuilding(this.cycleBuilding(d)),
+      onSelectDir: (d) => this.selectBuilding(this.buildingInDirection(dirVec(d))),
       onStart: () => this.startTown(),
       onWeapon: (kind) => this.chooseWeapon(kind as WeaponKind),
     });
@@ -270,6 +273,20 @@ export class GameController {
       this.selectBuilding(-1);
     });
     this.selectBuilding(-1);
+  }
+
+  /** The building on screen in direction `dir` from the selected one (nearest the centre if none). */
+  private buildingInDirection(dir: Vec2): number {
+    const w = this.world;
+    const items = w.buildings.map((b) => {
+      const cells = w.map.buildings[b.id].cells;
+      let x = 0;
+      let y = 0;
+      for (const [i, j] of cells) { x += i; y += j; }
+      return { id: b.id, pos: this.renderer.screenOf({ x: x / cells.length, y: y / cells.length }) };
+    });
+    const centre = this.renderer.screenOf({ x: w.map.centre, y: w.map.centre });
+    return pickInDirection(items, this.selected, dir, centre);
   }
 
   private cycleBuilding(d: 1 | -1): number {

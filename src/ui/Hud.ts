@@ -2,6 +2,11 @@
 // DOM keeps text crisp and independent of camera zoom.
 
 import type { Side } from '../sim/map';
+import { PadNav } from '../input/PadNav';
+import { promptBar } from './prompts';
+
+/** Controller input on the end panel is ignored this long, so a held attack cannot pick Retry. */
+export const END_PANEL_GUARD_MS = 600;
 
 /** Structural view of the World the HUD needs (keeps the HUD independent of World internals). */
 export interface HudWorld {
@@ -109,6 +114,8 @@ const STYLE = `
 .vd-hud .extras .unlock { color: #2f7a2a; font-weight: 800; }
 .vd-hud .over button { margin: 4px 6px 0; font: inherit; padding: 8px 18px; border-radius: 6px; border: 2px solid #3b2418;
   background: #ffd75e; cursor: pointer; }
+:root[data-input=gamepad] .vd-hud .over button.focus { outline: 4px solid #ffd75e; outline-offset: 2px; box-shadow: 0 0 0 2px #3b2418, 0 0 12px 4px #ffd75ecc; }
+.vd-hud .over .vd-prompts { margin-top: 10px; }
 `;
 
 const ARROW: Record<Side, string> = { top: '▲', bottom: '▼', left: '◀', right: '▶' };
@@ -149,6 +156,9 @@ export class Hud {
   private prevStanding: number | null = null;
   private ended = false;
   private extrasShown = false;
+  private readonly pad = new PadNav();
+  private endedAt = 0;
+  private padFocus = 0;
 
   private onKey = (e: KeyboardEvent) => {
     if (!this.ended || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -220,6 +230,9 @@ export class Hud {
 
     const ended = world.status !== 'playing';
     if (ended && !this.ended) {
+      this.endedAt = performance.now();
+      this.padFocus = 0;
+      this.pad.reset();
       this.buildPanel(world, standing, total);
       // Pending wave warnings are irrelevant once the level is over.
       for (const s of Object.keys(this.warns) as Side[]) this.warns[s].classList.remove('show');
@@ -230,6 +243,20 @@ export class Hud {
     if (!ended) this.extrasShown = false;
     this.ended = ended;
     this.over.classList.toggle('show', ended);
+    if (ended) this.pollPad();
+  }
+
+  /** End panel: D-pad/stick moves between the buttons, A presses the highlighted one. */
+  private pollPad() {
+    const t = performance.now();
+    const f = this.pad.poll(t);
+    if (t - this.endedAt < END_PANEL_GUARD_MS) return;
+    const buttons = [...this.panel.querySelectorAll<HTMLButtonElement>('button')];
+    if (buttons.length === 0) return;
+    const move = f.dir === 'left' || f.dir === 'up' ? -1 : f.dir === 'right' || f.dir === 'down' ? 1 : 0;
+    if (move !== 0) this.padFocus = (this.padFocus + move + buttons.length) % buttons.length;
+    buttons.forEach((b, i) => b.classList.toggle('focus', i === this.padFocus));
+    if (f.pressed.has('a')) buttons[this.padFocus]?.click();
   }
 
   private updateBoss(boss: HudWorld['boss']) {
@@ -289,7 +316,8 @@ export class Hud {
         <div class="s-time">Time ${formatTime(world.time)}</div>
       </div>
       <div class="extras"></div>
-      <button class="retry">Retry (R)</button><button class="newtown">New town (N)</button>${this.callbacks.onMenu ? '<button class="menu">Menu (M)</button>' : ''}`;
+      <button class="retry">Retry<span class="kb-only"> (R)</span></button><button class="newtown">New town<span class="kb-only"> (N)</span></button>${this.callbacks.onMenu ? '<button class="menu">Menu<span class="kb-only"> (M)</span></button>' : ''}`;
+    this.panel.appendChild(promptBar([[['dpad', 'stick'], 'Choose'], ['a', 'Select']]));
     this.panel.querySelector('.retry')!.addEventListener('click', () => this.callbacks.onRetry());
     this.panel.querySelector('.newtown')!.addEventListener('click', () => this.callbacks.onNewTown());
     this.panel.querySelector('.menu')?.addEventListener('click', () => this.callbacks.onMenu?.());

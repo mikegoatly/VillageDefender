@@ -62,7 +62,7 @@ describe('PlanningPanel', () => {
     vi.stubGlobal('cancelAnimationFrame', (id: number) => { rafQueue.delete(id); });
     pad = null;
     Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad] });
-    cb = { onAssign: vi.fn(), onSelectNext: vi.fn(), onStart: vi.fn(), onWeapon: vi.fn() };
+    cb = { onAssign: vi.fn(), onSelectNext: vi.fn(), onSelectDir: vi.fn(), onStart: vi.fn(), onWeapon: vi.fn() };
     panel = new PlanningPanel(root, cb);
   });
   afterEach(() => {
@@ -83,10 +83,10 @@ describe('PlanningPanel', () => {
     expect(root.querySelector('.card')).toBeNull();
   });
 
-  it('places the hint after the banner in the same top column, never inside it', () => {
+  it('places the hint and controller prompts after the banner in the same top column, never inside it', () => {
     panel.show(aView({ weapons: [{ kind: 'sword', name: 'Sword', description: 'd', locked: false, icon: 'S' }], selectedWeapon: 'sword' }));
     const top = root.querySelector('.top')!;
-    expect(Array.from(top.children).map((c) => c.className)).toEqual(['banner', 'hint']);
+    expect(Array.from(top.children).map((c) => c.className)).toEqual(['banner', 'vd-prompts', 'hint kb-only']);
     expect(root.querySelector('.banner .hint')).toBeNull();
   });
 
@@ -207,59 +207,99 @@ describe('PlanningPanel', () => {
   });
 
   describe('gamepad', () => {
-    it('LB/RB and D-pad left/right select houses on edges only', () => {
+    /** One tap: press, step, release, step. */
+    const tap = (buttons: Record<number, boolean>, axes?: number[]) => {
+      setPad(buttons, axes);
+      step();
+      setPad({});
+      step();
+    };
+    const glyphs = () => [...root.querySelectorAll<HTMLElement>('.vd-prompts .vd-glyph')].map((g) => g.dataset.btn);
+
+    it('LB/RB cycle houses on edges only', () => {
       showReady(aView());
       setPad({ 5: true });
       step();
       expect(cb.onSelectNext).toHaveBeenLastCalledWith(1);
       step();
       expect(cb.onSelectNext).toHaveBeenCalledTimes(1);
-      setPad({ 4: true });
-      step();
+      tap({ 4: true });
       expect(cb.onSelectNext).toHaveBeenLastCalledWith(-1);
+      expect(cb.onSelectNext).toHaveBeenCalledTimes(2);
+    });
+
+    it('D-pad and stick select the house in that direction', () => {
+      showReady(aView());
       setPad({ 15: true });
       step();
+      step(); // held, before the repeat delay: no second move
+      expect(cb.onSelectDir).toHaveBeenCalledTimes(1);
+      expect(cb.onSelectDir).toHaveBeenLastCalledWith('right');
+      tap({}, [0, -0.9]);
+      expect(cb.onSelectDir).toHaveBeenLastCalledWith('up');
+      expect(cb.onSelectNext).not.toHaveBeenCalled();
+    });
+
+    it('without onSelectDir, D-pad left/right cycle houses instead', () => {
+      panel.destroy();
+      panel = new PlanningPanel(root, { onAssign: cb.onAssign, onSelectNext: cb.onSelectNext, onStart: cb.onStart });
+      showReady(aView());
+      tap({ 15: true });
       expect(cb.onSelectNext).toHaveBeenLastCalledWith(1);
-      setPad({ 14: true });
-      step();
+      tap({ 14: true });
       expect(cb.onSelectNext).toHaveBeenLastCalledWith(-1);
-      expect(cb.onSelectNext).toHaveBeenCalledTimes(4);
     });
 
-    it('D-pad up/down moves focus, A assigns the focused option', () => {
-      showReady(aView({ selected: selected() })); // focus starts on Plain house
-      setPad({ 13: true });
-      step();
-      setPad({});
-      step();
-      setPad({ 13: true });
-      step(); // focus on Chapel
-      setPad({});
-      step();
+    it('A opens the role card, left/right move focus, A assigns and returns to the map', () => {
+      showReady(aView({ selected: selected('barracks') }));
+      expect(root.querySelector('.opt.focus')).toBeNull(); // map mode: no role focus yet
+      tap({ 0: true });
+      expect(root.querySelector('.card')!.classList.contains('pad-active')).toBe(true);
+      expect(optByName('Barracks').classList.contains('focus')).toBe(true); // starts on the current role
+      tap({ 15: true });
       expect(optByName('Chapel').classList.contains('focus')).toBe(true);
-      setPad({ 0: true });
-      step();
+      tap({ 15: true }); // in the card, directions do not move between houses
+      expect(cb.onSelectDir).not.toHaveBeenCalled();
+      tap({ 14: true });
+      tap({ 0: true });
       expect(cb.onAssign).toHaveBeenCalledWith(4, 'chapel');
-      setPad({});
-      step();
-      setPad({ 12: true });
-      step();
-      setPad({});
-      step();
-      setPad({ 0: true });
-      step();
-      expect(cb.onAssign).toHaveBeenLastCalledWith(4, 'barracks');
+      expect(root.querySelector('.card')!.classList.contains('pad-active')).toBe(false);
+      tap({ 15: true });
+      expect(cb.onSelectDir).toHaveBeenLastCalledWith('right');
     });
 
-    it('A on a disabled option does nothing', () => {
+    it('B leaves the role card without assigning', () => {
+      showReady(aView({ selected: selected() }));
+      tap({ 0: true });
+      tap({ 15: true });
+      tap({ 1: true });
+      expect(cb.onAssign).not.toHaveBeenCalled();
+      expect(root.querySelector('.opt.focus')).toBeNull();
+    });
+
+    it('A on a disabled option does nothing and stays in the card', () => {
       const roles = ROLES();
       roles[0] = aRole('barracks', { locked: true });
       showReady(aView({ selected: selected(), roles }));
-      setPad({ 13: true });
-      step(); // focus on locked Barracks
-      setPad({ 0: true });
-      step();
+      tap({ 0: true });
+      tap({ 15: true }); // focus on locked Barracks
+      tap({ 0: true });
       expect(cb.onAssign).not.toHaveBeenCalled();
+      expect(optByName('Barracks').classList.contains('focus')).toBe(true);
+    });
+
+    it('A with no house selected does nothing', () => {
+      showReady(aView());
+      tap({ 0: true });
+      expect(cb.onAssign).not.toHaveBeenCalled();
+      expect(root.querySelector('.card')).toBeNull();
+    });
+
+    it('shows controller prompts for the current mode', () => {
+      showReady(aView({ selected: selected() }));
+      expect(glyphs()).toEqual(['dpad', 'stick', 'a', 'start']);
+      tap({ 0: true });
+      expect(glyphs()).toEqual(['dpad', 'stick', 'a', 'b', 'start']);
     });
 
     it('Start (9) and Y (3) start the town', () => {

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { Hud, type HudWorld } from '../../src/ui/Hud';
+import { Hud, END_PANEL_GUARD_MS, type HudWorld } from '../../src/ui/Hud';
+import { aPad, type FakePad } from '../helpers/pad';
 
 function aHudWorld(o: Partial<HudWorld> & { standing?: number; total?: number } = {}): HudWorld {
   const { standing, total = 7, ...rest } = o;
@@ -227,6 +228,78 @@ describe('Hud', () => {
       hud.update(aHudWorld({ boss: null }));
       hud.update(aHudWorld({ boss: boss(100) }));
       expect(banner().classList.contains('show')).toBe(true);
+    });
+  });
+
+  describe('end panel controller navigation', () => {
+    let clock: number;
+    let pad: FakePad | null;
+    const buttons = () => [...root.querySelectorAll<HTMLButtonElement>('.over button')];
+    const focusIdx = () => buttons().findIndex((b) => b.classList.contains('focus'));
+    const lost = () => aHudWorld({ status: 'lost', lossReason: 'knight' });
+    const tick = (dt: number, p: FakePad | null) => { clock += dt; pad = p; hud.update(lost()); };
+    const afterGuard = () => { clock += END_PANEL_GUARD_MS + 1; };
+
+    beforeEach(() => {
+      clock = 1000;
+      pad = null;
+      vi.spyOn(performance, 'now').mockImplementation(() => clock);
+      Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad] });
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it('ignores input within the guard period', () => {
+      tick(0, aPad());
+      tick(10, aPad());
+      tick(10, aPad(['a']));
+      expect(onRetry).not.toHaveBeenCalled();
+    });
+
+    it('A held from before the end does not retry', () => {
+      tick(0, aPad(['a']));
+      afterGuard();
+      tick(0, aPad(['a']));
+      tick(16, aPad(['a']));
+      expect(onRetry).not.toHaveBeenCalled();
+    });
+
+    it('after the guard, releasing and pressing A retries (first button)', () => {
+      tick(0, aPad(['a']));
+      afterGuard();
+      tick(0, aPad());
+      expect(focusIdx()).toBe(0);
+      tick(16, aPad(['a']));
+      expect(onRetry).toHaveBeenCalledTimes(1);
+      expect(onNewTown).not.toHaveBeenCalled();
+    });
+
+    it('D-pad right then A starts a new town', () => {
+      tick(0, aPad());
+      afterGuard();
+      tick(0, aPad());
+      tick(16, aPad(['right']));
+      expect(focusIdx()).toBe(1);
+      tick(16, aPad());
+      tick(16, aPad(['a']));
+      expect(onNewTown).toHaveBeenCalledTimes(1);
+      expect(onRetry).not.toHaveBeenCalled();
+    });
+
+    it('wraps around in both directions', () => {
+      tick(0, aPad());
+      afterGuard();
+      tick(0, aPad());
+      const n = buttons().length;
+      tick(16, aPad(['left']));
+      expect(focusIdx()).toBe(n - 1);
+      tick(16, aPad());
+      tick(16, aPad(['right']));
+      expect(focusIdx()).toBe(0);
+    });
+
+    it('shows a controller prompt bar in the panel', () => {
+      hud.update(lost());
+      expect(root.querySelector('.over .vd-prompts')).not.toBeNull();
     });
   });
 

@@ -372,7 +372,7 @@ Findings:
 
 ### Milestone 3b results (2026-11-14)
 
-- **Planning phase on the real map:** the sim waits in `planning` until `start()`. Tap a house, or keyboard ←→ to pick a house, 1–4 to assign a role, 0 to clear, Enter to start; gamepad LB/RB to pick, D-pad to choose a role, A to assign, Start to begin. Role roofs, icon badges and aura rings show while planning. Town 1 gives 2 planning points.
+- **Planning phase on the real map:** the sim waits in `planning` until `start()`. Tap a house, or keyboard ←→ to pick a house, 1–4 to assign a role, 0 to clear, Enter to start; gamepad stick/D-pad to move to the house in that direction (LB/RB cycle), A to open its role card, ◀▶ and A to assign, B to back out, X to change weapon, Start to begin. Role roofs, icon badges and aura rings show while planning. Town 1 gives 2 planning points.
 - **Roles:** barracks (+1 rookie cap, rookies step out of it), chapel (heals the knight and rookies 3 HP/s within 3 cells), smithy (+25% knight and rookie damage within 3 cells), watchtower (an arrow every 2 s within 4 cells, and wave warnings come 2 s earlier). A role stops working when its building is ruined.
 - **Coins:** 1 per zombie/orc, 5 per brute, 3 × wave number for each cleared wave (paid when the next wave starts), and a win bonus of 3 × waves + 20 per star. Saved to a localStorage profile with lifetime stats, best stars per town and achievements (Defender, Not a scratch, Brute slayer, Seasoned). The end panel shows coins earned, wallet, new achievements and unlocked roles.
 - **Debug:** panel Profile folder; `?plan=0` skips planning; `window.__vd.startTown()`.
@@ -479,3 +479,10 @@ Findings:
 15. **Distribution target:** web only first, or stores/Steam from the start.
     Affects packaging and save storage only.
 16. **Name.**
+
+### Controller support (2026-11-15)
+
+- Shared `input/PadNav` for every overlay: rising-edge buttons merged across all connected pads, D-pad/left stick with hold-to-repeat, and anything held when a screen opens must be released first.
+- Button prompts from Kenney Input Prompts (`public/assets/ui/prompts/<xbox|ps|switch>`), picked from the Gamepad id and shown only while a controller is the last-used input (`<html data-input data-pad>`, `ui/prompts.ts`). Keyboard hints like "(R)" hide while a pad is in use.
+- End-of-run panel is now usable by pad (D-pad + A, 600 ms guard). Main menu focus is also tracked with a class, so the highlight shows even when the window is unfocused.
+

@@ -4,6 +4,8 @@ import { TOWNS } from '../../src/data/towns';
 import { Profile } from '../../src/meta/profile';
 import { MainMenu, MENU_INPUT_GUARD_MS, type AudioSettings, type MenuHost } from '../../src/ui/MainMenu';
 import { memoryStore } from '../helpers/profile';
+import { aPad, type FakePad } from '../helpers/pad';
+import { PAD_REPEAT_DELAY_MS } from '../../src/input/PadNav';
 
 describe('MainMenu', () => {
   let root: HTMLElement;
@@ -199,6 +201,81 @@ describe('MainMenu', () => {
       click('reset');
       click('reset-confirm');
       expect(host.onResetProgress).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('gamepad', () => {
+    let rafQueue: FrameRequestCallback[];
+    let pad: FakePad | null;
+    const frame = (dt: number, p: FakePad | null) => {
+      clock += dt;
+      pad = p;
+      const queued = rafQueue;
+      rafQueue = [];
+      queued.forEach((cb) => cb(clock));
+    };
+    const focusedKey = () => (document.activeElement as HTMLElement | null)?.dataset.key;
+    /** Passes the input guard and records a neutral frame so inputs count. */
+    const ready = () => frame(MENU_INPUT_GUARD_MS + 1, aPad());
+
+    beforeEach(() => {
+      menu.destroy();
+      document.body.innerHTML = '';
+      root = document.createElement('div');
+      document.body.appendChild(root);
+      rafQueue = [];
+      pad = null;
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { rafQueue.push(cb); return rafQueue.length; });
+      Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad] });
+      menu = new MainMenu(root, host);
+      menu.show();
+      ready();
+    });
+
+    it('down moves focus to the next button', () => {
+      expect(focusedKey()).toBe('play');
+      frame(16, aPad(['down']));
+      expect(focusedKey()).toBe('shop');
+    });
+
+    it('A activates the focused button (Play opens the towns screen)', () => {
+      frame(16, aPad(['a']));
+      expect(q('h2')!.textContent).toBe('Choose a town');
+    });
+
+    it('B goes back to the title', () => {
+      click('settings');
+      ready();
+      frame(16, aPad(['b']));
+      expect(q('h1')).not.toBeNull();
+    });
+
+    it('input is ignored during the guard after a screen change', () => {
+      click('settings');
+      frame(16, aPad());
+      frame(16, aPad(['b']));
+      expect(q('h2')!.textContent).toBe('Settings');
+    });
+
+    it('holding down repeats after the delay', () => {
+      frame(16, aPad(['down']));
+      expect(focusedKey()).toBe('shop');
+      frame(PAD_REPEAT_DELAY_MS - 20, aPad(['down']));
+      expect(focusedKey()).toBe('shop');
+      frame(30, aPad(['down']));
+      expect(focusedKey()).toBe('settings');
+    });
+
+    it('has a prompt bar, with a B glyph only on non-title screens', () => {
+      const glyphs = () => qa('.vd-prompts .vd-glyph').map((g) => g.dataset.btn);
+      expect(q('.vd-prompts')).not.toBeNull();
+      expect(glyphs()).toContain('a');
+      expect(glyphs()).not.toContain('b');
+      click('shop');
+      expect(qa('.vd-prompts')).toHaveLength(1);
+      expect(glyphs()).toContain('b');
+      click('back');
+      expect(glyphs()).not.toContain('b');
     });
   });
 

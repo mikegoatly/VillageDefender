@@ -5,6 +5,8 @@ import type { Profile } from '../meta/profile';
 import { TOWNS } from '../data/towns';
 import { SHOP, type ShopItem } from '../data/shop';
 import { UPGRADES } from '../data/upgrades';
+import { PadNav } from '../input/PadNav';
+import { promptBar } from './prompts';
 
 export type MenuScreen = 'title' | 'towns' | 'shop' | 'settings';
 export interface AudioSettings { master: number; sfx: number; music: number; muted: boolean }
@@ -21,7 +23,6 @@ export interface MenuHost {
 
 /** Input is ignored this long after a screen change so held buttons cannot trigger anything. */
 export const MENU_INPUT_GUARD_MS = 300;
-const STICK_THRESHOLD = 0.5;
 const SLIDER_STEP = 5;
 const MAX_STARS = 3;
 
@@ -30,9 +31,10 @@ const STYLE = `
   background: #3b2418cc; pointer-events: auto; color: #3b2418; font: 600 15px system-ui, sans-serif;
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   box-sizing: border-box; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
-.vd-menu.show { display: flex; }
+.vd-menu.show { display: flex; flex-direction: column; gap: 8px; }
+.vd-menu .vd-prompts { flex: none; }
 .vd-menu .panel { background: #f3e3d0; border: 3px solid #3b2418; border-radius: 12px; padding: 16px 22px; box-sizing: border-box;
-  width: min(640px, 100%); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; text-align: center; }
+  width: min(640px, 100%); max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); flex: 0 1 auto; min-height: 0; overflow-y: auto; text-align: center; }
 .vd-menu h1 { margin: 0; font-size: 48px; line-height: 1.05; text-shadow: 0 2px 0 #ffd75e; }
 .vd-menu h2 { margin: 0 0 8px; font-size: 24px; }
 .vd-menu h3 { margin: 14px 0 6px; font-size: 16px; text-align: left; border-bottom: 2px solid #3b241833; }
@@ -98,10 +100,8 @@ export class MainMenu {
   private toastTimer?: number;
   private confirmReset = false;
   private raf: number | null = null;
-  private padAHeld = false;
-  private padBHeld = false;
-  private padAReleased = false;
-  private padDir = '0,0';
+  private readonly pad = new PadNav();
+  private prompts: HTMLDivElement;
 
   constructor(root: HTMLElement, private readonly host: MenuHost) {
     if (!document.getElementById('vd-menu-style')) {
@@ -113,6 +113,12 @@ export class MainMenu {
     this.el = mk('div', 'vd-menu');
     this.panel = mk('div', 'panel');
     this.el.appendChild(this.panel);
+    this.panel.addEventListener('focusin', (e) => {
+      for (const x of this.panel.querySelectorAll('.focus')) if (x !== e.target) x.classList.remove('focus');
+      (e.target as HTMLElement).classList.add('focus');
+    });
+    this.prompts = mk('div');
+    this.el.appendChild(this.prompts);
     root.appendChild(this.el);
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKeyUp);
@@ -123,9 +129,10 @@ export class MainMenu {
   }
 
   show(screen: MenuScreen = 'title'): void {
-    this.go(screen);
+    // Visible first: focus() does nothing on an element that is display: none.
     this._visible = true;
     this.el.classList.add('show');
+    this.go(screen);
     this.startPadLoop();
   }
 
@@ -151,10 +158,7 @@ export class MainMenu {
     this.toast = null;
     clearTimeout(this.toastTimer);
     this.shownAt = now();
-    this.padAHeld = true; // assume held until observed released
-    this.padBHeld = true;
-    this.padAReleased = false;
-    this.padDir = '0,0';
+    this.pad.reset(); // anything held must be released before it counts on the new screen
     this.render();
     this.focusAt(0);
   }
@@ -184,6 +188,12 @@ export class MainMenu {
       case 'shop': this.renderShop(); break;
       case 'settings': this.renderSettings(); break;
     }
+    const hints: Parameters<typeof promptBar>[0] = [[['dpad', 'stick'], 'Move'], ['a', 'Select']];
+    if (this.screen === 'settings') hints.splice(1, 0, ['dpad', '◀ ▶ Volume']);
+    if (this.screen !== 'title') hints.push(['b', 'Back']);
+    const bar = promptBar(hints);
+    this.prompts.replaceWith(bar);
+    this.prompts = bar;
     if (focusKey !== undefined) {
       const items = this.focusables();
       const i = items.findIndex((e) => e.dataset.key === focusKey);
@@ -382,13 +392,17 @@ export class MainMenu {
 
   private currentIndex(items: HTMLElement[]): number {
     const a = document.activeElement as HTMLElement | null;
-    return a ? items.indexOf(a) : -1;
+    const i = a ? items.indexOf(a) : -1;
+    return i >= 0 ? i : items.findIndex((e) => e.classList.contains('focus'));
   }
 
   private focusAt(i: number): void {
     const items = this.focusables();
     if (items.length === 0) return;
     const el = items[Math.min(items.length - 1, Math.max(0, i))];
+    // A class as well as real focus: :focus does not match while the window itself is unfocused.
+    for (const e of this.panel.querySelectorAll('.focus')) e.classList.remove('focus');
+    el.classList.add('focus');
     el.focus();
     el.scrollIntoView?.({ block: 'nearest' });
   }
@@ -401,8 +415,14 @@ export class MainMenu {
   }
 
   /** Left/right on a slider changes its value; returns whether it was handled. */
+  /** The focused control: real focus, else the one carrying the focus class. */
+  private current(): HTMLElement | null {
+    const items = this.focusables();
+    return items[this.currentIndex(items)] ?? null;
+  }
+
   private adjustSlider(dir: number): boolean {
-    const a = document.activeElement as HTMLInputElement | null;
+    const a = this.current() as HTMLInputElement | null;
     if (!a || a.type !== 'range' || !this.panel.contains(a)) return false;
     a.value = String(Math.min(100, Math.max(0, Number(a.value) + dir * SLIDER_STEP)));
     a.dispatchEvent(new Event('input', { bubbles: true }));
@@ -410,8 +430,8 @@ export class MainMenu {
   }
 
   private activate(): void {
-    const a = document.activeElement as HTMLElement | null;
-    if (a && this.panel.contains(a) && a.tagName === 'BUTTON') a.click();
+    const a = this.current();
+    if (a && a.tagName === 'BUTTON') a.click();
   }
 
   // ------------------------------------------------------------------ keyboard
@@ -461,36 +481,16 @@ export class MainMenu {
   }
 
   private pollPad(): void {
-    const pads = navigator.getGamepads?.() ?? [];
-    let pad: Gamepad | null = null;
-    for (let i = 0; i < pads.length; i++) {
-      if (pads[i]?.connected) { pad = pads[i]; break; }
+    const f = this.pad.poll(now());
+    if (!this.guardOpen()) return;
+    if (f.dir === 'up') this.moveFocus(-1);
+    else if (f.dir === 'down') this.moveFocus(1);
+    else if (f.dir === 'left' || f.dir === 'right') {
+      const d = f.dir === 'left' ? -1 : 1;
+      if (!this.adjustSlider(d)) this.moveFocus(d);
     }
-    if (!pad) {
-      this.padDir = '0,0';
-      return;
-    }
-    const aDown = !!pad.buttons[0]?.pressed;
-    const bDown = !!pad.buttons[1]?.pressed;
-    const ax = pad.axes[0] ?? 0;
-    const ay = pad.axes[1] ?? 0;
-    const dx = pad.buttons[14]?.pressed || ax < -STICK_THRESHOLD ? -1 : pad.buttons[15]?.pressed || ax > STICK_THRESHOLD ? 1 : 0;
-    const dy = pad.buttons[12]?.pressed || ay < -STICK_THRESHOLD ? -1 : pad.buttons[13]?.pressed || ay > STICK_THRESHOLD ? 1 : 0;
-    const dir = `${dx},${dy}`;
-
-    if (!aDown) this.padAReleased = true;
-    const open = this.guardOpen();
-    if (open && dir !== this.padDir) {
-      if (dy !== 0) this.moveFocus(dy);
-      else if (dx !== 0 && !this.adjustSlider(dx)) this.moveFocus(dx);
-    }
-    this.padDir = dir;
-    const risingA = aDown && !this.padAHeld;
-    const risingB = bDown && !this.padBHeld;
-    this.padAHeld = aDown;
-    this.padBHeld = bDown;
-    if (open && this.padAReleased && risingA) this.activate();
-    else if (open && risingB) {
+    if (f.pressed.has('a')) this.activate();
+    else if (f.pressed.has('b')) {
       if (this.confirmReset) { this.confirmReset = false; this.click(); this.render('reset'); } else this.back();
     }
   }

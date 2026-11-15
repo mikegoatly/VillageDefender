@@ -154,3 +154,48 @@ for (const [track, [dir, name]] of Object.entries(music)) {
 }
 writeFileSync(join(audioOut, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 console.log(`audio: ${audioCount} files`);
+
+/**
+ * Input prompt glyphs (Kenney Input Prompts, CC0) → public/assets/ui/prompts/<style>/<name>.svg.
+ * Logical names follow the Gamepad API standard mapping positions (a = bottom face,
+ * b = right, x = left, y = top), so Switch maps a→B etc. to show the matching physical label.
+ */
+const promptPacks = {
+  xbox: {
+    pack: 'Xbox Series',
+    glyphs: {
+      a: 'xbox_button_color_a', b: 'xbox_button_color_b', x: 'xbox_button_color_x', y: 'xbox_button_color_y',
+      lb: 'xbox_lb', rb: 'xbox_rb', start: 'xbox_button_menu', back: 'xbox_button_view',
+      dpad: 'xbox_dpad', stick: 'xbox_stick_l',
+    },
+  },
+  ps: {
+    pack: 'PlayStation Series',
+    glyphs: {
+      a: 'playstation_button_color_cross', b: 'playstation_button_color_circle',
+      x: 'playstation_button_color_square', y: 'playstation_button_color_triangle',
+      lb: 'playstation_trigger_l1', rb: 'playstation_trigger_r1',
+      start: 'playstation5_button_options', back: 'playstation5_button_create',
+      dpad: 'playstation_dpad', stick: 'playstation_stick_l',
+    },
+  },
+  switch: {
+    pack: 'Nintendo Switch',
+    glyphs: {
+      a: 'switch_button_b', b: 'switch_button_a', x: 'switch_button_y', y: 'switch_button_x',
+      lb: 'switch_button_l', rb: 'switch_button_r', start: 'switch_button_plus', back: 'switch_button_minus',
+      dpad: 'switch_dpad', stick: 'switch_stick_l',
+    },
+  },
+};
+
+let promptCount = 0;
+for (const [style, { pack, glyphs }] of Object.entries(promptPacks)) {
+  const dest = join('public/assets/ui/prompts', style);
+  mkdirSync(dest, { recursive: true });
+  for (const [name, file] of Object.entries(glyphs)) {
+    cpSync(join(root, 'Icons/Input Prompts', pack, 'Vector', `${file}.svg`), join(dest, `${name}.svg`));
+    promptCount++;
+  }
+}
+console.log(`prompts: ${promptCount} files`);

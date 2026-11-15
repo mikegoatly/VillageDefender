@@ -8,7 +8,7 @@ import { Ground, type Building, type TownMap } from '../sim/map';
 import type { BuildingState } from '../sim/world';
 import { markOccluder, type ModelLibrary } from './assets';
 import {
-  auraCells, buildingPieces, decorPiece, hash01, ROCK, smokeSources, wallLevels,
+  auraCells, buildingPieces, decorPiece, footprintOutline, hash01, ROCK, smokeSources, wallLevels,
   type BuildingLook, type DamageState, type Piece, type SmokeSource,
 } from './buildings';
 import type { EmitterSpec, Particles } from './Particles';
@@ -22,7 +22,11 @@ const SMOKE: Record<SmokeSource['kind'], Omit<EmitterSpec, 'x' | 'y' | 'z'>> = {
 };
 const DUST = 0xc9b29b;
 const DAMAGED = new THREE.Color(0x8f6f60);
-const HIGHLIGHT = 0x5a4818;
+/** Planning selection: roof/wall glow pulses between these, plus a gold outline and a bobbing arrow. */
+const HIGHLIGHT_LOW = new THREE.Color(0x4a3a10);
+const HIGHLIGHT_HIGH = new THREE.Color(0x8a6a1a);
+const SELECT_COLOR = 0xffd75e;
+const SELECT = { pulseHz: 1.6, outlineGap: 0.22, bar: 0.12, arrowLift: 1.0, bob: 0.18 };
 const HIT_FLASH = 0x9a9a9a;
 /** Hit shake length (s) and how long the white flash lasts within it. */
 const SHAKE = { time: 0.18, flash: 0.06, amplitude: 0.05 };
@@ -58,6 +62,12 @@ export class TownView {
   private auraKey = '';
   private planning = false;
   private highlighted = -1;
+  private readonly marker = new THREE.Group();
+  private readonly arrow: THREE.Mesh;
+  private readonly markerMat: THREE.MeshBasicMaterial;
+  private readonly barGeo: THREE.BoxGeometry;
+  private readonly glow = new THREE.Color();
+  private time = 0;
 
   constructor(private readonly library: ModelLibrary, private readonly map: TownMap, private readonly particles: Particles) {
     this.makeGround();
@@ -79,6 +89,18 @@ export class TownView {
     this.aura.frustumCulled = false;
     this.aura.renderOrder = 1;
     this.root.add(this.aura);
+
+    // Selection marker (planning): outline bars rebuilt per selection, an arrow above the roof.
+    this.markerMat = this.own(new THREE.MeshBasicMaterial({ color: SELECT_COLOR, transparent: true, depthWrite: false }));
+    this.barGeo = this.own(new THREE.BoxGeometry(1, 0.06, 1));
+    const arrowGeo = this.own(new THREE.ConeGeometry(0.4, 0.8, 4).rotateX(Math.PI));
+    // Drawn over everything, so a taller building in front never hides which one is picked.
+    const arrowMat = this.own(new THREE.MeshBasicMaterial({ color: SELECT_COLOR, depthTest: false, depthWrite: false, transparent: true }));
+    this.arrow = new THREE.Mesh(arrowGeo, arrowMat);
+    this.arrow.renderOrder = 10;
+    this.marker.visible = false;
+    this.marker.renderOrder = 2;
+    this.root.add(this.marker);
   }
 
   /** Rebuilds buildings whose role or damage state changed; darkens with damage; hit shake. */
@@ -101,6 +123,7 @@ export class TownView {
       }
     }
     this.syncAura(states);
+    this.animateSelection(dt);
   }
 
   /** Shake and flash a building that was hit. */
@@ -129,6 +152,43 @@ export class TownView {
     const prev = this.highlighted;
     this.highlighted = id;
     for (const i of [prev, id]) if (this.views[i]) this.applyHighlight(this.views[i]);
+    this.buildMarker();
+  }
+
+  private buildMarker() {
+    this.marker.clear();
+    const v = this.views[this.highlighted];
+    if (!v) {
+      this.marker.visible = false;
+      return;
+    }
+    const gap = SELECT.outlineGap;
+    for (const e of footprintOutline(v.def.cells)) {
+      const bar = new THREE.Mesh(this.barGeo, this.markerMat);
+      // Pushed out past the walls and lengthened by the gap at both ends so corners meet.
+      bar.position.set(e.x + e.nx * gap, 0.06, e.z + e.nz * gap);
+      bar.scale.set(e.horizontal ? 1 + 2 * gap : SELECT.bar, 1, e.horizontal ? SELECT.bar : 1 + 2 * gap);
+      bar.renderOrder = 2;
+      this.marker.add(bar);
+    }
+    this.marker.add(this.arrow);
+    this.marker.visible = true;
+    this.time = 0;
+    this.animateSelection(0);
+  }
+
+  /** Pulses the selected building's glow and the marker, and bobs the arrow. */
+  private animateSelection(dt: number) {
+    const v = this.views[this.highlighted];
+    if (!v || !this.marker.visible) return;
+    this.time += dt;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * Math.PI * 2 * SELECT.pulseHz);
+    this.markerMat.opacity = 0.6 + 0.4 * pulse;
+    const top = this.topOf(v.def.id);
+    this.arrow.position.set(top.x, top.y + SELECT.arrowLift + SELECT.bob * pulse, top.z);
+    this.arrow.rotation.y = this.time * 1.5;
+    this.glow.copy(HIGHLIGHT_LOW).lerp(HIGHLIGHT_HIGH, pulse);
+    if (v.look?.damage !== 'ruined' && !(v.shake > SHAKE.time - SHAKE.flash)) for (const m of v.materials) m.emissive.copy(this.glow);
   }
 
   dispose() {
@@ -171,7 +231,11 @@ export class TownView {
     const ruined = v.look?.damage === 'ruined';
     const flash = !ruined && v.shake > SHAKE.time - SHAKE.flash;
     const on = !ruined && v.def.id === this.highlighted;
-    for (const m of v.materials) m.emissive.setHex(flash ? HIT_FLASH : on ? HIGHLIGHT : 0);
+    for (const m of v.materials) {
+      if (flash) m.emissive.setHex(HIT_FLASH);
+      else if (on) m.emissive.copy(HIGHLIGHT_HIGH);
+      else m.emissive.setHex(0);
+    }
   }
 
   private updateShake(v: BuildingView, dt: number) {

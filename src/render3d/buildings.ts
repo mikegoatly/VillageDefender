@@ -219,6 +219,28 @@ export function auraCells(b: Building, radius: number): [number, number][] {
   return out;
 }
 
+/** One unit-long side of a footprint cell: its midpoint, whether it runs along x, and its outward normal. */
+export interface OutlineEdge {
+  x: number;
+  z: number;
+  horizontal: boolean;
+  nx: number;
+  nz: number;
+}
+
+/** The outer boundary of a building's footprint (cell sides with no footprint cell beyond them). */
+export function footprintOutline(cells: readonly (readonly [number, number])[]): OutlineEdge[] {
+  const has = new Set(cells.map(([i, j]) => `${i},${j}`));
+  const out: OutlineEdge[] = [];
+  for (const [i, j] of cells) {
+    if (!has.has(`${i},${j - 1}`)) out.push({ x: i, z: j - 0.5, horizontal: true, nx: 0, nz: -1 });
+    if (!has.has(`${i},${j + 1}`)) out.push({ x: i, z: j + 0.5, horizontal: true, nx: 0, nz: 1 });
+    if (!has.has(`${i - 1},${j}`)) out.push({ x: i - 0.5, z: j, horizontal: false, nx: -1, nz: 0 });
+    if (!has.has(`${i + 1},${j}`)) out.push({ x: i + 0.5, z: j, horizontal: false, nx: 1, nz: 0 });
+  }
+  return out;
+}
+
 /** Trees, the well (a market stall for now) and rocks, with a stable turn and size. */
 export function decorPiece(d: Decor): Piece {
   const turn = Math.floor(hash01(d.i, d.j, 1) * 8) * (Math.PI / 4);

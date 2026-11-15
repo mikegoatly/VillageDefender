@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { RoleKind } from '../../src/data/roles';
 import {
-  auraCells, buildingPieces, decorPiece, ROCK, ruinPieces, smokeSources, TOWN_MODELS, wallLevels,
-  type BuildingLook, type Piece,
+  auraCells, buildingPieces, decorPiece, footprintOutline, ROCK, ruinPieces, smokeSources, TOWN_MODELS, wallLevels,
+  type BuildingLook, type OutlineEdge, type Piece,
 } from '../../src/render3d/buildings';
 import { aBuilding, aDecor } from '../helpers/town3d';
 
@@ -109,5 +109,23 @@ describe('TOWN_MODELS', () => {
     for (const k of ['tree', 'well'] as const) used.add(decorPiece(aDecor(k)).model);
     used.delete(ROCK);
     for (const m of used) expect(TOWN_MODELS).toContain(m);
+  });
+});
+
+describe('selection outline', () => {
+  const key = (e: OutlineEdge) => `${e.x},${e.z},${e.horizontal ? 'h' : 'v'}`;
+
+  it('a single cell is outlined by four edges on its cell boundary', () => {
+    const edges = footprintOutline([[3, 4]]);
+    expect(edges.map(key).sort()).toEqual(['2.5,4,v', '3,3.5,h', '3,4.5,h', '3.5,4,v'].sort());
+  });
+
+  it('a 2x2 hall has only its eight outer edges, none inside the footprint', () => {
+    const edges = footprintOutline(hall().cells);
+    expect(edges).toHaveLength(8);
+    for (const e of edges) {
+      expect(e.x === 5.5 && !e.horizontal).toBe(false);
+      expect(e.z === 5.5 && e.horizontal).toBe(false);
+    }
   });
 });

@@ -168,9 +168,24 @@ describe('LevelUpPanel', () => {
   });
 
   describe('gamepad', () => {
-    it('D-pad and stick move focus on edges only', () => {
+    it('a direction held from before show is ignored until released', () => {
+      setPad({ 14: true });
       panel.show(OFFERS, 2);
       ready();
+      step();
+      expect(focused()).toBe(1);
+      setPad({});
+      step();
+      setPad({ 14: true });
+      step();
+      expect(focused()).toBe(0);
+    });
+
+    it('D-pad and stick move focus on edges only', () => {
+      setPad({});
+      panel.show(OFFERS, 2);
+      ready();
+      step();
       setPad({ 14: true });
       step();
       expect(focused()).toBe(0);

@@ -2,10 +2,11 @@
 // DOM-based like the HUD so text stays crisp. Landscape-first (cards in a row).
 
 import type { UpgradeOffer, UpgradePool } from '../data/upgrades';
+import { PadNav } from '../input/PadNav';
+import { promptBar } from './prompts';
 
 /** Input is ignored this long after show() so held attack taps / buttons cannot pick a card. */
 export const INPUT_GUARD_MS = 300;
-const STICK_THRESHOLD = 0.5;
 
 const POOL_LABEL: Record<UpgradePool, string> = { knight: 'Knight', army: 'Army', town: 'Town' };
 const POOL_COLOR: Record<UpgradePool, string> = { knight: '#ffd75e', army: '#7fb3e6', town: '#9fd27a' };
@@ -52,10 +53,7 @@ export class LevelUpPanel {
   private shownAt = 0;
   private done = false;
   private raf: number | null = null;
-  /** Gamepad edge-detection state. */
-  private padAHeld = false;
-  private padAReleased = false;
-  private padDir = 0;
+  private readonly pad = new PadNav();
   private _visible = false;
 
   constructor(root: HTMLElement, private readonly onChoose: (index: number) => void) {
@@ -70,6 +68,7 @@ export class LevelUpPanel {
     this.el.innerHTML = '<h2></h2><div class="sub">Choose an upgrade</div><div class="cards"></div>';
     this.titleEl = this.el.querySelector('h2')!;
     this.cardsEl = this.el.querySelector('.cards')!;
+    this.el.appendChild(promptBar([[['dpad', 'stick'], 'Choose'], ['a', 'Pick']]));
     root.appendChild(this.el);
     window.addEventListener('keydown', this.onKey);
   }
@@ -85,9 +84,7 @@ export class LevelUpPanel {
     this._visible = true;
     this.shownAt = now();
     this.focus = Math.min(1, Math.max(0, offers.length - 1));
-    this.padAHeld = true; // assume held until observed released
-    this.padAReleased = false;
-    this.padDir = 0;
+    this.pad.reset(); // assume held until observed released
     this.titleEl.textContent = `Level ${knightLevel}!`;
     this.build();
     this.el.classList.add('show');
@@ -185,26 +182,11 @@ export class LevelUpPanel {
   }
 
   private pollPad(): void {
-    const pads = navigator.getGamepads?.() ?? [];
-    let pad: Gamepad | null = null;
-    for (let i = 0; i < pads.length; i++) {
-      if (pads[i]?.connected) { pad = pads[i]; break; }
-    }
-    if (!pad) {
-      this.padDir = 0;
-      return;
-    }
-    const aDown = !!pad.buttons[0]?.pressed;
-    const ax = pad.axes[0] ?? 0;
-    const dir = pad.buttons[14]?.pressed || ax < -STICK_THRESHOLD ? -1 : pad.buttons[15]?.pressed || ax > STICK_THRESHOLD ? 1 : 0;
-
-    if (!aDown) this.padAReleased = true;
-    const open = this.guardOpen();
-    if (open && dir !== 0 && dir !== this.padDir) this.moveFocus(dir);
-    this.padDir = dir;
-    const risingA = aDown && !this.padAHeld;
-    this.padAHeld = aDown;
-    if (open && this.padAReleased && risingA) this.choose(this.focus);
+    const f = this.pad.poll(now());
+    if (!this.guardOpen()) return;
+    if (f.dir === 'left') this.moveFocus(-1);
+    else if (f.dir === 'right') this.moveFocus(1);
+    if (f.pressed.has('a')) this.choose(this.focus);
   }
 }
 

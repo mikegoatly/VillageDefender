@@ -3,9 +3,10 @@
 // keyboard and gamepad like LevelUpPanel (300 ms guard after the panel appears).
 
 import type { RoleKind } from '../data/roles';
+import { PadNav, type PadDir } from '../input/PadNav';
+import { glyph, promptBar } from './prompts';
 
 export const PLANNING_INPUT_GUARD_MS = 300;
-const STICK_THRESHOLD = 0.5;
 
 export interface PlanningRoleOption {
   kind: RoleKind;
@@ -44,6 +45,8 @@ export interface PlanningCallbacks {
   /** null = back to a plain house. */
   onAssign(buildingId: number, role: RoleKind | null): void;
   onSelectNext(delta: 1 | -1): void;
+  /** Select the house nearest in that screen direction (gamepad stick / D-pad). */
+  onSelectDir?(dir: PadDir): void;
   onStart(): void;
   /** Weapon picked (click, W / Shift+W, or gamepad X). */
   onWeapon?(kind: string): void;
@@ -61,6 +64,7 @@ const STYLE = `
 .vd-plan .pips { letter-spacing: 2px; }
 .vd-plan .pip.on { color: #c47a00; }
 .vd-plan .assigned { font-weight: 500; font-size: 13px; opacity: 0.85; }
+.vd-plan .card.pad-active { border-color: #c47a00; box-shadow: 0 0 0 3px #ffd75e; }
 .vd-plan .hint { background: #3b2418cc; color: #f3e3d0; padding: 4px 12px; border-radius: 6px; font-weight: 500; white-space: nowrap; }
 .vd-plan button { font: inherit; cursor: pointer; border: 2px solid #3b2418; border-radius: 8px; color: #3b2418; }
 .vd-plan .start { background: #ffd75e; font-weight: 800; font-size: 16px; padding: 6px 18px; }
@@ -121,12 +125,11 @@ export class PlanningPanel {
   private viewKey = '';
   private opts: Opt[] = [];
   private focus = 0;
-  private padUsed = false;
+  /** Gamepad: 'map' moves between houses, 'card' moves between the selected house's roles. */
+  private padMode: 'map' | 'card' = 'map';
   private shownAt = 0;
   private raf: number | null = null;
-  private prevPad: boolean[] = [];
-  private padDir = 0;
-  private padVert = 0;
+  private readonly pad = new PadNav();
   private _visible = false;
 
   constructor(root: HTMLElement, private readonly cb: PlanningCallbacks) {
@@ -151,10 +154,8 @@ export class PlanningPanel {
     if (!this._visible) {
       this._visible = true;
       this.shownAt = now();
-      this.prevPad = Array(16).fill(true); // assume held until observed released
-      this.padDir = 0;
-      this.padVert = 0;
-      this.padUsed = false;
+      this.pad.reset(); // anything held must be released before it counts
+      this.padMode = 'map';
       this.el.classList.add('show');
       this.startPadLoop();
     } else if (key === this.viewKey) {
@@ -197,16 +198,19 @@ export class PlanningPanel {
     banner.querySelector('.pts')!.textContent = `${v.pointsLeft}/${v.pointsTotal} points`;
     banner.querySelector('.assigned')!.textContent = v.assigned;
     banner.querySelector('.start')!.addEventListener('click', () => this.cb.onStart());
+    banner.querySelector('.start')!.prepend(glyph('start', true));
     if (v.weapons && v.weapons.length > 0) banner.appendChild(this.buildWeapons(v.weapons, v.selectedWeapon));
     const top = document.createElement('div');
     top.className = 'top';
     top.appendChild(banner);
     this.el.appendChild(top);
 
+    if (!v.selected) this.padMode = 'map';
+    top.appendChild(this.padPrompts(v));
     if (!v.selected) {
       // Sits in the same column as the banner, so it always flows below the whole banner (weapon row included).
       const hint = document.createElement('div');
-      hint.className = 'hint';
+      hint.className = 'hint kb-only';
       hint.textContent = 'Tap a house to give it a role';
       top.appendChild(hint);
       return;
@@ -215,7 +219,7 @@ export class PlanningPanel {
     const sel = v.selected;
     const refund = sel.role ? (v.roles.find((r) => r.kind === sel.role)?.cost ?? 0) : 0;
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = `card${this.padMode === 'card' ? ' pad-active' : ''}`;
     const head = document.createElement('div');
     head.className = 'head';
     head.textContent = sel.label;
@@ -250,6 +254,7 @@ export class PlanningPanel {
     label.className = 'wl';
     label.textContent = 'Weapon:';
     row.appendChild(label);
+    row.appendChild(glyph('x', true));
     for (const w of weapons) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -300,7 +305,24 @@ export class PlanningPanel {
   }
 
   private applyFocus(): void {
-    this.opts.forEach((o, i) => o.el.classList.toggle('focus', this.padUsed && i === this.focus));
+    this.opts.forEach((o, i) => o.el.classList.toggle('focus', this.padMode === 'card' && i === this.focus));
+  }
+
+  private padPrompts(v: PlanningView): HTMLElement {
+    if (this.padMode === 'card') {
+      return promptBar([[['dpad', 'stick'], 'Role'], ['a', 'Assign'], ['b', 'Back'], ['start', 'Start']]);
+    }
+    const items: Parameters<typeof promptBar>[0] = [[['dpad', 'stick'], v.selected ? 'Move' : 'Choose a house']];
+    if (v.selected) items.push(['a', 'Set role']);
+    if (v.weapons?.some((w) => !w.locked)) items.push(['x', 'Weapon']);
+    items.push(['start', 'Start']);
+    return promptBar(items);
+  }
+
+  private setPadMode(mode: 'map' | 'card'): void {
+    if (this.padMode === mode) return;
+    this.padMode = mode;
+    if (this.view) this.build(false);
   }
 
   // ------------------------------------------------------------ actions
@@ -360,45 +382,36 @@ export class PlanningPanel {
   }
 
   private pollPad(): void {
-    const pads = navigator.getGamepads?.() ?? [];
-    let pad: Gamepad | null = null;
-    for (let i = 0; i < pads.length; i++) {
-      if (pads[i]?.connected) { pad = pads[i]; break; }
-    }
-    if (!pad) {
-      this.padDir = 0;
-      this.padVert = 0;
+    const f = this.pad.poll(now());
+    if (!this.guardOpen()) return;
+    const p = f.pressed;
+    if (p.has('start') || p.has('y')) return this.cb.onStart();
+    if (p.has('x')) this.cycleWeapon(1);
+    if (p.has('lb') || p.has('rb')) {
+      this.setPadMode('map');
+      this.cb.onSelectNext(p.has('lb') ? -1 : 1);
       return;
     }
-    const down = (i: number): boolean => !!pad!.buttons[i]?.pressed;
-    const rising = (i: number): boolean => down(i) && !this.prevPad[i];
-    const ax = pad.axes[0] ?? 0;
-    const ay = pad.axes[1] ?? 0;
-    const dir = down(4) || down(14) || ax < -STICK_THRESHOLD ? -1 : down(5) || down(15) || ax > STICK_THRESHOLD ? 1 : 0;
-    const vert = down(12) || ay < -STICK_THRESHOLD ? -1 : down(13) || ay > STICK_THRESHOLD ? 1 : 0;
-    const open = this.guardOpen();
-
-    const risingA = rising(0);
-    const risingStart = rising(9) || rising(3);
-    const risingX = rising(2);
-    const dirEdge = dir !== 0 && dir !== this.padDir;
-    const vertEdge = vert !== 0 && vert !== this.padVert;
-    this.padDir = dir;
-    this.padVert = vert;
-    this.prevPad = Array.from({ length: 16 }, (_, i) => down(i));
-    if (!open) return;
-
-    if (dirEdge) this.cb.onSelectNext(dir as 1 | -1);
-    if (vertEdge && this.opts.length > 0) {
-      this.padUsed = true;
-      this.focus = Math.min(this.opts.length - 1, Math.max(0, this.focus + vert));
-      this.applyFocus();
+    if (this.padMode === 'card' && this.view?.selected) {
+      if (f.dir === 'left' || f.dir === 'right') {
+        this.focus = Math.min(this.opts.length - 1, Math.max(0, this.focus + (f.dir === 'left' ? -1 : 1)));
+        this.applyFocus();
+      }
+      if (p.has('a') && this.opts[this.focus]?.enabled) {
+        this.padMode = 'map';
+        const before = this.viewKey;
+        this.assignOpt(this.opts[this.focus]);
+        if (this.viewKey === before && this.view) this.build(false); // same role re-picked: still leave the card
+      } else if (p.has('b')) this.setPadMode('map');
+      return;
     }
-    if (risingA) {
-      this.padUsed = true;
-      this.assignOpt(this.opts[this.focus]);
+    if (f.dir) {
+      if (this.cb.onSelectDir) this.cb.onSelectDir(f.dir);
+      else if (f.dir === 'left' || f.dir === 'right') this.cb.onSelectNext(f.dir === 'left' ? -1 : 1);
     }
-    if (risingX) this.cycleWeapon(1);
-    if (risingStart) this.cb.onStart();
+    if (p.has('a') && this.view?.selected) {
+      this.focus = Math.max(0, this.opts.findIndex((o) => o.role === this.view!.selected!.role));
+      this.setPadMode('card');
+    }
   }
 }
