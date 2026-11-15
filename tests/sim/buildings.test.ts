@@ -25,7 +25,7 @@ describe('building state', () => {
 
   it('doubles hp for a second storey', () => {
     const map = mapFromAscii(rows());
-    for (const [i, j] of map.buildings[0].cells) map.buildings[0].blocks.push({ i, j, level: 0, tile: 'wall2' });
+    for (const [i, j] of map.buildings[0].cells) map.buildings[0].blocks.push({ i, j, level: 0, part: 'wall' });
     const { world } = aWorld().withTownMap(map).build();
     expect(world.buildings[0].maxHp).toBe(hpFor(8));
     expect(world.buildings[1].maxHp).toBe(hpFor(4));

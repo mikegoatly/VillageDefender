@@ -222,7 +222,7 @@ export function auraCells(b: Building, radius: number): [number, number][] {
 /** Trees, the well (a market stall for now) and rocks, with a stable turn and size. */
 export function decorPiece(d: Decor): Piece {
   const turn = Math.floor(hash01(d.i, d.j, 1) * 8) * (Math.PI / 4);
-  if (d.tile.includes('tree')) return { model: ft('tree'), x: d.i, y: 0, z: d.j, rotY: turn, scale: 0.9 + hash01(d.i, d.j, 2) * 0.35 };
-  if (d.tile.includes('well')) return { model: ft('stall-red'), x: d.i, y: 0, z: d.j, rotY: 0 };
+  if (d.kind === 'tree') return { model: ft('tree'), x: d.i, y: 0, z: d.j, rotY: turn, scale: 0.9 + hash01(d.i, d.j, 2) * 0.35 };
+  if (d.kind === 'well') return { model: ft('stall-red'), x: d.i, y: 0, z: d.j, rotY: 0 };
   return { model: ROCK, x: d.i, y: 0.15, z: d.j, rotY: turn };
 }

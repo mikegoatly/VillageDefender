@@ -1,4 +1,4 @@
-// Shared simulation types. The sim is pure TypeScript: no Phaser, no DOM.
+// Shared simulation types. The sim is pure TypeScript: no rendering, no DOM.
 //
 // Coordinates: the sim runs on the ground plane in **cell units** (one Sketch tile = 1).
 // x grows along grid axis i, y along grid axis j. Rendering projects to isometric screen space.

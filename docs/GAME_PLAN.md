@@ -222,7 +222,7 @@ the same pipeline, giving a fully consistent look at the cost of dropping Sketch
 
 ### 5.1 Stack
 
-- Phaser (latest stable) + TypeScript + Vite. Static build, runs from any web host; can be
+- three.js + TypeScript + Vite (Phaser until the 2026-11-15 3D port). Static build, runs from any web host; can be
   wrapped later (Capacitor for stores, Electron/Tauri for Steam) without code changes.
 - Vitest for simulation unit tests; Playwright for automated play-tests.
 
@@ -230,14 +230,15 @@ the same pipeline, giving a fully consistent look at the cost of dropping Sketch
 
 ```
 src/
-  sim/        Pure TS, no Phaser. World, entities, waves, AI, combat, upgrades, RNG.
+  sim/        Pure TS, no rendering. World, entities, waves, AI, combat, upgrades, RNG.
   data/       Towns, monsters, attacks, upgrades, wave tables as typed data.
-  render/     Phaser scenes; reads sim state, draws sprites, plays fx/audio.
+  game/       GameController (loop, menus, planning, profile) + the Renderer interface.
+  render3d/   three.js renderer; reads sim state, draws the Kenney models, effects, labels.
   input/      Keyboard, gamepad, touch → one InputState.
   ui/         HUD, level-up picker, menus, touch overlay.
   meta/       Save data, unlocks, stars (localStorage behind an interface).
 tools/
-  bake-sprites/   GLB → 8-direction atlases.
+  import-assets.mjs, playtest.mjs, screenshot.mjs, measure3d.mjs.
 tests/
 ```
 
@@ -420,14 +421,17 @@ Findings:
    camera framing, spawn logic). Ship single-player first; co-op is a later milestone.
 4. **Movement:** screen-relative. "Up" moves up the screen, not along the iso grid.
 5. **Rally:** kept. Only indirect control over rookies.
-6. **Art direction:** Sketch Town tiles + baked Mini-rig characters (confirmed after the
+6. **Art direction:** superseded 2026-11-15 by the 3D port (docs/PORT_3D_PLAN.md): the game
+   renders the Kenney 3D kits (Fantasy Town, Castle, Graveyard, Survival, Mini characters) in
+   real time with three.js. Originally: Sketch Town tiles + baked Mini-rig characters (confirmed after the
    milestone 0 look test). Fantasy Town Kit dropped.
 7. **Orientation:** landscape only on phones and tablets. We show our own "rotate your
    device" overlay in portrait (the web can't reliably lock orientation; iOS ignores it).
 8. **Unit readability:** player and friendly units get halos/glows; enemy archetypes get
    distinct tints (later also body size, e.g. brutes bigger).
-9. **Occlusion:** units behind buildings are drawn as a see-through silhouette.
-10. **Texture budget:** trim baked cells, lower bake resolution and drop unused frames
+9. **Occlusion:** units behind buildings are drawn as a see-through silhouette (3D: pixel-exact,
+   yellow for the knight and rookies, red for monsters, via depth test + stencil).
+10. **Texture budget:** obsolete since the 3D port (no baked sheets). Was: trim baked cells, lower bake resolution and drop unused frames
     (milestone 1).
 11. **Map shape and size:** maps are cut to a screen-aligned rectangle (~1.9:1), not an iso
     diamond, so landscape screens are filled edge to edge. Tiles are displayed smaller than

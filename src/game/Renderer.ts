@@ -1,6 +1,6 @@
 // What the game flow (GameController) needs from whatever draws the world.
-// Implementations: render/PhaserRenderer (baked sprites on Sketch tiles) today; a three.js one
-// is planned (docs/PORT_3D_PLAN.md). Nothing here may mention Phaser or three.js.
+// Implemented by render3d/ThreeRenderer. Nothing here may depend on three.js, so game flow stays
+// testable with a fake renderer (tests/helpers/game.ts).
 
 import type { RoleKind } from '../data/roles';
 import type { Vec2 } from '../sim/types';

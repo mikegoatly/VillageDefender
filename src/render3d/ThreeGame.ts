@@ -1,12 +1,14 @@
-// Host for the three.js renderer (?look=3d): owns the canvas and the model cache for the whole
-// app, and runs one GameController + ThreeRenderer per play session.
+// The app host: owns the canvas, the model cache and the audio for the whole app, and runs one
+// GameController + ThreeRenderer per play session.
 //
 // Extra params: &stress=<monsters> (spawns them at once, implies god=1&plan=0, shows perf)
 //               &perf=1 (perf overlay) &shadows=0 &sil=0 (no occlusion silhouettes) &dpr=<max ratio>
 
 import { SIDES } from '../sim/map';
 import type { MonsterKind } from '../data/monsters';
-import { GameController, type AudioPort } from '../game/GameController';
+import { GameAudio } from '../audio/GameAudio';
+import { WebAudioBackend } from '../audio/WebAudioBackend';
+import { GameController } from '../game/GameController';
 import { createSession, getProfile, type SessionData } from '../game/session';
 import type { World } from '../sim/world';
 import { ModelLibrary } from './assets';
@@ -22,6 +24,8 @@ export async function startThreeGame(root: HTMLElement) {
   const silhouettes = q.get('sil') !== '0';
   const stage = new Stage(root, { shadows: q.get('shadows') !== '0', maxPixelRatio: Number(q.get('dpr') ?? 2) });
   const library = new ModelLibrary();
+  // Sounds load in the background while the models load; sessions share the decoded files.
+  const sound = new WebAudioBackend();
   await library.load([...characterModelPaths(), ...TOWN_MODELS, ...EFFECT_MODELS]);
   // Stress runs skip the menu and planning, and the knight cannot die.
   const search = stress > 0 ? `${location.search}&god=1&plan=0` : location.search;
@@ -38,7 +42,7 @@ export async function startThreeGame(root: HTMLElement) {
     world = session.world;
     renderer = new ThreeRenderer(stage, library, session.world, { silhouettes });
     controller = new GameController({
-      session, renderer, audio: silentAudio(), profile: getProfile(), root,
+      session, renderer, audio: new GameAudio(sound), profile: getProfile(), root,
       host: { restart: (d) => { pendingRestart = d; } },
     });
     if (stress > 0 && !data.menu) spawnAtEdges(session.world, stress);
@@ -66,15 +70,6 @@ export async function startThreeGame(root: HTMLElement) {
   vd.renderer = stage.renderer;
   vd.perf = () => meter.snapshot();
   vd.spawn = (n: number) => world && spawnAtEdges(world, n);
-}
-
-/** Phase 5 moves GameAudio off Phaser; until then the 3D renderer is silent. */
-function silentAudio(): AudioPort {
-  return {
-    settings: { master: 1, sfx: 1, music: 1, muted: false },
-    music() {}, play() {}, handleEvents() {}, destroy() {},
-    setSettings(p) { Object.assign(this.settings, p); },
-  };
 }
 
 function spawnAtEdges(world: World, count: number) {

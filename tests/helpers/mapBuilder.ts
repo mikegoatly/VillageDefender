@@ -54,8 +54,8 @@ export function mapFromAscii(rows: string[]): TownMap {
     const cells = cellsById.get(id)!;
     // One wall block + one roof block per cell: a single storey.
     const blocks = cells.flatMap(([i, j]) => [
-      { i, j, level: 0, tile: 'wall' },
-      { i, j, level: 1, tile: 'roof' },
+      { i, j, level: 0, part: 'wall' as const },
+      { i, j, level: 1, part: 'roof' as const },
     ]);
     return { id, kind: 'cottage' as const, cells, blocks };
   });

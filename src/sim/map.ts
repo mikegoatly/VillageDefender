@@ -18,12 +18,15 @@ export const enum Ground {
   Bridge = 4,
 }
 
-/** One stacked Sketch block: tile name without rotation suffix is presentation data. */
+/** What a block of a building is; the renderer picks the pieces. */
+export type BlockPart = 'wall' | 'door' | 'roof';
+
+/** One storey of one footprint cell (towers: two wall blocks, no roof block). */
 export interface Block {
   i: number;
   j: number;
   level: number;
-  tile: string;
+  part: BlockPart;
 }
 
 export type BuildingKind = 'cottage' | 'long' | 'hall' | 'tower';
@@ -35,10 +38,12 @@ export interface Building {
   blocks: Block[];
 }
 
+export type DecorKind = 'tree' | 'well' | 'rock';
+
 export interface Decor {
   i: number;
   j: number;
-  tile: string;
+  kind: DecorKind;
   blocks: boolean;
 }
 
@@ -175,7 +180,7 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
       if (!fp.every(([i, j]) => inBounds(map, i, j) && inTown(i, j) && !blocked[j * size + i])) continue;
       if (!plazaPlaced && a === -1 && b === -1) {
         // Well on the plaza by the crossroads.
-        map.decor.push({ i: i0 + 1, j: j0 + 1, tile: 'ste:well_N', blocks: true });
+        map.decor.push({ i: i0 + 1, j: j0 + 1, kind: 'well', blocks: true });
         block(i0 + 1, j0 + 1);
         plazaPlaced = true;
         continue;
@@ -194,10 +199,12 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
       if (edgeSet.has(j * size + i) || blocked[j * size + i]) continue;
       const r = rng.frac();
       if (r < MAP.treeChance) {
-        map.decor.push({ i, j, tile: rng.pick(['st:tree_single_N', 'st:tree_multiple_E', 'ste:tree_pine_N', 'ste:tree_pine_E']), blocks: true });
+        // The pick chose a tree tile for the old sprite renderer; it stays so seeds keep making the same towns.
+        rng.pick(LEGACY_TREE_VARIANTS);
+        map.decor.push({ i, j, kind: 'tree', blocks: true });
         block(i, j);
       } else if (r < MAP.treeChance + MAP.rockChance) {
-        map.decor.push({ i, j, tile: 'st:rocks_grass_N', blocks: true });
+        map.decor.push({ i, j, kind: 'rock', blocks: true });
         block(i, j);
       }
     }
@@ -258,11 +265,17 @@ function removeUnreachable(map: TownMap) {
   }
 }
 
-const ROOFS = ['roof_gableBrown', 'roof_gableGreen', 'roof_gablePurple', 'roof_pointPurple', 'roof_roundedBeige', 'roof_churchBrown', 'roof_slantBrown'];
+/**
+ * The old sprite renderer chose tile variants with these RNG calls. The calls stay (results
+ * unused) so every seed still generates the same town and the golden fingerprints hold.
+ */
+const LEGACY_ROOF_VARIANTS = 7;
+const LEGACY_TREE_VARIANTS = [0, 1, 2, 3];
+const LEGACY_WALL_VARIANTS = [0, 1];
 
 function makeBuilding(id: number, i0: number, j0: number, rng: Rng): Building {
-  const beige = rng.frac() < 0.4 ? 'Beige' : '';
-  const roof = rng.pick(ROOFS);
+  rng.frac(); // wall colour
+  rng.pick(Array.from({ length: LEGACY_ROOF_VARIANTS }, (_, k) => k)); // roof tile
   // Weighted: towers are rare landmarks.
   const kind = rng.pick<BuildingKind>(['cottage', 'cottage', 'long', 'long', 'long', 'hall', 'hall', 'hall', 'tower']);
   let cells: [number, number][];
@@ -283,15 +296,15 @@ function makeBuilding(id: number, i0: number, j0: number, rng: Rng): Building {
   const frontI = Math.max(...cells.map((f) => f[0]));
   for (const [i, j] of cells) {
     if (kind === 'tower') {
-      blocks.push({ i, j, level: 1, tile: 'st:castle_wall_S' }, { i, j, level: 2, tile: 'st:castle_tower_S' });
+      blocks.push({ i, j, level: 1, part: 'wall' }, { i, j, level: 2, part: 'wall' });
       continue;
     }
     for (let l = 1; l <= levels; l++) {
       const front = i === frontI && l === 1;
-      const wall = front ? rng.pick(['building_door', 'building_doorWindows']) : rng.pick(['building_window', 'building_windows']);
-      blocks.push({ i, j, level: l, tile: `st:${wall}${beige}_S` });
+      rng.pick(LEGACY_WALL_VARIANTS); // wall tile
+      blocks.push({ i, j, level: l, part: front ? 'door' : 'wall' });
     }
-    blocks.push({ i, j, level: levels + 1, tile: `st:${roof}_S` });
+    blocks.push({ i, j, level: levels + 1, part: 'roof' });
   }
   return { id, kind, cells, blocks };
 }

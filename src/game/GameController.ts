@@ -1,6 +1,6 @@
 // Game flow for one session: steps the sim at a fixed rate, wires input, HUD, menus, planning,
 // the profile and the debug tools, and tells a Renderer what to draw. Knows nothing about how
-// drawing is done (no Phaser, no three.js).
+// drawing is done (no three.js).
 
 import { ACHIEVEMENTS } from '../data/achievements';
 import { DT } from '../data/balance';

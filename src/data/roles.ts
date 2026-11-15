@@ -12,8 +12,6 @@ export interface RoleDef {
   cost: number;
   /** Aura radius in cells (chapel, smithy) or shooting range (watchtower); 0 = none. */
   radius: number;
-  /** Roof tile drawn on every cell of the building (Sketch Town). */
-  roof: string;
   /** Glyph shown above the roof. */
   icon: string;
 }
@@ -21,19 +19,19 @@ export interface RoleDef {
 export const ROLES: Record<RoleKind, RoleDef> = {
   barracks: {
     kind: 'barracks', name: 'Barracks', description: '+1 rookie at a time; rookies step out here',
-    cost: 1, radius: 0, roof: 'roof_gablePurple', icon: '⛨',
+    cost: 1, radius: 0, icon: '⛨',
   },
   chapel: {
     kind: 'chapel', name: 'Chapel', description: 'Heals the knight and rookies nearby',
-    cost: 1, radius: 3, roof: 'roof_churchBrown', icon: '✚',
+    cost: 1, radius: 3, icon: '✚',
   },
   smithy: {
     kind: 'smithy', name: 'Smithy', description: '+25% damage for the knight and rookies nearby',
-    cost: 1, radius: 3, roof: 'roof_slantBrown', icon: '⚒',
+    cost: 1, radius: 3, icon: '⚒',
   },
   watchtower: {
     kind: 'watchtower', name: 'Watchtower', description: 'Shoots arrows at monsters; waves are announced 2 s earlier',
-    cost: 1, radius: 4, roof: 'roof_pointPurple', icon: '➶',
+    cost: 1, radius: 4, icon: '➶',
   },
 };
 

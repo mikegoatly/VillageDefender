@@ -1,5 +1,5 @@
 // The game simulation. Fixed timestep, deterministic for a given seed and input sequence.
-// No Phaser or DOM: render/ reads this state, input/ feeds InputState in.
+// No rendering or DOM: render3d/ reads this state, input/ feeds InputState in.
 
 import { BUILDING, DT, STARS, WAVES } from '../data/balance';
 import type { MonsterKind } from '../data/monsters';

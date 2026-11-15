@@ -51,13 +51,13 @@ describe('buildingPieces', () => {
 });
 
 describe('decorPiece', () => {
-  it('maps Sketch decor to kit models at the decor cell', () => {
-    expect(decorPiece(aDecor('st:tree_single_N', 3, 4))).toMatchObject({ model: 'fantasy-town/tree', x: 3, z: 4 });
-    expect(decorPiece(aDecor('ste:well_N')).model).toBe('fantasy-town/stall-red');
-    expect(decorPiece(aDecor('st:rocks_grass_N')).model).toBe(ROCK);
+  it('maps each decor kind to a kit model at the decor cell', () => {
+    expect(decorPiece(aDecor('tree', 3, 4))).toMatchObject({ model: 'fantasy-town/tree', x: 3, z: 4 });
+    expect(decorPiece(aDecor('well')).model).toBe('fantasy-town/stall-red');
+    expect(decorPiece(aDecor('rock')).model).toBe(ROCK);
   });
 
   it('is stable for the same cell (no randomness between sessions)', () => {
-    expect(decorPiece(aDecor('st:tree_single_N', 7, 2))).toEqual(decorPiece(aDecor('st:tree_single_N', 7, 2)));
+    expect(decorPiece(aDecor('tree', 7, 2))).toEqual(decorPiece(aDecor('tree', 7, 2)));
   });
 });

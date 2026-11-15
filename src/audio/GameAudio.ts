@@ -1,4 +1,3 @@
-import type * as Phaser from 'phaser';
 import type { SimEvent } from '../sim/world';
 
 export type SoundId =
@@ -17,8 +16,6 @@ export interface AudioManifest {
 }
 
 export const STORAGE_KEY = 'village-defender.audio';
-const MANIFEST_KEY = 'audio-manifest';
-const BASE = 'assets/audio/';
 const DEFAULT_SETTINGS: AudioSettings = { master: 0.8, sfx: 1, music: 0.5, muted: false };
 
 /** Minimum ms between plays of the same id (swarm protection). */
@@ -141,12 +138,29 @@ function defaultStorage(): StorageLike | null {
   try { return globalThis.localStorage ?? null; } catch { return null; }
 }
 
-const soundKey = (file: string) => `snd:${file}`;
 const GEM_PITCH_WINDOW_MS = 500;
+const MUSIC_FADE_MS = 600;
+
+/** A looping sound whose volume can be faded. */
+export interface LoopHandle {
+  setVolume(volume: number, fadeMs: number): void;
+  /** Fades out, then stops for good. */
+  stop(fadeMs: number): void;
+}
+
+/** Where sounds actually come from (Web Audio in the game, a fake in tests). */
+export interface AudioBackend {
+  manifest(): AudioManifest | undefined;
+  /** True once the file is decoded and playable. */
+  has(file: string): boolean;
+  play(file: string, volume: number, detune: number): void;
+  loop(file: string, volume: number): LoopHandle | null;
+  /** Calls `fn` once everything is loaded (immediately if it already is). */
+  whenReady(fn: () => void): void;
+}
 
 export class GameAudio {
   settings: AudioSettings;
-  private readonly scene: Phaser.Scene;
   private readonly limiter: RateLimiter;
   private readonly picker: VariantPicker;
   private readonly storage: StorageLike | null;
@@ -156,38 +170,20 @@ export class GameAudio {
   private gemStreak = 0;
   private lastGem = -Infinity;
   private currentTrack: MusicTrack | null = null;
-  private musicSound: Phaser.Sound.BaseSound | null = null;
+  private musicLoop: LoopHandle | null = null;
   private destroyed = false;
 
-  /** Queue manifest + files in a scene's preload (loads manifest JSON, then every file it lists). */
-  static preload(scene: Phaser.Scene): void {
-    if (!scene.cache.json.exists(MANIFEST_KEY)) scene.load.json(MANIFEST_KEY, `${BASE}manifest.json`);
-    const queue = () => {
-      const m = scene.cache.json.get(MANIFEST_KEY) as AudioManifest | undefined;
-      if (!m) return;
-      const files = new Set<string>();
-      for (const list of Object.values(m.sounds ?? {})) for (const f of list ?? []) files.add(f);
-      for (const f of Object.values(m.music ?? {})) if (f) files.add(f);
-      for (const f of files) {
-        if (!scene.cache.audio.exists(soundKey(f))) scene.load.audio(soundKey(f), `${BASE}${f}`);
-      }
-    };
-    if (scene.cache.json.exists(MANIFEST_KEY)) queue();
-    else scene.load.once(`filecomplete-json-${MANIFEST_KEY}`, queue);
-  }
-
-  constructor(scene: Phaser.Scene, deps: GameAudioDeps = {}) {
-    this.scene = scene;
+  constructor(private readonly backend: AudioBackend, deps: GameAudioDeps = {}) {
     this.now = deps.now ?? (() => Date.now());
     this.random = deps.random ?? Math.random;
     this.storage = deps.storage === undefined ? defaultStorage() : deps.storage;
     this.limiter = new RateLimiter(this.now);
     this.picker = new VariantPicker(this.random);
     this.settings = loadSettings(this.storage);
-  }
-
-  private manifest(): AudioManifest | undefined {
-    try { return this.scene.cache.json.get(MANIFEST_KEY) as AudioManifest | undefined; } catch { return undefined; }
+    // Music asked for before the files finished loading starts as soon as they have.
+    backend.whenReady(() => {
+      if (!this.destroyed && this.currentTrack && !this.musicLoop) this.startMusic(this.currentTrack);
+    });
   }
 
   private warnOnce(what: string): void {
@@ -196,19 +192,15 @@ export class GameAudio {
     console.warn(`[audio] ${what}`);
   }
 
-  private hasFile(file: string): boolean {
-    try { return this.scene.cache.audio.exists(soundKey(file)); } catch { return false; }
-  }
-
   play(id: SoundId, opts: { volume?: number; detune?: number } = {}): void {
     if (this.destroyed || this.settings.muted) return;
     try {
-      const variants = (this.manifest()?.sounds[id] ?? []).filter((f) => this.hasFile(f));
+      const variants = (this.backend.manifest()?.sounds[id] ?? []).filter((f) => this.backend.has(f));
       const file = this.picker.pick(id, variants);
       if (!file) { this.warnOnce(`no audio loaded for "${id}"`); return; }
       const vol = (BASE_VOLUME[id] ?? 0.6) * (opts.volume ?? 1) * this.settings.sfx * this.settings.master;
       const detune = (opts.detune ?? 0) + (this.random() - 0.5) * 160;
-      this.scene.sound.play(soundKey(file), { volume: Math.min(1, vol), detune });
+      this.backend.play(file, Math.min(1, vol), detune);
     } catch (err) {
       this.warnOnce(`play "${id}" failed: ${String(err)}`);
     }
@@ -236,27 +228,21 @@ export class GameAudio {
   music(track: MusicTrack | null): void {
     if (this.destroyed || track === this.currentTrack) return;
     this.currentTrack = track;
+    this.musicLoop?.stop(MUSIC_FADE_MS);
+    this.musicLoop = null;
+    if (track) this.startMusic(track);
+  }
+
+  private startMusic(track: MusicTrack) {
     try {
-      const old = this.musicSound;
-      this.musicSound = null;
-      if (old) this.fadeOut(old);
-      if (!track) return;
-      const file = this.manifest()?.music[track];
-      if (!file || !this.hasFile(file)) { this.warnOnce(`no music loaded for "${track}"`); return; }
-      const s = this.scene.sound.add(soundKey(file), { loop: true, volume: 0 });
-      this.musicSound = s;
-      s.play();
-      this.scene.tweens.add({ targets: s, volume: this.musicVolume(), duration: 600 });
+      const file = this.backend.manifest()?.music[track];
+      // Not loaded yet: whenReady (constructor) starts it later.
+      if (!file || !this.backend.has(file)) return;
+      this.musicLoop = this.backend.loop(file, 0);
+      this.musicLoop?.setVolume(this.musicVolume(), MUSIC_FADE_MS);
     } catch (err) {
       this.warnOnce(`music "${track}" failed: ${String(err)}`);
     }
-  }
-
-  private fadeOut(s: Phaser.Sound.BaseSound): void {
-    this.scene.tweens.add({
-      targets: s, volume: 0, duration: 600,
-      onComplete: () => { try { s.stop(); s.destroy(); } catch { /* ignore */ } },
-    });
   }
 
   setSettings(p: Partial<AudioSettings>): void {
@@ -265,18 +251,13 @@ export class GameAudio {
       this.settings[k] = Math.min(1, Math.max(0, this.settings[k]));
     }
     saveSettings(this.storage, this.settings);
-    if (this.musicSound) {
-      try { (this.musicSound as unknown as { volume: number }).volume = this.musicVolume(); } catch { /* ignore */ }
-    }
+    this.musicLoop?.setVolume(this.musicVolume(), 0);
   }
 
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    try {
-      this.musicSound?.stop();
-      this.musicSound?.destroy();
-    } catch { /* ignore */ }
-    this.musicSound = null;
+    this.musicLoop?.stop(MUSIC_FADE_MS);
+    this.musicLoop = null;
   }
 }

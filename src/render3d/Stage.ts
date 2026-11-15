@@ -36,7 +36,7 @@ export class Stage {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, opts.maxPixelRatio));
     this.renderer.setClearColor(0xd9bfa6);
     this.renderer.shadowMap.enabled = opts.shadows;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.info.autoReset = false;
     this.renderer.domElement.style.display = 'block';
     parent.prepend(this.renderer.domElement);
@@ -75,7 +75,7 @@ export class Stage {
     return { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles };
   }
 
-  /** Screen shake like Phaser's camera.shake: `intensity` is a fraction of the view size. */
+  /** Screen shake: `intensity` is a fraction of the view height. */
   shake(ms: number, intensity: number) {
     this.shakeLeft = Math.max(this.shakeLeft, ms / 1000);
     this.shakeIntensity = Math.max(this.shakeIntensity, intensity);

@@ -161,7 +161,17 @@ overlays (flow fields, hitboxes, ranges, labels).
 Done when a side-by-side playthrough of both towns shows nothing missing, and
 `tools/playtest.mjs` runs against `?look=3d`.
 
-### Phase 5 — switch over and delete (M)
+### Phase 5 — switch over and delete (M) — done 2026-11-15
+
+Result: three.js is the only renderer. Audio plays through Web Audio (`audio/WebAudioBackend.ts`
+behind an `AudioBackend` interface; `GameAudio` tests use a fake backend, plus new music tests).
+Map blocks and decor are semantic (`part: wall | door | roof`, `kind: tree | well | rock`); the
+RNG calls that used to pick Sketch tiles stay, so seeds make the same towns and the golden
+fingerprints are unchanged. Removed: Phaser, the sprite renderer, the bake tool, 17 MB of sprite
+sheets and 7.5 MB of Sketch tiles. Deployed size 30 MB → 5.1 MB; JavaScript 2.2 MB → 846 KB
+(225 KB gzipped). `?look=3d` is no longer needed (and is ignored).
+
+Planned scope:
 
 - Audio off Phaser (Web Audio loader/player behind the existing `GameAudio` seam).
 - 3D becomes the default. Remove Phaser, `PhaserRenderer`, `sheets.ts`, the bake pipeline,

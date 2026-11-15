@@ -106,7 +106,7 @@ describe('TOWN_MODELS', () => {
         for (const damage of ['intact', 'damaged', 'ruined'] as const) models(buildingPieces(b, { role, damage })).forEach((m) => used.add(m));
       }
     }
-    for (const t of ['st:tree_single_N', 'ste:well_N']) used.add(decorPiece(aDecor(t)).model);
+    for (const k of ['tree', 'well'] as const) used.add(decorPiece(aDecor(k)).model);
     used.delete(ROCK);
     for (const m of used) expect(TOWN_MODELS).toContain(m);
   });

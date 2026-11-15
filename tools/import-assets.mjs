@@ -4,7 +4,7 @@
 //
 // Usage: KENNEY_ROOT="<path to your Kenney Game Assets folder>" npm run import-assets
 
-import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.env.KENNEY_ROOT;
@@ -18,14 +18,7 @@ if (!existsSync(root)) {
   process.exit(1);
 }
 
-/** 2D tile packs → public/assets/tiles/<dest> (served to the game as-is). */
-const tilePacks = [
-  { src: '2D assets/Sketch Town/Tiles', dest: 'sketch-town' },
-  { src: '2D assets/Sketch Town Expansion/Tiles', dest: 'sketch-town-expansion' },
-  { src: '2D assets/Sketch Desert/Tiles', dest: 'sketch-desert' },
-];
-
-/** 3D models → public/assets/models/<dest> (loaded by the 3D renderer at runtime, and by the bake). */
+/** 3D models → public/assets/models/<dest> (loaded by the game at runtime). */
 const modelPacks = [
   {
     src: '3D assets/Mini Dungeon/Models/GLB format',
@@ -85,17 +78,9 @@ const modelPacks = [
   {
     src: '3D assets/Survival Kit/Models/GLB format',
     dest: 'survival',
-    files: ['workbench-anvil', 'grass', 'grass-large', 'resource-stone', 'resource-planks'],
+    files: ['workbench-anvil', 'grass', 'grass-large', 'resource-planks'],
   },
 ];
-
-const tileOut = 'public/assets/tiles';
-for (const p of tilePacks) {
-  const dest = join(tileOut, p.dest);
-  mkdirSync(dest, { recursive: true });
-  cpSync(join(root, p.src), dest, { recursive: true });
-  console.log(`tiles  ${p.dest}: ${readdirSync(dest).length} files`);
-}
 
 const modelOut = 'public/assets/models';
 for (const p of modelPacks) {

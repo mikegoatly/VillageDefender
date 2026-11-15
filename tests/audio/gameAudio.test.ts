@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   GameAudio, RateLimiter, STORAGE_KEY, VariantPicker, loadSettings, soundsFor,
-  type SoundId, type StorageLike,
+  type AudioBackend, type MusicTrack, type SoundId, type StorageLike,
 } from '../../src/audio/GameAudio';
 import type { SimEvent } from '../../src/sim/world';
 
@@ -13,22 +13,26 @@ class FakeStorage implements StorageLike {
   setItem(k: string, v: string) { this.data.set(k, v); }
 }
 
-/** Minimal fake Phaser scene with a manifest and recorded plays. */
-function fakeScene(sounds: Partial<Record<SoundId, string[]>> = {}) {
+/** Fake audio backend with a manifest; records plays and music loops. Not ready until `ready()` when `deferred`. */
+function fakeBackend(sounds: Partial<Record<SoundId, string[]>> = {}, music: Partial<Record<MusicTrack, string>> = {}, deferred = false) {
   const played: { key: string; cfg: { volume: number; detune: number } }[] = [];
-  const files = new Set(Object.values(sounds).flat().map((f) => `snd:${f}`));
-  const scene = {
-    cache: {
-      json: { get: () => ({ sounds, music: {} }), exists: () => true },
-      audio: { exists: (k: string) => files.has(k) },
+  const loops: { file: string; volumes: number[]; stopped: boolean }[] = [];
+  const files = new Set([...Object.values(sounds).flat(), ...Object.values(music)] as string[]);
+  let isReady = !deferred;
+  const waiting: (() => void)[] = [];
+  const backend: AudioBackend = {
+    manifest: () => ({ sounds, music }),
+    has: (f) => isReady && files.has(f),
+    play: (key, volume, detune) => void played.push({ key, cfg: { volume, detune } }),
+    loop: (file, volume) => {
+      const l = { file, volumes: [volume], stopped: false };
+      loops.push(l);
+      return { setVolume: (v) => void l.volumes.push(v), stop: () => { l.stopped = true; } };
     },
-    sound: {
-      play: (key: string, cfg: { volume: number; detune: number }) => { played.push({ key, cfg }); return true; },
-      add: vi.fn(),
-    },
-    tweens: { add: vi.fn() },
+    whenReady: (fn) => (isReady ? fn() : void waiting.push(fn)),
   };
-  return { scene: scene as unknown as ConstructorParameters<typeof GameAudio>[0], played };
+  const ready = () => { isReady = true; waiting.splice(0).forEach((fn) => fn()); };
+  return { backend, played, loops, ready };
 }
 
 describe('soundsFor', () => {
@@ -105,10 +109,10 @@ describe('VariantPicker', () => {
 describe('settings persistence', () => {
   it('round-trips through storage', () => {
     const storage = new FakeStorage();
-    const a = new GameAudio(fakeScene().scene, { storage });
+    const a = new GameAudio(fakeBackend().backend, { storage });
     a.setSettings({ master: 0.3, muted: true });
     expect(JSON.parse(storage.data.get(STORAGE_KEY)!)).toMatchObject({ master: 0.3, muted: true });
-    const b = new GameAudio(fakeScene().scene, { storage });
+    const b = new GameAudio(fakeBackend().backend, { storage });
     expect(b.settings).toMatchObject({ master: 0.3, muted: true });
   });
   it('survives corrupt or missing storage', () => {
@@ -120,7 +124,7 @@ describe('settings persistence', () => {
       getItem() { throw new Error('x'); },
       setItem() { throw new Error('x'); },
     };
-    const a = new GameAudio(fakeScene().scene, { storage: throwing });
+    const a = new GameAudio(fakeBackend().backend, { storage: throwing });
     expect(() => a.setSettings({ sfx: 0.5 })).not.toThrow();
   });
 });
@@ -128,7 +132,7 @@ describe('settings persistence', () => {
 describe('GameAudio.handleEvents', () => {
   it('rate-limits swarms and varies files', () => {
     let t = 0;
-    const { scene, played } = fakeScene({ hit: ['h1.ogg', 'h2.ogg'] });
+    const { backend: scene, played } = fakeBackend({ hit: ['h1.ogg', 'h2.ogg'] });
     const a = new GameAudio(scene, { now: () => t, storage: null });
     const hits = Array.from({ length: 10 }, () => ev({ type: 'hit', damage: 3 }));
     a.handleEvents(hits);
@@ -140,7 +144,7 @@ describe('GameAudio.handleEvents', () => {
   });
   it('does not throw for missing files, and warns once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { scene, played } = fakeScene();
+    const { backend: scene, played } = fakeBackend();
     const a = new GameAudio(scene, { storage: null });
     expect(() => a.handleEvents([ev({ type: 'levelUp' })])).not.toThrow();
     a.handleEvents([ev({ type: 'levelUp' })]);
@@ -149,7 +153,7 @@ describe('GameAudio.handleEvents', () => {
     warn.mockRestore();
   });
   it('plays nothing when muted', () => {
-    const { scene, played } = fakeScene({ levelUp: ['l.ogg'] });
+    const { backend: scene, played } = fakeBackend({ levelUp: ['l.ogg'] });
     const a = new GameAudio(scene, { storage: null });
     a.setSettings({ muted: true });
     a.handleEvents([ev({ type: 'levelUp' })]);
@@ -157,9 +161,64 @@ describe('GameAudio.handleEvents', () => {
   });
   it('raises gem pitch on rapid pickups', () => {
     let t = 0;
-    const { scene, played } = fakeScene({ gem: ['g.ogg'] });
+    const { backend: scene, played } = fakeBackend({ gem: ['g.ogg'] });
     const a = new GameAudio(scene, { now: () => t, random: () => 0.5, storage: null });
     for (let i = 0; i < 3; i++) { t += 100; a.handleEvents([ev({ type: 'gemCollected' })]); }
     expect(played[2].cfg.detune).toBeGreaterThan(played[0].cfg.detune);
+  });
+});
+
+describe('GameAudio.music', () => {
+  const MUSIC = { plan: 'plan.ogg', play: 'play.ogg' };
+
+  it('fades a track in at the music volume', () => {
+    const { backend, loops } = fakeBackend({}, MUSIC);
+    const a = new GameAudio(backend, { storage: null });
+    a.music('plan');
+    expect(loops).toHaveLength(1);
+    expect(loops[0].file).toBe('plan.ogg');
+    expect(loops[0].volumes[0]).toBe(0);
+    expect(loops[0].volumes.at(-1)).toBeCloseTo(a.settings.music * a.settings.master);
+  });
+
+  it('stops the old track when switching, and does nothing for the same track', () => {
+    const { backend, loops } = fakeBackend({}, MUSIC);
+    const a = new GameAudio(backend, { storage: null });
+    a.music('plan');
+    a.music('plan');
+    expect(loops).toHaveLength(1);
+    a.music('play');
+    expect(loops[0].stopped).toBe(true);
+    expect(loops[1].file).toBe('play.ogg');
+    a.music(null);
+    expect(loops[1].stopped).toBe(true);
+  });
+
+  it('starts a track asked for before loading finished, once it has', () => {
+    const { backend, loops, ready } = fakeBackend({}, MUSIC, true);
+    const a = new GameAudio(backend, { storage: null });
+    a.music('play');
+    expect(loops).toHaveLength(0);
+    ready();
+    expect(loops.map((l) => l.file)).toEqual(['play.ogg']);
+  });
+
+  it('does not start late music after the session ended', () => {
+    const { backend, loops, ready } = fakeBackend({}, MUSIC, true);
+    const a = new GameAudio(backend, { storage: null });
+    a.music('play');
+    a.destroy();
+    ready();
+    expect(loops).toHaveLength(0);
+  });
+
+  it('follows volume and mute settings', () => {
+    const { backend, loops } = fakeBackend({}, MUSIC);
+    const a = new GameAudio(backend, { storage: null });
+    a.music('plan');
+    a.setSettings({ muted: true });
+    expect(loops[0].volumes.at(-1)).toBe(0);
+    a.setSettings({ muted: false, music: 1, master: 1 });
+    expect(loops[0].volumes.at(-1)).toBe(1);
   });
 });
