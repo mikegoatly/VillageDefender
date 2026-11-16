@@ -3,7 +3,7 @@
 
 import type { Side } from '../sim/map';
 import { PadNav } from '../input/PadNav';
-import { promptBar } from './prompts';
+import { glyph, promptBar } from './prompts';
 
 /** Controller input on the end panel is ignored this long, so a held attack cannot pick Retry. */
 export const END_PANEL_GUARD_MS = 600;
@@ -40,6 +40,8 @@ export interface HudCallbacks {
   onNewTown: () => void;
   /** When given, the end panel also offers 'Menu (M)'. */
   onMenu?: () => void;
+  /** When given, a pause button sits in the top-left corner while playing. */
+  onPause?: () => void;
 }
 
 const STYLE = `
@@ -116,6 +118,11 @@ const STYLE = `
   background: #ffd75e; cursor: pointer; }
 :root[data-input=gamepad] .vd-hud .over button.focus { outline: 4px solid #ffd75e; outline-offset: 2px; box-shadow: 0 0 0 2px #3b2418, 0 0 12px 4px #ffd75ecc; }
 .vd-hud .over .vd-prompts { margin-top: 10px; }
+.vd-hud .pausebtn { position: absolute; top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left));
+  width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 2px solid #3b2418; background: #f3e3d0dd;
+  color: #3b2418; font: 800 18px system-ui, sans-serif; cursor: pointer; pointer-events: auto; touch-action: manipulation; z-index: 60; }
+.vd-hud .pausebtn .vd-glyph { position: absolute; right: -8px; bottom: -8px; width: 24px; height: 24px; margin: 0; }
+.vd-planning .vd-hud .pausebtn, .vd-hud.ended .pausebtn { display: none; }
 `;
 
 const ARROW: Record<Side, string> = { top: '▲', bottom: '▼', left: '◀', right: '▶' };
@@ -183,6 +190,18 @@ export class Hud {
       <div class="boss"><div class="bname"></div><div class="btrack"><div class="btrail"></div><div class="bfill"></div></div></div>
       <div class="boss-banner">The Orc Warlord approaches!</div>
       <div class="over"><div class="panel"></div></div>`;
+    if (callbacks.onPause) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'pausebtn';
+      b.title = 'Pause';
+      b.setAttribute('aria-label', 'Pause');
+      b.textContent = '❚❚';
+      b.appendChild(glyph('start', true));
+      // pointerdown would leak through to the touch stick beneath; click is enough.
+      b.addEventListener('click', () => callbacks.onPause?.());
+      this.el.appendChild(b);
+    }
     root.appendChild(this.el);
     this.bar = this.el.querySelector('.bar')!;
     this.hpFill = this.el.querySelector('.hp > div')!;
@@ -243,6 +262,7 @@ export class Hud {
     if (!ended) this.extrasShown = false;
     this.ended = ended;
     this.over.classList.toggle('show', ended);
+    this.el.classList.toggle('ended', ended);
     if (ended) this.pollPad();
   }
 

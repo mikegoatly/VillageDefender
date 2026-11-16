@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hitStopFor } from '../../src/game/GameController';
+import { PAUSE_INPUT_GUARD_MS } from '../../src/ui/PauseMenu';
+import { emptyInput } from '../../src/sim/types';
 import { aGame, type BuiltGame } from '../helpers/game';
 import { aWorld } from '../helpers/worldBuilder';
 
@@ -109,6 +111,88 @@ describe('GameController', () => {
       game.controller.chooseWeapon('flail');
       expect(game.world.weapon).toBe('sword');
       expect(game.renderer.knightWeaponChanged).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pause', () => {
+    const pauseShown = () => document.querySelector('.vd-pause')!.classList.contains('show');
+    const holdPause = (on: boolean) => game!.controller.setInputOverride({ ...emptyInput(), pause: on });
+    const pauseButton = (key: string) => document.querySelector<HTMLButtonElement>(`.vd-pause button[data-key=${key}]`)!;
+    let clock: number;
+    beforeEach(() => {
+      clock = 1000;
+      vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it('freezes the sim while paused and resumes it from the menu', () => {
+      game = aGame(aWorld().build().world);
+      game.frames(10);
+      holdPause(true);
+      game.frames(1);
+      expect(pauseShown()).toBe(true);
+      const t = game.world.time;
+      game.frames(60);
+      expect(game.world.time).toBe(t);
+      expect(game.renderer.sync).toHaveBeenCalledTimes(71); // still draws while paused
+
+      holdPause(false);
+      clock += PAUSE_INPUT_GUARD_MS;
+      pauseButton('resume').click();
+      expect(pauseShown()).toBe(false);
+      game.frames(30);
+      expect(game.world.time).toBeGreaterThan(t);
+    });
+
+    it('needs the pause button released before it pauses again', () => {
+      game = aGame(aWorld().build().world);
+      holdPause(true);
+      game.frames(1);
+      clock += PAUSE_INPUT_GUARD_MS;
+      pauseButton('resume').click();
+      game.frames(5); // still held: no new pause
+      expect(pauseShown()).toBe(false);
+      holdPause(false);
+      game.frames(1);
+      holdPause(true);
+      game.frames(1);
+      expect(pauseShown()).toBe(true);
+    });
+
+    it('does not pause while planning, choosing an upgrade or after the run ended', () => {
+      game = aGame(aWorld().withSeed(3).noWaves(false).inPlanning().build().world);
+      game.controller.pause();
+      expect(pauseShown()).toBe(false);
+      game.controller.startTown();
+      game.world.debugEnd(true);
+      game.frames(1);
+      game.controller.pause();
+      expect(pauseShown()).toBe(false);
+    });
+
+    it('pauses from the HUD button', () => {
+      game = aGame(aWorld().build().world);
+      document.querySelector<HTMLButtonElement>('.vd-hud .pausebtn')!.click();
+      expect(pauseShown()).toBe(true);
+    });
+
+    it('pauses when the tab is hidden', () => {
+      game = aGame(aWorld().build().world);
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(pauseShown()).toBe(true);
+    });
+
+    it('restarts, quits to the menu and toggles sound from the menu', () => {
+      game = aGame(aWorld().build().world, { params: { seed: 42 } });
+      game.controller.pause();
+      clock += PAUSE_INPUT_GUARD_MS;
+      pauseButton('sound').click();
+      expect(game.audio.setSettings).toHaveBeenLastCalledWith({ muted: true });
+      pauseButton('restart').click();
+      expect(game.restarts[0]).toEqual({ seed: 42, town: 'village' });
+      pauseButton('quit').click();
+      expect(game.restarts[1]).toEqual({ menu: true });
     });
   });
 

@@ -18,6 +18,7 @@ import { DebugPanel, debugEnabled, type DebugHost, type OverlayName } from '../u
 import { Hud, type HudWorld } from '../ui/Hud';
 import { LevelUpPanel } from '../ui/LevelUpPanel';
 import { MainMenu } from '../ui/MainMenu';
+import { PauseMenu } from '../ui/PauseMenu';
 import { PlanningPanel, type PlanningView } from '../ui/PlanningPanel';
 import { installRotateOverlay } from '../ui/RotateOverlay';
 import type { Renderer } from './Renderer';
@@ -92,6 +93,7 @@ export class GameController {
   private readonly input: InputManager;
   private readonly hud: Hud;
   private readonly levelUp: LevelUpPanel;
+  private readonly pauseMenu: PauseMenu;
   private readonly uninstallRotate: () => void;
   private readonly debug = debugEnabled();
   private planning?: PlanningPanel;
@@ -103,6 +105,12 @@ export class GameController {
   private endExtras: HudWorld['endExtras'];
   /** Seconds left of hit-stop: the sim freezes briefly on big impacts. */
   private hitStop = 0;
+  /** Pause input last frame, so pausing needs a fresh press (not a held button after resume). */
+  private pauseHeld = false;
+  private readonly onVisibility = () => {
+    // Automation drives the game through an override and may run in a hidden tab: leave it be.
+    if (document.visibilityState === 'hidden' && !this.override) this.pause();
+  };
 
   constructor(deps: GameControllerDeps) {
     this.world = deps.session.world;
@@ -121,8 +129,18 @@ export class GameController {
       onRetry: () => this.restart(this.params.seed),
       onNewTown: () => this.restart(),
       onMenu: () => this.host.restart({ menu: true }),
+      onPause: () => this.pause(),
     });
     this.levelUp = new LevelUpPanel(this.uiRoot, (i) => this.choose(i));
+    this.pauseMenu = new PauseMenu(this.uiRoot, {
+      onResume: () => {},
+      onRestart: () => this.restart(this.params.seed),
+      onQuit: () => this.host.restart({ menu: true }),
+      muted: () => this.audio.settings.muted,
+      setMuted: (muted) => this.audio.setSettings({ muted }),
+      uiSound: () => this.audio.play('uiClick'),
+    });
+    document.addEventListener('visibilitychange', this.onVisibility);
     this.audio.music(this.world.phase === 'planning' ? 'plan' : 'play');
     this.setupDebug();
     if (deps.session.inMenu) this.setupMenu();
@@ -134,8 +152,12 @@ export class GameController {
   update(deltaMs: number) {
     const rotatePaused = document.documentElement.classList.contains(ROTATE_CLASS);
     const input = this.override ?? this.input.poll();
-    if (this.hitStop > 0) this.hitStop -= deltaMs / 1000;
-    else if (!rotatePaused && !debugState.paused) {
+    if (input.pause && !this.pauseHeld) this.pause();
+    this.pauseHeld = input.pause;
+    // While paused the sim is frozen but the scene is still drawn.
+    if (this.paused || rotatePaused || debugState.paused) { /* frozen */ }
+    else if (this.hitStop > 0) this.hitStop -= deltaMs / 1000;
+    else {
       this.accumulator += Math.min(deltaMs / 1000, 0.1) * this.params.speed;
       let steps = 0;
       while (this.accumulator >= DT && steps < 8 * Math.max(1, this.params.speed)) {
@@ -172,6 +194,17 @@ export class GameController {
     this.syncUi();
   }
 
+  get paused(): boolean {
+    return this.pauseMenu.visible;
+  }
+
+  /** Opens the pause menu (only mid-run: not while planning, choosing an upgrade or after the end). */
+  pause() {
+    const w = this.world;
+    if (this.paused || this.menu || w.phase !== 'running' || w.status !== 'playing' || w.choosing) return;
+    this.pauseMenu.show();
+  }
+
   setInputOverride(input: InputState | null) {
     this.override = input;
   }
@@ -181,6 +214,8 @@ export class GameController {
     this.uninstallRotate();
     this.hud.destroy();
     this.levelUp.destroy();
+    this.pauseMenu.destroy();
+    document.removeEventListener('visibilitychange', this.onVisibility);
     this.planning?.destroy();
     this.menu?.destroy();
     document.body.classList.remove('vd-menu-open', 'vd-planning');
@@ -389,6 +424,7 @@ export class GameController {
     vd.restart = (seed?: number) => this.restart(seed);
     vd.overlays = debugState.overlays;
     vd.startTown = () => this.startTown();
+    vd.pause = () => this.pause();
     vd.profile = () => this.profile;
     vd.choose = (i: number) => this.choose(i);
     vd.stats = () => this.stats();
