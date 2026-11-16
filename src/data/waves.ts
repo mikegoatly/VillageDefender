@@ -25,20 +25,22 @@ export const TOWN1_WAVES: WaveDef[] = [
 ];
 
 /**
- * Town 2 (riverside market): monsters arrive from more sides and lean on ghosts and vampires,
- * which ignore or exploit the river's chokepoints. The River Troll wades in with wave 10.
+ * Town 2 (riverside market): bigger waves from more sides, and four monsters that break
+ * "just hold the bridges": imps swim the river (1), skeleton archers shoot over it (3),
+ * sappers blow up buildings (4) and necromancers raise zombies from outside the town (5).
+ * The River Troll wades in with wave 10.
  */
 export const TOWN2_WAVES: WaveDef[] = [
-  { monsters: { zombie: 6, skeleton: 2 }, sides: 1 },
-  { monsters: { zombie: 6, orc: 3, ghost: 1 }, sides: 2 },
-  { monsters: { zombie: 8, orc: 4, skeleton: 3 }, sides: 2 },
-  { monsters: { zombie: 8, orc: 5, brute: 1, ghost: 2 }, sides: 2 },
-  { monsters: { zombie: 10, orc: 5, skeleton: 3, vampire: 2 }, sides: 2 },
-  { monsters: { zombie: 10, orc: 6, brute: 1, ghost: 3 }, sides: 3 },
-  { monsters: { zombie: 12, orc: 7, skeleton: 4, vampire: 2, brute: 1 }, sides: 2 },
-  { monsters: { zombie: 12, orc: 8, ghost: 4, brute: 2 }, sides: 3 },
-  { monsters: { zombie: 10, orc: 7, skeleton: 3, vampire: 2, brute: 1 }, sides: 3 },
-  { monsters: { troll: 1, zombie: 6, orc: 3, ghost: 2 }, sides: 2 },
+  { monsters: { zombie: 7, imp: 3 }, sides: 1 },
+  { monsters: { zombie: 7, orc: 3, imp: 4, ghost: 1 }, sides: 2 },
+  { monsters: { zombie: 8, orc: 4, skeletonArcher: 3, imp: 3 }, sides: 2 },
+  { monsters: { zombie: 9, orc: 5, sapper: 2, brute: 1, ghost: 2 }, sides: 2 },
+  { monsters: { zombie: 8, orc: 5, necromancer: 1, skeleton: 3, imp: 4 }, sides: 3 },
+  { monsters: { zombie: 8, orc: 6, skeletonArcher: 3, vampire: 2, sapper: 2 }, sides: 3 },
+  { monsters: { zombie: 10, orc: 6, necromancer: 1, ghost: 3, imp: 5, brute: 1 }, sides: 2 },
+  { monsters: { zombie: 10, orc: 7, sapper: 3, skeletonArcher: 3, vampire: 2, brute: 1 }, sides: 3 },
+  { monsters: { zombie: 10, orc: 7, necromancer: 1, imp: 6, skeleton: 3, brute: 2 }, sides: 3 },
+  { monsters: { troll: 1, zombie: 6, orc: 3, sapper: 2, skeletonArcher: 2, imp: 4 }, sides: 3 },
 ];
 
 /** Flattens a wave into a spawn order that mixes kinds rather than sending them in blocks. */

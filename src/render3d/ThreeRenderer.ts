@@ -133,6 +133,17 @@ export class ThreeRenderer implements Renderer {
         this.effects.shockwave(e.x, e.y, e.radius, 0xb8322c);
         this.stage.shake(320, 0.012);
         return;
+      case 'fuseLit':
+        this.effects.telegraph(e.x, e.y, e.radius, e.time);
+        return;
+      case 'explosion':
+        this.effects.shockwave(e.x, e.y, e.radius, 0xff8a2a);
+        this.particles.burst(e.x, 0.3, e.y, 14, 0xffa040, 0.3, 2, 1);
+        this.stage.shake(220, 0.008);
+        return;
+      case 'monsterRaised':
+        this.particles.burst(e.x, 0.2, e.y, 10, 0x9a5cff, 0.3, 1.5, 1.5);
+        return;
       case 'bossCharge': {
         const boss = world.monsters.find((u) => u.id === e.unit);
         const b = world.buildings[e.building];

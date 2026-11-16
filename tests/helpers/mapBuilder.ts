@@ -1,5 +1,5 @@
 // Builds small TownMaps from ASCII art for tests.
-// Row index = j, column = i. '.' grass, '#' blocked (no building), ' ' outside the map, '=' road,
+// Row index = j, column = i. '.' grass, '#' blocked (no building), ' ' outside the map, '=' road, '~' river water (blocked except for waders),
 // digits '0'-'9' = a cell of building id N (blocked; ids must be contiguous from 0).
 
 import type { Building, TownMap } from '../../src/sim/map';
@@ -8,6 +8,7 @@ import type { Building, TownMap } from '../../src/sim/map';
 const NONE = 0;
 const GRASS = 1;
 const ROAD = 2;
+const WATER = 3;
 
 export function mapFromAscii(rows: string[]): TownMap {
   const cols = Math.max(...rows.map((r) => r.length));
@@ -21,6 +22,7 @@ export function mapFromAscii(rows: string[]): TownMap {
       const idx = j * size + i;
       if (ch === ' ') ground[idx] = NONE;
       else if (ch === '=') ground[idx] = ROAD;
+      else if (ch === '~') { ground[idx] = WATER; blocked[idx] = 1; }
       else {
         ground[idx] = GRASS;
         if (ch === '#') blocked[idx] = 1;

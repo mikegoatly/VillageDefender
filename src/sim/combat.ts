@@ -17,12 +17,21 @@ export function damageUnit(w: World, u: Unit, amount: number, by: number) {
     setState(u, 'dead');
     w.events.push({ type: 'death', unit: u.id });
     if (u.team === 'enemy') {
+      const def = MONSTERS[u.kind as MonsterKind];
       w.kills++;
       w.killsByKind[u.kind] = (w.killsByKind[u.kind] ?? 0) + 1;
-      w.coins += MONSTERS[u.kind as MonsterKind].coins;
-      w.gems.push({ id: w.nextId++, x: u.x, y: u.y, value: MONSTERS[u.kind as MonsterKind].xp, magnet: false, speed: 0 });
+      // Raised monsters are free for the necromancer, so they pay nothing (no farming).
+      if (u.raisedBy === undefined) {
+        w.coins += def.coins;
+        w.gems.push({ id: w.nextId++, x: u.x, y: u.y, value: def.xp, magnet: false, speed: 0 });
+      }
       const killer = w.rookies.find((r) => r.id === by);
       if (killer) creditRookieKill(w, killer);
+      // A sapper's keg goes off among the monsters when it is killed.
+      if (def.explodes) {
+        w.events.push({ type: 'explosion', unit: u.id, x: u.x, y: u.y, radius: def.explodes.radius });
+        areaHits(w, by, u.x, u.y, def.explodes.radius, def.explodes.deathDamage, def.explodes.deathKnockback);
+      }
     }
   }
 }
@@ -38,7 +47,7 @@ function creditRookieKill(w: World, r: Unit) {
   }
 }
 
-export function damageBuilding(w: World, b: BuildingState, amount: number, by: Unit) {
+export function damageBuilding(w: World, b: BuildingState, amount: number, by: Pick<Unit, 'id'>) {
   b.hp = Math.max(0, b.hp - amount);
   b.lastHit = w.time;
   w.events.push({ type: 'buildingHit', building: b.id, by: by.id, damage: amount });
@@ -69,6 +78,16 @@ export function hurtFriendly(w: World, p: Unit, amount: number): number {
     }
   }
   return amount;
+}
+
+/** Hurts every living knight and rookie whose body overlaps a circle (blasts, boulders). */
+export function hurtFriendliesInRadius(w: World, cx: number, cy: number, radius: number, damage: number) {
+  for (const list of [w.players, w.rookies]) {
+    for (const f of list) {
+      if (f.state === 'dead' || Math.hypot(f.x - cx, f.y - cy) > radius + f.radius) continue;
+      hurtFriendly(w, f, damage);
+    }
+  }
 }
 
 /** Melee swing: hits every enemy within reach inside the facing arc. */

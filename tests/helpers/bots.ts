@@ -8,7 +8,8 @@ import { emptyInput, type InputState } from '../../src/sim/types';
 import { World, type Unit } from '../../src/sim/world';
 import type { UpgradeOffer, UpgradePool } from '../../src/data/upgrades';
 import { STARTING_ROLES } from '../../src/data/roles';
-import { TOWNS } from '../../src/data/towns';
+import { MONSTERS, type MonsterKind } from '../../src/data/monsters';
+import { TOWNS, type TownDef } from '../../src/data/towns';
 import type { WeaponKind } from '../../src/data/weapons';
 import { stepWith, type Chooser } from './worldBuilder';
 
@@ -223,16 +224,17 @@ export interface PlayResult {
   /** Coins earned this run. */
   coins: number;
   weapon: WeaponKind;
-  /** Orc Warlord defeated this run. */
+  /** The town's boss defeated this run. */
   bossKilled: boolean;
 }
 
-/** Plays a full default level with a bot until it ends or maxSeconds elapses. */
-export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300, choose: Chooser = idleChooser, plan?: PlanPolicy, weapon: WeaponKind = 'sword'): PlayResult {
-  // Planned runs use a fresh profile's roles and town 1's points; unplanned runs skip planning entirely.
+/** Plays a full level of `town` (default town 1) with a bot until it ends or maxSeconds elapses. */
+export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300, choose: Chooser = idleChooser, plan?: PlanPolicy, weapon: WeaponKind = 'sword', town: TownDef = TOWNS[0]): PlayResult {
+  // Planned runs use a fresh profile's roles and the town's points; unplanned runs skip planning entirely.
+  const townOpts = { townId: town.id, waves: town.waves, mapOptions: town.map };
   const world = new World(plan
-    ? { seed, planning: true, planningPoints: TOWNS[0].planningPoints, allowedRoles: STARTING_ROLES, weapon }
-    : { seed, weapon });
+    ? { seed, planning: true, planningPoints: town.planningPoints, allowedRoles: STARTING_ROLES, weapon, ...townOpts }
+    : { seed, weapon, ...townOpts });
   if (plan) {
     plan(world);
     world.start();
@@ -244,6 +246,6 @@ export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300
     kills: world.kills, standing: world.standingBuildings(), total: world.buildings.length, stars: world.stars,
     level: world.progression.level, rookiesAlive: world.rookies.filter((r) => r.state !== 'dead').length,
     upgrades: { ...world.progression.levels }, coins: Math.round(world.coins),
-    weapon, bossKilled: (world.killsByKind.warlord ?? 0) > 0,
+    weapon, bossKilled: Object.keys(world.killsByKind).some((k) => MONSTERS[k as MonsterKind]?.boss),
   };
 }

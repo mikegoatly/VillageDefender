@@ -67,6 +67,7 @@ export function addMonster(w: World, x: number, y: number, kind: MonsterKind = '
     ...unitBase(w.nextId++, x, y),
     kind, team: 'enemy', radius: def.radius, hp: def.hp, maxHp: def.hp,
     speed: def.speed + w.rng.range(-def.speedJitter, def.speedJitter),
+    abilityIn: def.raise?.first ?? 0,
   };
   if (def.boss) {
     m.boss = newBossState(def.boss);

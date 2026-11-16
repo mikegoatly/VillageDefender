@@ -2,18 +2,23 @@
 
 import { DT } from '../data/balance';
 import type { WeaponDef } from '../data/weapons';
-import { damageUnit } from './combat';
+import { damageBuilding, damageUnit, hurtFriendly } from './combat';
 import { isWalkable } from './map';
 import type { Projectile, Unit } from './model';
 import { norm } from './units';
 import type { World } from './world';
 
+/** Where a moving target will be when a shot of `speed` fired from (x, y) arrives. */
+export function leadPoint(x: number, y: number, target: Unit, speed: number): [number, number] {
+  if (!target.moving) return [target.x, target.y];
+  const lead = Math.hypot(target.x - x, target.y - y) / speed;
+  return [target.x + target.facing.x * target.speed * lead, target.y + target.facing.y * target.speed * lead];
+}
+
 /** Fires an arrow at a monster, leading it slightly. */
 export function shoot(w: World, x: number, y: number, target: Unit, damage: number, speed: number, owner: number) {
   const d = Math.hypot(target.x - x, target.y - y);
-  const lead = d / speed;
-  const tx = target.x + (target.moving ? target.facing.x * target.speed * lead : 0);
-  const ty = target.y + (target.moving ? target.facing.y * target.speed * lead : 0);
+  const [tx, ty] = leadPoint(x, y, target, speed);
   const dir = norm({ x: tx - x, y: ty - y });
   const p: Projectile = { id: w.nextId++, x, y, vx: dir.x * speed, vy: dir.y * speed, damage, ttl: 1.2 * (d / speed) + 0.3, owner,
     kind: 'arrow', returning: false, travelled: 0, maxDist: 0, hitIds: [] };
@@ -38,6 +43,10 @@ export function updateProjectiles(w: World) {
       if (updateAxe(w, p)) w.projectiles.splice(k, 1);
       continue;
     }
+    if (p.kind === 'bolt') {
+      if (updateBolt(w, p)) w.projectiles.splice(k, 1);
+      continue;
+    }
     p.x += p.vx * DT;
     p.y += p.vy * DT;
     p.ttl -= DT;
@@ -53,6 +62,27 @@ export function updateProjectiles(w: World) {
     if (hit) damageUnit(w, hit, p.damage, p.owner);
     if (hit || p.ttl <= 0) w.projectiles.splice(k, 1);
   }
+}
+
+/**
+ * A monster's lobbed arrow: flies over anything to its landing point, then hits the building it
+ * was aimed at, or the first friendly standing there. Returns true when it has landed.
+ */
+function updateBolt(w: World, p: Projectile): boolean {
+  // The last step is shortened so the bolt lands exactly on its target point.
+  const dt = Math.min(DT, p.ttl);
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  p.ttl -= dt;
+  if (p.ttl > 1e-9) return false;
+  const b = w.buildings[p.building ?? -1];
+  if (b) {
+    if (!b.ruined) damageBuilding(w, b, p.damage, { id: p.owner });
+    return true;
+  }
+  const f = [...w.players, ...w.rookies].find((u) => u.state !== 'dead' && Math.hypot(u.x - p.x, u.y - p.y) <= u.radius + 0.3);
+  if (f) hurtFriendly(w, f, p.damage);
+  return true;
 }
 
 /** Moves a thrown axe out and back; returns true when it should be removed. */

@@ -26,7 +26,7 @@ export const TOWNS: TownDef[] = [
   },
   {
     id: 'riverside', name: 'Riverside Market',
-    blurb: 'A river splits the town; hold the bridges. The River Troll wades where others can’t.',
+    blurb: 'A river splits the town, but imps swim it and archers shoot over it. The River Troll wades in last.',
     planningPoints: 3, waves: TOWN2_WAVES, map: { river: true }, unlockStars: 1, bossName: 'River Troll',
   },
 ];

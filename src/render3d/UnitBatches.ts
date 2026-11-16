@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
-import { CHARACTER_MODELS, animFor, animLoops, clipNames, lookFor, unitFx, type AnimName, type Attachment, type UnitLook } from './characters';
+import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, lookFor, unitFx, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
 import { withFxAttribute, withUnitFx } from './unitFx';
 
@@ -44,6 +44,8 @@ interface UnitAnim {
   lastStateTime: number;
   /** Displayed heading (radians about +Y); turns smoothly towards the sim's facing. */
   rot: number;
+  /** Displayed river-wading depth; eases towards wadeDepth(). */
+  wade: number;
 }
 
 export interface UnitBatchOptions {
@@ -119,6 +121,8 @@ export class UnitBatches {
         live.add(u.id);
         const look = lookFor(u, world.weapon);
         const rot = this.animate(u, dt);
+        const a = this.anims.get(u.id)!;
+        a.wade += (wadeDepth(world.map, u, look.scale) - a.wade) * Math.min(1, dt * WADE.rate);
         this.place(u, look, rot);
         if (u.team === 'player' && u.state !== 'dead' && halos < HALO_CAPACITY) {
           const knight = u.kind === 'knight';
@@ -159,7 +163,7 @@ export class UnitBatches {
   private animate(u: Unit, dt: number): number {
     let a = this.anims.get(u.id);
     const want = Math.atan2(u.facing.x, u.facing.y);
-    if (!a) this.anims.set(u.id, (a = { anim: null, t: 0, lastStateTime: 0, rot: want }));
+    if (!a) this.anims.set(u.id, (a = { anim: null, t: 0, lastStateTime: 0, rot: want, wade: 0 }));
     const anim = animFor(u);
     // A new swing restarts the attack even when the previous one has not been left.
     const restart = anim === 'attack' && u.stateTime < a.lastStateTime;
@@ -186,7 +190,7 @@ export class UnitBatches {
     const { flash, alpha, sink } = unitFx(u, this.flashes.has(u.id), this.clock);
     batch.fx.setXY(n, flash, alpha);
     this.unitM.compose(
-      this.pos.set(u.x, -sink, u.y),
+      this.pos.set(u.x, -sink - a.wade, u.y),
       this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rot),
       this.scl.setScalar(CHAR_SCALE * look.scale),
     );

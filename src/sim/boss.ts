@@ -4,7 +4,7 @@
 import { DT } from '../data/balance';
 import { BOSS, MONSTERS, TROLL } from '../data/monsters';
 import type { BossState } from './bossState';
-import { applyKnockback, damageBuilding, hurtFriendly } from './combat';
+import { applyKnockback, damageBuilding, hurtFriendliesInRadius, hurtFriendly } from './combat';
 import { Ground, SIDES } from './map';
 import type { BuildingState, Unit } from './model';
 import { adjacentBuilding, nearestFriendly } from './queries';
@@ -38,12 +38,7 @@ function updateTroll(w: World, m: Unit, s: BossState): boolean {
       const [cx, cy] = centreOf(b.cells);
       w.events.push({ type: 'bossBoulder', unit: m.id, x: cx, y: cy, radius: bd.radius });
       damageBuilding(w, b, bd.buildingDamage, m);
-      for (const list of [w.players, w.rookies]) {
-        for (const f of list) {
-          if (f.state === 'dead' || Math.hypot(f.x - cx, f.y - cy) > bd.radius + f.radius) continue;
-          hurtFriendly(w, f, bd.unitDamage);
-        }
-      }
+      hurtFriendliesInRadius(w, cx, cy, bd.radius, bd.unitDamage);
     }
     return true;
   }

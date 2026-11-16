@@ -4,6 +4,7 @@
 import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ROOKIES, type RookieKind } from '../data/rookies';
 import type { WeaponKind } from '../data/weapons';
+import { Ground, inBounds, type TownMap } from '../sim/map';
 import type { Unit } from '../sim/world';
 
 export const CHARACTER_MODELS: Record<string, string> = {
@@ -15,6 +16,9 @@ export const CHARACTER_MODELS: Record<string, string> = {
   vampire: 'graveyard/character-vampire',
   swordsman: 'mini-arena/character-soldier',
   archer: 'mini-forest/character-archer',
+  necromancer: 'graveyard/character-vampire',
+  skeletonArcher: 'graveyard/character-skeleton',
+  sapper: 'mini-characters/character-male-a',
 };
 
 export interface Attachment {
@@ -30,6 +34,8 @@ type Hand = Omit<Attachment, 'model'>;
 const RIGHT: Hand = { bone: 'arm-right', position: [-0.27, 0, 0.02], rotation: [Math.PI / 2, 0, 0] };
 const LEFT: Hand = { bone: 'arm-left', position: [0.24, 0, 0], rotation: [0, Math.PI / 2, 0] };
 const SHIELD: Attachment = { ...LEFT, model: 'mini-dungeon/shield-round', scale: 0.8 };
+/** The bow model's origin is its bottom tip (it spans y 0–0.48): drop it by half so the hand holds the grip. */
+const BOW: Attachment = { ...LEFT, position: [0.24, -0.24, 0], model: 'mini-forest/weapon-bow' };
 
 export const KNIGHT_WEAPONS: Record<WeaponKind, Attachment[]> = {
   sword: [{ ...RIGHT, model: 'mini-dungeon/weapon-sword' }, SHIELD],
@@ -42,7 +48,10 @@ export const KNIGHT_WEAPONS: Record<WeaponKind, Attachment[]> = {
 const ATTACHMENTS: Record<string, Attachment[]> = {
   orc: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
   swordsman: [{ ...RIGHT, model: 'mini-arena/weapon-sword' }, { ...SHIELD, scale: 0.6 }],
-  archer: [{ ...LEFT, model: 'mini-forest/weapon-bow' }],
+  archer: [BOW],
+  skeletonArcher: [BOW],
+  sapper: [{ ...RIGHT, model: 'mini-dungeon/barrel', scale: 0.45 }],
+  necromancer: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
 };
 
 /** Every character and attachment model, for preloading. */
@@ -57,7 +66,7 @@ export type AnimName = 'idle' | 'walk' | 'sprint' | 'attack' | 'die';
 export function clipNames(sheet: string): Record<AnimName, string> {
   return {
     idle: 'idle', walk: 'walk', sprint: 'sprint', die: 'die',
-    attack: sheet === 'archer' ? 'holding-both-shoot' : 'attack-melee-right',
+    attack: sheet === 'archer' || sheet === 'skeletonArcher' ? 'holding-both-shoot' : 'attack-melee-right',
   };
 }
 
@@ -71,6 +80,21 @@ export function animFor(u: Pick<Unit, 'state' | 'moving'>): AnimName {
   if (u.state === 'attack') return 'attack';
   if (u.state === 'dodge') return 'sprint';
   return u.moving ? 'walk' : 'idle';
+}
+
+/**
+ * River wading (imps, River Troll): standing in water sinks a wader by `depth` × its model scale,
+ * at most `max`; UnitBatches eases towards it at `rate` per second so units dip in rather than pop.
+ */
+export const WADE = { depth: 0.3, max: 0.75, rate: 6 };
+
+/** How far a unit should be sunk into the river where it stands (0 on land, and for non-waders). */
+export function wadeDepth(map: TownMap, u: Pick<Unit, 'kind' | 'team' | 'x' | 'y'>, scale: number): number {
+  if (u.team !== 'enemy' || !MONSTERS[u.kind as MonsterKind].wades) return 0;
+  const i = Math.round(u.x);
+  const j = Math.round(u.y);
+  if (!inBounds(map, i, j) || map.ground[j * map.size + i] !== Ground.Water) return 0;
+  return Math.min(WADE.max, WADE.depth * scale);
 }
 
 /** How far a corpse sinks, starting after its death animation (0.7 s) and taking 0.5 s. */

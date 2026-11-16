@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defenderBot, defenderChooser, defenderPlan, fighterBot, fighterChooser, idleBot, idleChooser, playLevel, type Bot, type PlanPolicy, type PlayResult } from '../helpers/bots';
 import { TOWN1_WAVES } from '../../src/data/waves';
+import { TOWN_BY_ID } from '../../src/data/towns';
 import { WEAPON_ORDER } from '../../src/data/weapons';
 import type { Chooser } from '../helpers/worldBuilder';
 
@@ -75,5 +76,23 @@ describe(`bot play-tests (default level, ${TOWN1_WAVES.length} waves + boss)`, (
 
   it('defender averages at least as many stars as fighter', () => {
     expect(avg(results.defender.map((r) => r.stars))).toBeGreaterThanOrEqual(avg(results.fighter.map((r) => r.stars)));
+  });
+});
+
+// Town 2 (riverside), planned defender per weapon, for balancing the river monsters.
+const riverside = TOWN_BY_ID.riverside;
+const town2Results = Object.fromEntries(WEAPON_ORDER.map((w) => [
+  w, SEEDS.map((s) => playLevel(s, `town2-${w}`, defenderBot(), MAX_SECONDS, defenderChooser, defenderPlan, w, riverside)),
+])) as Record<(typeof WEAPON_ORDER)[number], PlayResult[]>;
+
+describe(`bot play-tests (town 2, ${riverside.waves.length} waves + boss)`, () => {
+  it('prints the defender-by-weapon table', () => {
+    const avgs = Object.entries(town2Results).map(([w, rs]) =>
+      `${w.padEnd(6)}  wins ${rs.filter((r) => r.status === 'won').length}/${rs.length}  avg stars ${avg(rs.map((r) => r.stars)).toFixed(2)}  avg wave ${avg(rs.map((r) => r.wave)).toFixed(1)}  avg kills ${avg(rs.map((r) => r.kills)).toFixed(1)}  avg standing ${avg(rs.map((r) => r.standing)).toFixed(1)}/${rs[0].total}  boss killed ${rs.filter((r) => r.bossKilled).length}/${rs.length}`);
+    console.log(['', 'Town 2', ...avgs].join('\n'));
+  });
+
+  it('wins are only counted with the boss dead', () => {
+    for (const rs of Object.values(town2Results)) for (const r of rs) if (r.status === 'won') expect(r.bossKilled).toBe(true);
   });
 });

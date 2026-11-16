@@ -410,6 +410,14 @@ Findings:
 - Bot balance (planned defender, all cards, no boosts, seeds 1–5): Town 1 sword 4/5 wins 1.2★ (other weapons 3–4/5, 1.0★); Town 2 2/5 wins 0.4★ — intentionally a step up, players will have boosts and cards by then. Most Town 2 losses are crowd deaths in waves 9–10 that kiting avoids.
 - Golden fingerprint re-recorded once, deliberately, for the play-test behaviour changes (decision 48).
 - Known gaps: MainMenu has no unit tests yet (agent stopped at a usage limit); shop/card-pool/boost sim tests pending; troll uses the zombie model scaled up.
+
+### Town 2 monsters (2026-11-16)
+
+- Play-test: a player who earns 2★ on Town 1 got 3★ on Town 2 at the first attempt. Town 2 reused Town 1's monsters with slightly bigger waves, had an extra planning point, and its bridges made easy chokepoints.
+- Four new monsters, each aimed at "just hold the bridges" (decision 50): **river imp** (wave 1; small, quick, swims the river to the buildings; blue-tinted small orc, since Kenney has no imp model), **skeleton archer** (wave 3; stops 5 cells out and lobs arrows at friendlies, else buildings; arrows land where the target was heading, so stepping aside dodges them, and they fly over the river), **sapper** (wave 4; runs a powder keg to a building, 1 s telegraphed fuse, then 70 building damage and 15 to friendlies in 1.6 cells; killed early, the keg hurts monsters around it instead), **necromancer** (wave 5; caped vampire model tinted purple, with a staff; stops 6 cells from the town and raises 2 zombies every 7 s, up to 4 alive; raised zombies give no xp or coins; when the knight comes within 3 cells he sprints away at 2.5× speed for 2 s, then needs 6 s to recover, and the knight is still faster, so a chase catches him).
+- Waves: 10–29 monsters, 5 of 10 from three sides. River Troll recoloured blue.
+- Look fixes: waders (imps, troll) sink waist-deep while in the river (eased, `render3d/characters.ts` `wadeDepth`); bows (rookie and skeleton archers) are now held at the grip, not the bottom tip (the bow model's origin is its tip).
+- Bot balance (planned defender, seeds 1–5): Town 1 unchanged; Town 2 1/25 wins (axes 1/5, 0.2★, 1.6/10 standing; other weapons 0/5). Bots never leave the town to hunt necromancers or archers, which is the intended counter, so real players should do far better; play-test before tuning further. `tests/sim/bots.test.ts` now prints a Town 2 table.
 ## 7. Decisions
 
 ### Decided (2026-11-14)
@@ -473,6 +481,7 @@ Findings:
 47. **Town unlocks:** a town opens with 1★ in the previous town. URL params (?town, ?seed, ?plan, ?wave, ?god) skip the menu for automation.
 48. **Play-test fixes (docs/Notes.txt, 2026-11-14):** archers need line of sight and rookie arrows stop at walls (tower/slit arrows fly over); rookies engage a boss within 14 cells; brutes and the troll swat a knight/rookie in their way (the Warlord doesn't — his slam already punishes melee); vampires lunge; ghosts flicker; rank chevrons over veterans/captains; bigger arrows/axes; flail swing animation repeats; cards say "weapon", not "sword".
 49. **Weapon ranks:** each weapon you own can be ranked I–III in the shop (150/300/500 coins, permanent). Per rank: +8% damage plus a signature perk — sword wider sweep, spear longer thrust, hammer bigger slam, axes longer/faster throw, flail wider spin. Ranks show in the planning weapon picker (src/data/weapons.ts `rankedWeapon`).
+50. **Town 2 monsters:** river imp (wades), skeleton archer (lobbed, dodgeable arrows), sapper (fuse then explodes; its keg hurts monsters if it is killed first), necromancer (holds back, raises zombies that pay nothing, and sprints away from the knight once per 8 s). Behaviours are data-driven (MonsterDef `ranged`, `standoff`, `raise`, `flee`, `explodes`).
 
 ### Open (decide later)
 

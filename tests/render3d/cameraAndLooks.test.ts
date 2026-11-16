@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { MONSTERS, type MonsterKind } from '../../src/data/monsters';
 import { fitView, frustumFor, projectGround } from '../../src/render3d/camera';
-import { animFor, characterModelPaths, CORPSE_SINK, lookFor, unitFx } from '../../src/render3d/characters';
+import { animFor, CHARACTER_MODELS, characterModelPaths, CORPSE_SINK, lookFor, unitFx, WADE, wadeDepth } from '../../src/render3d/characters';
+import { mapFromAscii } from '../helpers/mapBuilder';
 import { generateTown } from '../../src/sim/map';
 import { aWorld } from '../helpers/worldBuilder';
 
@@ -70,12 +72,22 @@ describe('lookFor', () => {
   });
 });
 
+const MODEL_FILES = Object.keys(import.meta.glob('/public/assets/models/**/*.glb', { query: '?url', import: 'default' }));
+
 describe('characterModelPaths', () => {
   it('lists each model once, including attachments', () => {
     const paths = characterModelPaths();
     expect(new Set(paths).size).toBe(paths.length);
     expect(paths).toContain('mini-dungeon/shield-round');
     expect(paths).toContain('graveyard/character-zombie');
+  });
+
+  it('has a model for every monster sheet', () => {
+    for (const [kind, def] of Object.entries(MONSTERS)) expect(CHARACTER_MODELS[def.sheet], kind).toBeDefined();
+  });
+
+  it('only lists models that exist on disk', () => {
+    for (const p of characterModelPaths()) expect(MODEL_FILES, p).toContain(`/public/assets/models/${p}.glb`);
   });
 });
 
@@ -113,5 +125,26 @@ describe('unitFx', () => {
     expect(new Set(blink).size).toBeGreaterThan(1);
     knight.state = 'dodge';
     expect(unitFx(knight, false, 0.03).flash).toBe(0);
+  });
+});
+
+describe('wadeDepth', () => {
+  // 10×10 field with a river at column 5.
+  const rows = Array.from({ length: 10 }, () => '.....~....');
+  const map = mapFromAscii(rows);
+  const at = (kind: MonsterKind, x: number) => ({ kind, team: 'enemy' as const, x, y: 4 });
+
+  it('sinks waders standing in the river, deeper for bigger models, capped', () => {
+    const imp = wadeDepth(map, at('imp', 5), MONSTERS.imp.scale);
+    const troll = wadeDepth(map, at('troll', 5.2), MONSTERS.troll.scale);
+    expect(imp).toBeGreaterThan(0);
+    expect(troll).toBeGreaterThan(imp);
+    expect(troll).toBeLessThanOrEqual(WADE.max);
+  });
+
+  it('stays on the surface on dry ground, and for non-waders over water (ghosts)', () => {
+    expect(wadeDepth(map, at('imp', 3), MONSTERS.imp.scale)).toBe(0);
+    expect(wadeDepth(map, at('ghost', 5), MONSTERS.ghost.scale)).toBe(0);
+    expect(wadeDepth(map, { kind: 'knight', team: 'player', x: 5, y: 4 }, 1)).toBe(0);
   });
 });

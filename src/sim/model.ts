@@ -53,9 +53,13 @@ export interface Unit {
   /** AI: where a rookie returns to when idle. */
   postX: number;
   postY: number;
-  /** Lunging monsters (vampire): seconds of sprint left, and its cooldown. */
-  lungeTime: number;
-  lungeCooldown: number;
+  /** Sprinting monsters (vampire lunge, necromancer flee): seconds of sprint left, and its cooldown. */
+  burstTime: number;
+  burstCooldown: number;
+  /** Necromancer: seconds until the next raise. Sapper: seconds of fuse left (0 = not lit). */
+  abilityIn: number;
+  /** Id of the necromancer that raised this monster (raised monsters give no xp or coins). */
+  raisedBy?: number;
   /** Orc Warlord only. */
   boss?: BossState;
 }
@@ -89,7 +93,10 @@ export interface Projectile {
   ttl: number;
   /** Unit id credited with kills (-1 for buildings). */
   owner: number;
-  kind: 'arrow' | 'axe';
+  /** arrow: friendly shot; axe: thrown axe; bolt: a monster's lobbed arrow (lands at tx, ty). */
+  kind: 'arrow' | 'axe' | 'bolt';
+  /** Bolt: the building it is aimed at (-1 or missing = aimed at a unit). It lands when ttl runs out. */
+  building?: number;
   /** Axe: flies out to maxDist, then returns to its owner, hitting each enemy once per leg. */
   returning: boolean;
   travelled: number;
@@ -125,6 +132,9 @@ export type SimEvent =
   | { type: 'shot'; projectile: number; from: number }
   | { type: 'rally' }
   | { type: 'axeThrow'; projectile: number }
+  | { type: 'monsterRaised'; unit: number; by: number; x: number; y: number }
+  | { type: 'fuseLit'; unit: number; x: number; y: number; radius: number; time: number }
+  | { type: 'explosion'; unit: number; x: number; y: number; radius: number }
   | { type: 'bossSpawn'; unit: number }
   | { type: 'bossSlamWarn'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'bossSlam'; unit: number; x: number; y: number; radius: number }

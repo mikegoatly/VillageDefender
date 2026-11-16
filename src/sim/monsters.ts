@@ -3,13 +3,15 @@
 import { DT } from '../data/balance';
 import { MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
 import { updateBoss } from './boss';
-import { damageBuilding, damageUnit, hurtFriendly } from './combat';
+import { damageBuilding, damageUnit, hurtFriendliesInRadius, hurtFriendly } from './combat';
 import type { FlowField } from './flowField';
 import { isWalkable } from './map';
 import type { Unit } from './model';
 import { adjacentBuilding, friendlyById, nearestBuildingCell, nearestFriendly, nearestOf, nearestStandingCell } from './queries';
 import type { Vec2 } from './types';
-import { norm, setState, tickTimers } from './units';
+import { centreOf, norm, setState, tickTimers } from './units';
+import { leadPoint } from './projectiles';
+import { addMonster } from './waves';
 import type { World } from './world';
 
 export function updateMonster(w: World, m: Unit) {
@@ -18,6 +20,11 @@ export function updateMonster(w: World, m: Unit) {
   const def = MONSTERS[m.kind as MonsterKind];
   m.moving = false;
 
+  if (def.raise) raiseDead(w, m, def);
+  if (def.explodes && m.abilityIn > 0) {
+    burnFuse(w, m, def);
+    return;
+  }
   if (m.state === 'attack') {
     continueAttack(w, m, def);
     return;
@@ -27,6 +34,9 @@ export function updateMonster(w: World, m: Unit) {
     setState(m, m.moving ? 'walk' : 'idle', true);
     return;
   }
+
+  if (def.flee && fleeKnight(w, m, def)) return;
+  if (def.ranged && rangedAttack(w, m, def)) return;
 
   // Choose a target by archetype (plan section 3.3).
   const hasBuildings = w.hasStandingBuilding();
@@ -55,16 +65,11 @@ export function updateMonster(w: World, m: Unit) {
     }
     // Lunge: a short sprint at a close target.
     if (def.lunge) {
-      m.lungeCooldown = Math.max(0, m.lungeCooldown - DT);
-      m.lungeTime = Math.max(0, m.lungeTime - DT);
-      if (m.lungeCooldown <= 0 && d <= def.lunge.range) {
-        m.lungeTime = def.lunge.duration;
-        m.lungeCooldown = def.lunge.cooldown;
-      }
+      tickBurst(m, def.lunge, d, def.lunge.cooldown);
     }
     // The knight field only leads to the knight; rookies are always close, so go straight.
     const useField = !def.phasing && friend.kind === 'knight' && d > 1.5;
-    steer(w, m, useField ? w.knightFlow : null, dx, dy, m.lungeTime > 0 && def.lunge ? def.lunge.speedMul : 1);
+    steer(w, m, useField ? w.knightFlow : null, dx, dy, m.burstTime > 0 && def.lunge ? def.lunge.speedMul : 1);
     return;
   }
 
@@ -81,8 +86,24 @@ export function updateMonster(w: World, m: Unit) {
     }
   }
 
+  // Necromancers hold back from the town.
+  if (def.standoff !== undefined) {
+    const cell = nearestStandingCell(w, m.x, m.y);
+    if (cell && Math.hypot(cell[0] - m.x, cell[1] - m.y) <= def.standoff) {
+      setState(m, 'idle', true);
+      return;
+    }
+  }
+
   // Building attack: any standing building cell within reach?
   const b = adjacentBuilding(w, m, def.attackReach);
+  if (b && def.explodes) {
+    m.abilityIn = def.explodes.fuse;
+    m.facing = norm({ x: b.dx, y: b.dy });
+    setState(m, 'idle');
+    w.events.push({ type: 'fuseLit', unit: m.id, x: m.x, y: m.y, radius: def.explodes.radius, time: def.explodes.fuse });
+    return;
+  }
   if (b) {
     if (m.attackCooldown <= 0) startAttack(m, def, { x: b.dx, y: b.dy }, b.id, -1);
     else setState(m, 'idle', true);
@@ -116,7 +137,12 @@ function startAttack(m: Unit, def: MonsterDef, dir: Vec2, building: number, targ
 }
 
 function continueAttack(w: World, m: Unit, def: MonsterDef) {
-  if (m.attackBuilding >= 0) {
+  if (def.ranged) {
+    if (m.hitPending && m.stateTime >= def.attackWindup) {
+      m.hitPending = false;
+      loose(w, m, def);
+    }
+  } else if (m.attackBuilding >= 0) {
     const b = w.buildings[m.attackBuilding];
     if (m.hitPending && m.stateTime >= def.attackWindup) {
       m.hitPending = false;
@@ -143,6 +169,117 @@ function continueAttack(w: World, m: Unit, def: MonsterDef) {
     }
   }
   if (m.stateTime >= def.attackWindup + 0.25) setState(m, 'idle');
+}
+
+/**
+ * Ranged monsters: shoot the nearest friendly in range, else the nearest building in range.
+ * Returns true when it took a shot (or is waiting to); false to walk on toward the town.
+ */
+function rangedAttack(w: World, m: Unit, def: MonsterDef): boolean {
+  const range = def.ranged!.range;
+  const inRange = (x: number, y: number) => Math.hypot(x - m.x, y - m.y) <= range;
+  let aim: { x: number; y: number; building: number; target: number } | null = null;
+  const f = nearestFriendly(w, m.x, m.y);
+  if (f && inRange(f.x, f.y)) aim = { x: f.x, y: f.y, building: -1, target: f.id };
+  else {
+    const cell = nearestStandingCell(w, m.x, m.y);
+    if (cell && inRange(cell[0], cell[1])) aim = { x: cell[0], y: cell[1], building: w.buildingAt(cell[0], cell[1])!.id, target: -1 };
+  }
+  if (!aim) return false;
+  if (m.attackCooldown <= 0) startAttack(m, def, { x: aim.x - m.x, y: aim.y - m.y }, aim.building, aim.target);
+  else setState(m, 'idle', true);
+  return true;
+}
+
+/** Releases a lobbed arrow at the attack's target: it lands where a unit was heading, or on the building. */
+function loose(w: World, m: Unit, def: MonsterDef) {
+  const speed = def.ranged!.projectileSpeed;
+  let tx: number;
+  let ty: number;
+  let damage: number;
+  if (m.attackBuilding >= 0) {
+    const b = w.buildings[m.attackBuilding];
+    if (b.ruined) return;
+    [tx, ty] = centreOf(b.cells);
+    damage = def.buildingDamage;
+  } else {
+    const t = friendlyById(w, m.targetId);
+    if (!t || t.state === 'dead') return;
+    [tx, ty] = leadPoint(m.x, m.y, t, speed);
+    damage = def.damage;
+  }
+  const d = Math.hypot(tx - m.x, ty - m.y) || 1e-3;
+  m.facing = norm({ x: tx - m.x, y: ty - m.y });
+  const id = w.nextId++;
+  w.projectiles.push({
+    id, x: m.x, y: m.y, vx: ((tx - m.x) / d) * speed, vy: ((ty - m.y) / d) * speed, damage,
+    ttl: d / speed, owner: m.id, kind: 'bolt', returning: false, travelled: 0, maxDist: 0, hitIds: [],
+    building: m.attackBuilding,
+  });
+  w.events.push({ type: 'shot', projectile: id, from: m.id });
+}
+
+/**
+ * Necromancer: when a knight closes in, sprints straight away from him for a while, then has to
+ * recover; the knight is faster, so a determined chase still catches him.
+ */
+function fleeKnight(w: World, m: Unit, def: MonsterDef): boolean {
+  const f = def.flee!;
+  const k = nearestOf(w.players, m.x, m.y);
+  if (!k) return false;
+  tickBurst(m, f, Math.hypot(k.x - m.x, k.y - m.y), f.duration + f.cooldown);
+  if (m.burstTime <= 0) return false;
+  steer(w, m, null, m.x - k.x, m.y - k.y, f.speedMul);
+  return true;
+}
+
+/** Ticks a sprint (lunge or flee): starts one when ready and `d` is within range, setting `cooldown` from its start. */
+function tickBurst(m: Unit, burst: { range: number; duration: number }, d: number, cooldown: number) {
+  m.burstCooldown = Math.max(0, m.burstCooldown - DT);
+  m.burstTime = Math.max(0, m.burstTime - DT);
+  if (m.burstTime <= 0 && m.burstCooldown <= 0 && d <= burst.range) {
+    m.burstTime = burst.duration;
+    m.burstCooldown = cooldown;
+  }
+}
+
+/** Necromancer: raises monsters around itself on a timer, up to a cap of living raised. */
+function raiseDead(w: World, m: Unit, def: MonsterDef) {
+  const r = def.raise!;
+  m.abilityIn -= DT;
+  if (m.abilityIn > 0) return;
+  m.abilityIn = r.every;
+  const alive = w.monsters.filter((u) => u.raisedBy === m.id && u.state !== 'dead').length;
+  const n = Math.min(r.count, r.maxAlive - alive);
+  for (let k = 0; k < n; k++) {
+    const a = w.rng.range(0, Math.PI * 2);
+    let x = m.x + Math.cos(a) * r.radius;
+    let y = m.y + Math.sin(a) * r.radius;
+    if (!isWalkable(w.map, Math.round(x), Math.round(y))) {
+      x = m.x;
+      y = m.y;
+    }
+    const z = addMonster(w, x, y, r.kind);
+    z.raisedBy = m.id;
+    w.events.push({ type: 'monsterRaised', unit: z.id, by: m.id, x, y });
+  }
+}
+
+/** Sapper: stands still while the fuse burns, then blows up (no reward: it did its job). */
+function burnFuse(w: World, m: Unit, def: MonsterDef) {
+  const ex = def.explodes!;
+  m.abilityIn -= DT;
+  setState(m, 'idle', true);
+  if (m.abilityIn > 0) return;
+  w.events.push({ type: 'explosion', unit: m.id, x: m.x, y: m.y, radius: ex.radius });
+  for (const b of w.buildings) {
+    if (b.ruined) continue;
+    if (b.cells.some(([i, j]) => Math.hypot(i - m.x, j - m.y) <= ex.radius + 0.5)) damageBuilding(w, b, ex.buildingDamage, m);
+  }
+  hurtFriendliesInRadius(w, m.x, m.y, ex.radius, ex.unitDamage);
+  m.hp = 0;
+  setState(m, 'dead');
+  w.events.push({ type: 'death', unit: m.id });
 }
 
 /** Moves along a flow field (or straight along (dx, dy) when field is null or exhausted). */

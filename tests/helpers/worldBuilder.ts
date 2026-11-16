@@ -161,9 +161,14 @@ export function collectEvents(world: World, ticks: number, input: InputState = e
   return all;
 }
 
+/** Makes a unit effectively unkillable (it still moves and fights). */
+export function tank(m: Unit, hp = 100000): Unit {
+  m.hp = m.maxHp = hp;
+  return m;
+}
+
 /** Turns a monster into a stationary punching bag: never moves under its own power, effectively unkillable. */
 export function dummy(m: Unit, hp = 100000): Unit {
   m.speed = 0;
-  m.hp = m.maxHp = hp;
-  return m;
+  return tank(m, hp);
 }

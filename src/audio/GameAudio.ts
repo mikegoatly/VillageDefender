@@ -59,6 +59,9 @@ export function planFor(events: readonly SimEvent[]): PlannedSound[] {
       case 'bossSlam': out.push({ id: 'bossSlam' }); break;
       case 'bossCharge': out.push({ id: 'bossCharge' }); break;
       case 'bossSummon': out.push({ id: 'waveWarning', volume: 0.5 }); break;
+      case 'fuseLit': out.push({ id: 'bossSlamWarn', volume: 0.5 }); break;
+      case 'explosion': out.push({ id: 'bossSlam', volume: 0.7 }); break;
+      case 'monsterRaised': out.push({ id: 'waveWarning', volume: 0.3 }); break;
       case 'levelEnd': out.push({ id: e.won ? 'win' : 'lose' }); break;
       default: break;
     }

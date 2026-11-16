@@ -1,6 +1,9 @@
 // Monster archetypes. Target preference matters more than stats (plan §3.3).
 
-export type MonsterKind = 'zombie' | 'orc' | 'brute' | 'skeleton' | 'ghost' | 'vampire' | 'warlord' | 'troll';
+export type MonsterKind =
+  | 'zombie' | 'orc' | 'brute' | 'skeleton' | 'ghost' | 'vampire'
+  | 'imp' | 'necromancer' | 'skeletonArcher' | 'sapper'
+  | 'warlord' | 'troll';
 
 /** Boss ability sets (sim/boss.ts). */
 export type BossKind = 'warlord' | 'troll';
@@ -54,6 +57,22 @@ export interface MonsterDef {
   lunge?: { range: number; speedMul: number; duration: number; cooldown: number };
   /** Heals this fraction of damage dealt (vampire). */
   lifesteal?: number;
+  /**
+   * Shoots instead of striking (skeleton archer): lobbed arrows land where the target was heading,
+   * so they fly over the river. Uses `damage` / `buildingDamage` per arrow.
+   */
+  ranged?: { range: number; projectileSpeed: number };
+  /** Sprints away from a knight who comes within `range` (necromancer); shares the lunge's sprint timers. */
+  flee?: { range: number; speedMul: number; duration: number; cooldown: number };
+  /** Stops this far (cells) from the nearest standing building and works from there (necromancer). */
+  standoff?: number;
+  /** Raises `kind` around itself every `every` s while fewer than `maxAlive` of its raised are alive (necromancer). */
+  raise?: { every: number; first: number; count: number; kind: MonsterKind; maxAlive: number; radius: number };
+  /**
+   * Powder keg (sapper): lights a fuse next to a building, then blows up, wrecking buildings and
+   * hurting friendlies in `radius`. Killed first, the keg goes off among the monsters instead.
+   */
+  explodes?: { fuse: number; radius: number; buildingDamage: number; unitDamage: number; deathDamage: number; deathKnockback: number };
   /** XP gem value dropped on death. */
   xp: number;
   /** Coins on death. */
@@ -103,6 +122,39 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     knockbackResist: 0.3, corpseTime: 1.2, lifesteal: 1, xp: 4, coins: 3,
     lunge: { range: 3, speedMul: 2.6, duration: 0.45, cooldown: 4 },
   },
+  imp: {
+    // River imp (town 2): small, quick raider that swims straight across the river to the buildings.
+    sheet: 'orc', scale: 0.7, tint: 0x6f9cff, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.18, hp: 16, speed: 2.2, speedJitter: 0.2,
+    damage: 4, buildingDamage: 3, attackWindup: 0.3, attackCooldown: 0.8, attackReach: 0.18,
+    knockbackResist: 0, corpseTime: 1.0, wades: true, xp: 1, coins: 1,
+  },
+  necromancer: {
+    // Hangs back out of the town and raises zombies until someone goes out to deal with him.
+    sheet: 'necromancer', scale: 1.1, tint: 0x8f6fd8, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.24, hp: 70, speed: 1.2, speedJitter: 0.1,
+    damage: 6, buildingDamage: 2, attackWindup: 0.45, attackCooldown: 1.2, attackReach: 0.2,
+    knockbackResist: 0.3, corpseTime: 1.4, swatsBlockers: true, xp: 6, coins: 5,
+    standoff: 6,
+    flee: { range: 3, speedMul: 2.5, duration: 2, cooldown: 6 },
+    raise: { every: 7, first: 2, count: 2, kind: 'zombie', maxAlive: 4, radius: 1.2 },
+  },
+  skeletonArcher: {
+    // Stops in range and lobs arrows at friendlies (preferred) or buildings, across the river too.
+    sheet: 'skeletonArcher', scale: 1, tint: 0xe8dcc0, alpha: 1, target: 'nearest', aggroRange: 5,
+    radius: 0.2, hp: 20, speed: 1.6, speedJitter: 0.15,
+    damage: 5, buildingDamage: 2, attackWindup: 0.5, attackCooldown: 1.8, attackReach: 0,
+    knockbackResist: 0, corpseTime: 1.0, xp: 2, coins: 2,
+    ranged: { range: 5, projectileSpeed: 7 },
+  },
+  sapper: {
+    // Runs a powder keg to the nearest building. Kill it on the way, ideally among other monsters.
+    sheet: 'sapper', scale: 0.95, tint: 0xd8b48a, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.22, hp: 30, speed: 2.0, speedJitter: 0.1,
+    damage: 0, buildingDamage: 0, attackWindup: 0, attackCooldown: 0, attackReach: 0.2,
+    knockbackResist: 0.1, corpseTime: 0.8, xp: 3, coins: 2,
+    explodes: { fuse: 1.0, radius: 1.6, buildingDamage: 70, unitDamage: 15, deathDamage: 30, deathKnockback: 4 },
+  },
   warlord: {
     // Town 1 boss (decision 41). Abilities live in BOSS below.
     sheet: 'orc', scale: 2.5, tint: 0xb06060, alpha: 1, target: 'buildings', aggroRange: 0,
@@ -112,7 +164,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   troll: {
     // Town 2 boss (decision 46): wades the river, lobs boulders at buildings, regenerates in water.
-    sheet: 'zombie', scale: 2.8, tint: 0x8fae9a, alpha: 1, target: 'buildings', aggroRange: 0,
+    sheet: 'zombie', scale: 2.8, tint: 0x7f9fd8, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.58, hp: 1000, speed: 0.8, speedJitter: 0,
     damage: 8, buildingDamage: 30, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
     knockbackResist: 1, corpseTime: 3, xp: 50, coins: 60, wades: true, boss: 'troll', name: 'River Troll', swatsBlockers: true,

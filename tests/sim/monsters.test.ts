@@ -4,9 +4,8 @@ import { isWalkable } from '../../src/sim/map';
 import type { Unit } from '../../src/sim/world';
 import { fieldRows } from '../helpers/mapBuilder';
 import { emptyInput } from '../../src/sim/types';
-import { aWorld, collectEvents, runSeconds, runUntil } from '../helpers/worldBuilder';
+import { aWorld, collectEvents, runSeconds, runUntil, tank } from '../helpers/worldBuilder';
 
-const tank = (m: Unit, hp = 100000) => { m.hp = m.maxHp = hp; return m; };
 /** Rookies that never swing, so they only serve as a target. */
 const harmless = (r: Unit) => { r.attackCooldown = 1e9; return r; };
 
