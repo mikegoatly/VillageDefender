@@ -11,10 +11,11 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
-import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, lookFor, unitFx, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
+import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFor, unitFx, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
+import { ECHO_ALPHA } from './motionFx';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
 import { withFxAttribute, withUnitFx } from './unitFx';
-import type { WeaponFx } from './upgradeFx';
+import type { KnightGear } from './upgradeFx';
 
 /** Character size relative to one ground cell (milestone 0 look test: ~1.5x reads well). */
 export const CHAR_SCALE = 1.5;
@@ -36,6 +37,13 @@ interface Batch {
   ghosts: THREE.InstancedMesh[];
   clips: Map<AnimName, PoseClip>;
   count: number;
+}
+
+/** A see-through copy of a unit drawn somewhere else (dash afterimage). */
+export interface Echo {
+  x: number;
+  y: number;
+  alpha: number;
 }
 
 interface UnitAnim {
@@ -108,8 +116,8 @@ export class UnitBatches {
     this.flashes.set(unitId, Math.max(seconds, this.flashes.get(unitId) ?? 0));
   }
 
-  /** `wfx`: the knight's weapon look this frame. */
-  sync(world: World, dt: number, wfx: WeaponFx) {
+  /** `gear`: how the knight is drawn this frame; `echoes`: dash afterimages to draw behind him. */
+  sync(world: World, dt: number, gear: KnightGear, echoes: readonly Echo[]) {
     this.clock += dt;
     for (const [id, t] of this.flashes) {
       if (t - dt <= 0) this.flashes.delete(id);
@@ -121,11 +129,12 @@ export class UnitBatches {
     for (const list of [world.players, world.rookies, world.monsters]) {
       for (const u of list) {
         live.add(u.id);
-        const look = lookFor(u, world.weapon, wfx);
+        const look = lookFor(u, world.weapon, gear);
         const rot = this.animate(u, dt);
         const a = this.anims.get(u.id)!;
         a.wade += (wadeDepth(world.map, u, look.scale) - a.wade) * Math.min(1, dt * WADE.rate);
         this.place(u, look, rot);
+        if (u.kind === 'knight') for (const e of echoes) this.place(u, echoLook(look, ECHO_ALPHA), rot, e);
         if (u.team === 'player' && u.state !== 'dead' && halos < HALO_CAPACITY) {
           const knight = u.kind === 'knight';
           this.outM.compose(this.pos.set(u.x, 0.03, u.y), this.quat.identity(), this.scl.setScalar(knight ? 1.3 : 1));
@@ -180,7 +189,8 @@ export class UnitBatches {
     return a.rot;
   }
 
-  private place(u: Unit, look: UnitLook, rot: number) {
+  /** `at`: draw a copy here with this opacity instead (dash afterimages). */
+  private place(u: Unit, look: UnitLook, rot: number, at?: Echo) {
     const batch = this.batchFor(look, u.team);
     const n = batch.count;
     if (n >= BATCH_CAPACITY) return;
@@ -189,10 +199,10 @@ export class UnitBatches {
     const clip = batch.clips.get(a.anim!) ?? batch.clips.get('idle')!;
     const frame = frameIndex(clip, a.t);
     const np = batch.parts.length;
-    const { flash, alpha, sink } = unitFx(u, this.flashes.has(u.id), this.clock);
-    batch.fx.setXY(n, flash, alpha);
+    const { flash, alpha, sink } = unitFx(u, !at && this.flashes.has(u.id), this.clock);
+    batch.fx.setXY(n, at ? 0 : flash, at ? at.alpha : alpha);
     this.unitM.compose(
-      this.pos.set(u.x, -sink - a.wade, u.y),
+      this.pos.set(at?.x ?? u.x, -sink - a.wade, at?.y ?? u.y),
       this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rot),
       this.scl.setScalar(CHAR_SCALE * look.scale),
     );

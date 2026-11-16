@@ -5,7 +5,7 @@ import { animFor, CHARACTER_MODELS, characterModelPaths, clipNames, CORPSE_SINK,
 import { mapFromAscii } from '../helpers/mapBuilder';
 import { generateTown } from '../../src/sim/map';
 import { aWorld } from '../helpers/worldBuilder';
-import { RANK_COLORS, weaponFx } from '../../src/render3d/upgradeFx';
+import { knightGear, RANK_COLORS, weaponFx } from '../../src/render3d/upgradeFx';
 
 describe('fitView', () => {
   it('keeps every edge cell of the town inside the view', () => {
@@ -52,13 +52,14 @@ describe('lookFor', () => {
 
   it('lights the knight\'s weapon (not his shield) by rank and blade, one batch per look', () => {
     const { knight } = aWorld().build();
-    const plain = lookFor(knight, 'sword', weaponFx(0, 0));
-    const ranked = lookFor(knight, 'sword', weaponFx(3, 1));
+    const rankedWorld = aWorld().withWeaponRanks({ sword: 3 }).withUpgrades({ blade: 5 }).build().world;
+    const plain = lookFor(knight, 'sword', knightGear(aWorld().build().world));
+    const ranked = lookFor(knight, 'sword', knightGear(rankedWorld));
     expect(plain.attachments[0].glow).toBeUndefined();
     expect(ranked.attachments[0].glow).toEqual({ color: RANK_COLORS[3], amount: weaponFx(3, 1).glow });
     expect(ranked.attachments[1].glow).toBeUndefined();
     expect(ranked.key).not.toBe(plain.key);
-    expect(lookFor(knight, 'sword', weaponFx(3, 1)).key).toBe(ranked.key);
+    expect(lookFor(knight, 'sword', knightGear(rankedWorld))).toBe(ranked);
   });
 
   it('draws brutes as bigger, tinted orcs that share the orc batch', () => {

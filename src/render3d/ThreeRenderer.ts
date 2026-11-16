@@ -19,7 +19,8 @@ import { DebugOverlay3D } from './DebugOverlay3D';
 import { Effects, SLASH } from './Effects';
 import { Labels } from './Labels';
 import { DustTrails, SpacedTrails, sparkNormal, type DustEmit } from './motionFx';
-import { knightWeaponFx, weaponFx } from './upgradeFx';
+import { knightGear, type KnightGear } from './upgradeFx';
+import { KnightVisuals } from './KnightVisuals';
 import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
@@ -71,12 +72,13 @@ export class ThreeRenderer implements Renderer {
   private readonly particles = new Particles();
   private readonly trails = new DustTrails();
   private readonly axeTrails = new SpacedTrails(AXE_TRAIL.spacing);
-  /** The knight's weapon look (shop rank and Sharpened Blade), refreshed every frame. */
-  private wfx = weaponFx(0, 0);
+  /** How the knight and his weapon look (ranks and upgrades), refreshed every frame. */
+  private gear: KnightGear;
   /** Seeds each slam's crack pattern. */
   private cracks = 0;
   private readonly dustColor: number;
   private readonly effects: Effects;
+  private readonly knight: KnightVisuals;
   private readonly labels: Labels;
   private debug: DebugOverlay3D | null = null;
   private readonly gems: THREE.InstancedMesh;
@@ -92,10 +94,12 @@ export class ThreeRenderer implements Renderer {
     const theme = world.map.theme ?? 'meadow';
     stage.setTheme(theme);
     this.dustColor = DASH_DUST[theme];
+    this.gear = knightGear(world);
     stage.setView(fitView(world.map));
     this.town = new TownView(library, world.map, this.particles);
     this.units = new UnitBatches(library, { silhouettes: opts.silhouettes });
     this.effects = new Effects(library);
+    this.knight = new KnightVisuals(this.particles, this.effects, this.dustColor);
     this.labels = new Labels(stage, stage.canvas.parentElement!);
     // Faceted sapphire, as in the sprite renderer.
     this.gems = new THREE.InstancedMesh(
@@ -113,8 +117,8 @@ export class ThreeRenderer implements Renderer {
   sync(world: World, dt: number) {
     const t0 = performance.now();
     this.clock += dt;
-    this.wfx = knightWeaponFx(world);
-    this.units.sync(world, dt, this.wfx);
+    const gear = (this.gear = knightGear(world));
+    this.units.sync(world, dt, gear, this.knight.sync(world, dt, gear));
     this.town.sync(world.buildings, dt);
     this.syncDust(world);
     this.particles.update(dt);
@@ -138,6 +142,7 @@ export class ThreeRenderer implements Renderer {
         const scale = MONSTERS[m.kind as MonsterKind].scale;
         this.labels.damageNumber(e.x, HEAD.monster * scale, e.y, e.damage, e.damage >= 20);
         this.hitSparks(world, e.by, m, scale, e.damage);
+        if (e.by === world.players[0]?.id) this.knight.onKnightHit(world, m, scale);
         return;
       }
       case 'death': {
@@ -306,7 +311,7 @@ export class ThreeRenderer implements Renderer {
   }
 
   private readonly emitAxeTrail: DustEmit = (x, z) => {
-    const { glow, color, flourish } = this.wfx;
+    const { glow, color, flourish } = this.gear.weapon;
     this.particles.mote(x, AXE_TRAIL.y, z, color, AXE_TRAIL.size * (1 + glow), AXE_TRAIL.life * (1 + glow * 2));
     if (flourish) this.particles.spark(x, AXE_TRAIL.y, z, 1, EMBER, 0.6);
   };
@@ -321,10 +326,13 @@ export class ThreeRenderer implements Renderer {
   /** Sparks sprayed out of the near side of a struck monster; harder hits throw more. */
   private hitSparks(world: World, by: number, m: Unit, scale: number, damage: number) {
     const n = sparkNormal(m, friendlyById(world, by), CAMERA_GROUND);
-    const count = Math.min(10, 4 + Math.floor(damage / 6));
+    const byKnight = by === world.players[0]?.id;
+    // Sharpened Blade: the knight's hits throw up to twice as many, faster.
+    const blade = byKnight ? this.gear.blade : 0;
+    const count = Math.round(Math.min(10, 4 + Math.floor(damage / 6)) * (1 + blade));
     const out = m.radius * 1.2;
-    const color = by === world.players[0]?.id && world.weaponRank > 0 ? this.wfx.color : HIT_SPARK;
-    this.particles.spark(m.x + n.x * out, 0.5 * scale, m.y + n.y * out, count, color, 3, n.x * 0.7, n.y * 0.7);
+    const color = byKnight && world.weaponRank > 0 ? this.gear.weapon.color : HIT_SPARK;
+    this.particles.spark(m.x + n.x * out, 0.5 * scale, m.y + n.y * out, count, color, 3 * (1 + blade * 0.4), n.x * 0.7, n.y * 0.7);
   }
 
   /** The knight's swing or slam, drawn to its real size and dressed for the weapon's rank. */
@@ -333,17 +341,19 @@ export class ThreeRenderer implements Renderer {
     if (!k) return;
     const wd = world.weaponDef;
     const km = world.progression.mods.knight;
-    if (wd.style === 'arc') this.slashFx(k, wd.hitTime, swingShape(wd, km), world.weaponRank);
+    if (wd.style === 'arc') this.slashFx(world, k, wd.hitTime, swingShape(wd, km));
     else if (wd.style === 'area') this.slamFx(k, wd.hitTime, slamShape(wd, km), world.weaponRank);
     else if (wd.style === 'spin') this.spinFx(k, spinRadius(wd, km), world.weaponRank);
   }
 
   /** Sword/spear: the slash; ranked, a glint at the blade's point; top rank, embers along the edge. */
-  private slashFx(k: Unit, hitTime: number, { reach, halfArc }: { reach: number; halfArc: number }, rank: number) {
-    const wfx = this.wfx;
+  private slashFx(world: World, k: Unit, hitTime: number, { reach, halfArc }: { reach: number; halfArc: number }) {
+    const wfx = this.gear.weapon;
+    const rank = world.weaponRank;
     this.effects.later(Math.max(0, hitTime - SLASH.sweep), () => {
       if (k.state === 'dead') return;
       this.effects.slash(k.x, k.y, k.facing.x, k.facing.y, reach, halfArc, wfx.color);
+      this.knight.onSlash(world, k, reach, halfArc, wfx.color);
       const fa = Math.atan2(k.facing.y, k.facing.x);
       if (rank > 0) this.glint(k.x + Math.cos(fa) * reach, k.y + Math.sin(fa) * reach, wfx.color);
       if (!wfx.flourish) return;
@@ -357,7 +367,7 @@ export class ThreeRenderer implements Renderer {
 
   /** Warhammer: shockwave, dust and cracks where the slam lands (more with rank), timed with the hit. */
   private slamFx(k: Unit, hitTime: number, { reach, radius }: { reach: number; radius: number }, rank: number) {
-    const wfx = this.wfx;
+    const wfx = this.gear.weapon;
     const x = k.x + k.facing.x * reach;
     const y = k.y + k.facing.y * reach;
     this.effects.later(hitTime, () => {
@@ -370,7 +380,7 @@ export class ThreeRenderer implements Renderer {
 
   /** Flail: sparks off the spinning head each pulse (more with rank); top rank sheds circling embers. */
   private spinFx(k: Unit, r: number, rank: number) {
-    const wfx = this.wfx;
+    const wfx = this.gear.weapon;
     const n = 1 + rank;
     for (let s = 0; s < n; s++) {
       const a = this.clock * 12 + (s * Math.PI * 2) / n;

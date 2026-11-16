@@ -4,13 +4,18 @@ import { DT } from '../data/balance';
 import { GEMS } from '../data/rookies';
 import type { World } from './world';
 
+/** How close the knight pulls gems in from, after Gem Magnet (the renderer draws it). */
+export function magnetRadius(w: Pick<World, 'progression'>): number {
+  return GEMS.magnetRadius * w.progression.mods.knight.magnetMul;
+}
+
 export function updateGems(w: World) {
   if (w.gems.length === 0) return;
   const knight = w.players.find((p) => p.state !== 'dead');
   if (!knight) return;
   // Once the field is clear between waves, everything left flies home.
   const vacuum = w.spawnQueue.length === 0 && w.monsters.every((m) => m.state === 'dead');
-  const magnet = GEMS.magnetRadius * w.progression.mods.knight.magnetMul;
+  const magnet = magnetRadius(w);
   for (let k = w.gems.length - 1; k >= 0; k--) {
     const g = w.gems[k];
     const dx = knight.x - g.x;

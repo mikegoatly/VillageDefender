@@ -12,14 +12,17 @@ export const DUST_SPACING = 0.22;
 const TELEPORT = 3;
 /** A charging boss throws up more dust than his size alone suggests. */
 const CHARGE_DUST = 1.6;
+/** A monster knocked back faster than this (units/s) skids, leaving smaller dust. */
+const SKID = { speed: 2.5, dust: 0.6 };
 
-/** Size of the dust a unit kicks up while dashing (0 when it isn't dashing). */
-export function dashSize(u: Pick<Unit, 'team' | 'kind' | 'state' | 'burstTime' | 'boss'>): number {
+/** Size of the dust a unit kicks up while dashing or skidding from a hard knockback (0 when neither). */
+export function dashSize(u: Pick<Unit, 'team' | 'kind' | 'state' | 'burstTime' | 'boss' | 'vx' | 'vy'>): number {
   if (u.state === 'dead') return 0;
   if (u.team === 'player') return u.kind === 'knight' && u.state === 'dodge' ? 1 : 0;
   const scale = MONSTERS[u.kind as MonsterKind].scale;
   if (u.boss?.ability === 'charging') return scale * CHARGE_DUST;
-  return u.burstTime > 0 ? scale : 0;
+  if (u.burstTime > 0) return scale;
+  return u.vx * u.vx + u.vy * u.vy > SKID.speed * SKID.speed ? scale * SKID.dust : 0;
 }
 
 /** Receives one puff: where it starts, the way it drifts (unit vector, back along the path) and its size multiplier. */
@@ -105,6 +108,53 @@ export class DustTrails {
       }
     }
     this.trails.end();
+  }
+}
+
+/** Dash afterimages: path sample interval, gap between echoes and linger after the dash (s), opacity, samples kept. */
+const ECHO = { sample: 0.025, gap: 0.05, linger: 0.2, keep: 16 };
+/** Opacity of the nearest dash afterimage (echoes() hands back opacity relative to it). */
+export const ECHO_ALPHA = 0.5;
+
+/**
+ * Afterimages of the dodging knight (Nimble): remembers where he was during the dash and hands
+ * back up to `count` fading copies behind him, which fade out shortly after the dash ends.
+ */
+export class DashEchoes {
+  /** Recent dash positions, newest last. */
+  private readonly samples: { x: number; y: number; t: number }[] = [];
+  private lastSample = -Infinity;
+  private dashEnded = -Infinity;
+  private readonly out: { x: number; y: number; alpha: number }[] = [];
+
+  update(k: Pick<Unit, 'x' | 'y' | 'state'>, clock: number) {
+    if (k.state !== 'dodge') return;
+    // A new dash forgets the last one's path.
+    if (clock - this.dashEnded > ECHO.linger) this.samples.length = 0;
+    this.dashEnded = clock;
+    if (clock - this.lastSample < ECHO.sample) return;
+    this.lastSample = clock;
+    if (this.samples.length >= ECHO.keep) this.samples.shift();
+    this.samples.push({ x: k.x, y: k.y, t: clock });
+  }
+
+  /** Copies to draw now, nearest first, with opacity relative to ECHO_ALPHA (a reused array: copy it to keep it). */
+  echoes(count: number, clock: number): readonly { x: number; y: number; alpha: number }[] {
+    this.out.length = 0;
+    const since = clock - this.dashEnded;
+    if (since > ECHO.linger || this.samples.length === 0) return this.out;
+    const fade = 1 - since / ECHO.linger;
+    const newest = this.samples[this.samples.length - 1].t;
+    let s = this.samples.length - 1;
+    for (let n = 1; n <= count; n++) {
+      // The newest sample at least n gaps older than the newest one.
+      const want = newest - n * ECHO.gap + ECHO.sample / 2;
+      while (s >= 0 && this.samples[s].t > want) s--;
+      if (s < 0) break;
+      const p = this.samples[s];
+      this.out.push({ x: p.x, y: p.y, alpha: fade * (1 - (n - 1) / count) });
+    }
+    return this.out;
   }
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_WEAPON_RANK } from '../../src/data/weapons';
-import { fxTier, knightWeaponFx, RANK_COLORS, weaponFx } from '../../src/render3d/upgradeFx';
+import { fxTier, knightGear, RANK_COLORS, weaponFx } from '../../src/render3d/upgradeFx';
 import { aWorld } from '../helpers/worldBuilder';
 
 describe('fxTier', () => {
@@ -41,11 +41,12 @@ describe('weaponFx', () => {
   });
 });
 
-describe('knightWeaponFx', () => {
+describe('knightGear weapon', () => {
   it('reads the shop rank and Sharpened Blade stacks from the world', () => {
-    const plain = knightWeaponFx(aWorld().build().world);
+    const plain = knightGear(aWorld().build().world).weapon;
     const { world } = aWorld().withWeaponRanks({ sword: 2 }).withUpgrades({ blade: 5 }).build();
     expect(plain).toEqual(weaponFx(0, 0));
-    expect(knightWeaponFx(world)).toEqual(weaponFx(2, 1));
+    expect(knightGear(world).weapon).toEqual(weaponFx(2, 1));
+    expect(knightGear(world).blade).toBe(1);
   });
 });

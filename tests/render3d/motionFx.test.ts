@@ -34,6 +34,16 @@ describe('dashSize', () => {
     expect(dashSize(brute)).toBeGreaterThan(dashSize(vamp));
   });
 
+  it('kicks up dust behind a monster knocked back hard, not one nudged', () => {
+    const { monsters } = aWorld().withMonster('zombie', 3, 3).build();
+    const z = monsters[0];
+    z.vx = 1;
+    expect(dashSize(z)).toBe(0);
+    z.vx = 6;
+    expect(dashSize(z)).toBeGreaterThan(0);
+    expect(dashSize(z)).toBeLessThan(MONSTERS.zombie.scale);
+  });
+
   it('gives a charging boss a heavy wake, and none to the dead', () => {
     const { monsters } = aWorld().withMonster('warlord', 3, 3).build();
     const boss = monsters[0];

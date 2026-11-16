@@ -11,6 +11,11 @@ export function fxTier(level: number, max: number): { t: number; capstone: boole
   return { t: max > 0 ? l / max : 0, capstone: max > 0 && l >= max };
 }
 
+/** a at t = 0 to b at t = 1. */
+export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
 /** fxTier of an upgrade the player has picked in this run. */
 export function upgradeTier(w: Pick<World, 'progression'>, id: string) {
   return fxTier(w.progression.levels[id] ?? 0, UPGRADE_BY_ID[id].max);
@@ -42,7 +47,39 @@ export function weaponFx(rank: number, blade: number): WeaponFx {
   return { color: RANK_COLORS[r], glow, flourish: r >= MAX_WEAPON_RANK, key: `${r}:${glow}` };
 }
 
-/** The knight's current weapon look (shop rank and Sharpened Blade). */
-export function knightWeaponFx(w: Pick<World, 'progression' | 'weaponRank'>): WeaponFx {
-  return weaponFx(w.weaponRank, upgradeTier(w, 'blade').t);
+/** Weapon length per Long Reach stack and body size per Toughness stack. */
+const GEAR = { reachScale: 0.08, toughScale: 0.03 };
+
+/** How the knight himself is drawn: his weapon's look and size, and his build. */
+export interface KnightGear {
+  weapon: WeaponFx;
+  /** Sharpened Blade strength (fxTier t). */
+  blade: number;
+  weaponScale: number;
+  bodyScale: number;
+  /** Same for equal looks (batch key part). */
+  key: string;
+}
+
+let lastGear: { stamp: string; gear: KnightGear } | null = null;
+
+/** The knight's gear (memoised on the last inputs: it is asked for every frame). */
+export function knightGear(w: Pick<World, 'progression' | 'weaponRank'>): KnightGear {
+  const { levels } = w.progression;
+  const blade = levels.blade ?? 0;
+  const reach = levels.reach ?? 0;
+  const tough = levels.tough ?? 0;
+  const stamp = `${w.weaponRank}:${blade}:${reach}:${tough}`;
+  if (lastGear?.stamp === stamp) return lastGear.gear;
+  const bladeT = fxTier(blade, UPGRADE_BY_ID.blade.max).t;
+  const weapon = weaponFx(w.weaponRank, bladeT);
+  const gear = {
+    weapon,
+    blade: bladeT,
+    weaponScale: 1 + GEAR.reachScale * reach,
+    bodyScale: 1 + GEAR.toughScale * tough,
+    key: `${weapon.glow > 0 ? weapon.key : 0}:${reach}:${tough}`,
+  };
+  lastGear = { stamp, gear };
+  return gear;
 }

@@ -16,6 +16,8 @@ const ARROW_SCALE = 1.6;
 const AXE = { scale: 0.18, centre: 1.5, spin: 18 };
 /** Effects lie just above the ground and roads. */
 const GROUND_Y = 0.06;
+/** Gem Magnet ring colour (the gems' blue). */
+const MAGNET_COLOR = 0x6fb8ff;
 /** Warhammer ground cracks. */
 const CRACK = { color: 0x3b2f24, opacity: 0.55, width: 0.07, life: 1.2 };
 /** Slash crescent: waist height, colour, fill and edge opacity, and sweep and fade times (s). */
@@ -34,6 +36,7 @@ export class Effects {
   private readonly arrows: InstancedModel;
   private readonly axes: InstancedModel;
   private readonly spin: THREE.Group;
+  private readonly magnet: THREE.Mesh;
   /** A unit square lying flat, scaled into each crack stroke. */
   private readonly crackStroke = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private spinRadius = 0;
@@ -52,6 +55,8 @@ export class Effects {
     this.axes = library.instancedModel(MODELS.axe, MAX_PROJECTILES, true);
     this.spin = new THREE.Group();
     this.spin.visible = false;
+    this.magnet = this.flat(new THREE.RingGeometry(0.96, 1, 64), MAGNET_COLOR, 0, 0, 0);
+    this.magnet.visible = false;
     this.root.add(this.arrows.group, this.axes.group, this.spin);
   }
 
@@ -144,8 +149,8 @@ export class Effects {
     });
   }
 
-  /** Expanding ring at a point (rally call). */
-  pulse(x: number, z: number, color: number) {
+  /** Expanding ring at a point, out to about `size` (rally call; dodge ready). */
+  pulse(x: number, z: number, color: number, size = 3.8) {
     const ring = this.flat(new THREE.RingGeometry(0.85, 1, 48), color, 1, x, z, 0.005);
     let t = 0;
     const life = 0.7;
@@ -153,7 +158,7 @@ export class Effects {
       update: (dt) => {
         t += dt;
         const k = 1 - Math.pow(1 - Math.min(1, t / life), 3);
-        ring.scale.setScalar(0.3 + k * 3.5);
+        ring.scale.setScalar(0.3 + k * (size - 0.3));
         (ring.material as THREE.MeshBasicMaterial).opacity = 1 - k;
         return t < life;
       },
@@ -239,6 +244,15 @@ export class Effects {
     });
   }
 
+  /** Gem Magnet: a faint ring on the ground at the pickup radius (x = null hides it). */
+  magnetRing(x: number | null, z: number, radius: number, opacity: number) {
+    this.magnet.visible = x !== null;
+    if (x === null) return;
+    this.magnet.position.set(x, GROUND_Y + 0.001, z);
+    this.magnet.scale.setScalar(radius);
+    (this.magnet.material as THREE.MeshBasicMaterial).opacity = opacity;
+  }
+
   /** Flail: three arcs spinning around the knight while attacking (x = null hides them). */
   spinRing(x: number | null, z: number, radius: number) {
     this.spin.visible = x !== null;
@@ -261,6 +275,7 @@ export class Effects {
     this.items.length = 0;
     for (const c of [...this.spin.children]) disposeMesh(c as THREE.Mesh);
     this.crackStroke.dispose();
+    disposeMesh(this.magnet);
     this.arrows.dispose();
     this.axes.dispose();
     this.root.removeFromParent();
