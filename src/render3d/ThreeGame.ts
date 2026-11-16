@@ -82,7 +82,7 @@ class PerfMeter {
   private frameMs = 16.7;
   private updateMs = 0;
   private renderMs = 0;
-  private draw = { calls: 0, triangles: 0, units: 0 };
+  private draw = { calls: 0, triangles: 0, units: 0, particles: 0 };
   private el: HTMLPreElement | null = null;
   private lastText = 0;
 
@@ -93,7 +93,7 @@ class PerfMeter {
     document.body.appendChild(this.el);
   }
 
-  frame(frameMs: number, updateMs: number, perf: { renderMs: number; calls: number; triangles: number; units: number }, world: World) {
+  frame(frameMs: number, updateMs: number, perf: { renderMs: number; calls: number; triangles: number; units: number; particles: number }, world: World) {
     const k = 0.05;
     this.frameMs += (Math.min(frameMs, 250) - this.frameMs) * k;
     this.updateMs += (updateMs - this.updateMs) * k;
@@ -106,7 +106,7 @@ class PerfMeter {
     this.el.textContent =
       `${s.fps} fps  frame ${s.frameMs} ms\n` +
       `sim ${s.simMs} ms  render ${s.renderMs} ms (CPU)\n` +
-      `draw calls ${s.calls}  tris ${Math.round(s.triangles / 1000)}k  units ${s.units}\n` +
+      `draw calls ${s.calls}  tris ${Math.round(s.triangles / 1000)}k  units ${s.units}  fx ${s.particles}\n` +
       `wave ${world.wave}/${world.totalWaves}  ${world.status}`;
   }
 
@@ -119,6 +119,7 @@ class PerfMeter {
       calls: this.draw.calls,
       triangles: this.draw.triangles,
       units: this.draw.units,
+      particles: this.draw.particles,
     };
   }
 }

@@ -9,13 +9,14 @@ import { WEAPONS } from '../data/weapons';
 import type { Renderer, RendererStats } from '../game/Renderer';
 import { ISO_HX } from '../sim/iso';
 import type { Vec2 } from '../sim/types';
-import type { SimEvent, World } from '../sim/world';
+import type { SimEvent, Unit, World } from '../sim/world';
 import type { OverlayName } from '../ui/DebugPanel';
 import type { ModelLibrary } from './assets';
 import { ELEVATION, fitView } from './camera';
 import { DebugOverlay3D } from './DebugOverlay3D';
 import { Effects } from './Effects';
 import { Labels } from './Labels';
+import { DustTrails, slashShape } from './motionFx';
 import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
@@ -25,6 +26,9 @@ const MAX_GEMS = 1024;
 /** Label heights above the ground (world units). */
 const HEAD = { knight: 1.5, rookie: 1.35, monster: 1.1 };
 const BAR_COLORS = { good: '#8cc152', hurt: '#f0ad4e', bad: '#d9534f' };
+/** Dash dust per town theme: sandy on grass, grey on graveyard soil. */
+const DASH_DUST = { meadow: 0xc9b29b, graveyard: 0x8f8a80 };
+const HIT_SPARK = 0xfff0c0;
 
 export interface ThreeRendererOptions {
   silhouettes: boolean;
@@ -37,6 +41,8 @@ export interface RenderPerf {
   calls: number;
   triangles: number;
   units: number;
+  /** Live particles (puffs and sparks). */
+  particles: number;
 }
 
 export class ThreeRenderer implements Renderer {
@@ -44,6 +50,8 @@ export class ThreeRenderer implements Renderer {
   private readonly town: TownView;
   private readonly units: UnitBatches;
   private readonly particles = new Particles();
+  private readonly trails = new DustTrails();
+  private readonly dustColor: number;
   private readonly effects: Effects;
   private readonly labels: Labels;
   private debug: DebugOverlay3D | null = null;
@@ -54,10 +62,11 @@ export class ThreeRenderer implements Renderer {
   private readonly gemS = new THREE.Vector3();
   private readonly handlers: ((g: Vec2) => void)[] = [];
   private clock = 0;
-  private lastPerf: RenderPerf = { renderMs: 0, calls: 0, triangles: 0, units: 0 };
+  private lastPerf: RenderPerf = { renderMs: 0, calls: 0, triangles: 0, units: 0, particles: 0 };
 
   constructor(private readonly stage: Stage, library: ModelLibrary, world: World, opts: ThreeRendererOptions) {
     stage.setTheme(world.map.theme ?? 'meadow');
+    this.dustColor = DASH_DUST[world.map.theme ?? 'meadow'];
     stage.setView(fitView(world.map));
     this.town = new TownView(library, world.map, this.particles);
     this.units = new UnitBatches(library, { silhouettes: opts.silhouettes });
@@ -71,7 +80,7 @@ export class ThreeRenderer implements Renderer {
     );
     this.gems.frustumCulled = false;
     this.gems.count = 0;
-    this.root.add(this.town.root, this.units.root, this.effects.root, this.gems, this.particles.mesh);
+    this.root.add(this.town.root, this.units.root, this.effects.root, this.gems, this.particles.root);
     stage.scene.add(this.root);
     stage.canvas.addEventListener('pointerdown', this.onPointerDown);
   }
@@ -81,6 +90,7 @@ export class ThreeRenderer implements Renderer {
     this.clock += dt;
     this.units.sync(world, dt);
     this.town.sync(world.buildings, dt);
+    this.syncDust(world);
     this.particles.update(dt);
     this.effects.update(dt, world.projectiles);
     this.syncFlail(world);
@@ -88,7 +98,7 @@ export class ThreeRenderer implements Renderer {
     this.syncLabels(world);
     this.labels.layout();
     const draw = this.stage.render(dt);
-    this.lastPerf = { renderMs: performance.now() - t0, calls: draw.calls, triangles: draw.triangles, units: this.units.size };
+    this.lastPerf = { renderMs: performance.now() - t0, calls: draw.calls, triangles: draw.triangles, units: this.units.size, particles: this.particles.live };
   }
 
   /** Game-feel effects: flashes, damage numbers, shakes, telegraphs, floating text. */
@@ -97,7 +107,10 @@ export class ThreeRenderer implements Renderer {
       case 'hit': {
         this.units.flash(e.unit, 0.08);
         const m = world.monsters.find((u) => u.id === e.unit);
-        if (m) this.labels.damageNumber(e.x, HEAD.monster * MONSTERS[m.kind as MonsterKind].scale, e.y, e.damage, e.damage >= 20);
+        if (!m) return;
+        const scale = MONSTERS[m.kind as MonsterKind].scale;
+        this.labels.damageNumber(e.x, HEAD.monster * scale, e.y, e.damage, e.damage >= 20);
+        this.hitSparks(world, e.by, m, e.damage);
         return;
       }
       case 'death': {
@@ -109,6 +122,7 @@ export class ThreeRenderer implements Renderer {
       case 'swing':
         // Flail: restart the swing on every damage pulse so it keeps spinning.
         if (e.weapon === 'flail') this.units.restartAnim(e.unit);
+        this.slash(world);
         if (e.weapon === 'hammer') {
           // Shockwave where the slam lands, timed with the hit.
           const k = world.players[0];
@@ -261,6 +275,55 @@ export class ThreeRenderer implements Renderer {
     const k = world.players[0];
     const spinning = world.weapon === 'flail' && k && k.state === 'attack';
     this.effects.spinRing(spinning ? k.x : null, k?.y ?? 0, WEAPONS.flail.range * world.progression.mods.knight.rangeMul);
+  }
+
+  /** Dust behind the dodging knight, lunging and fleeing monsters and a charging boss. */
+  private syncDust(world: World) {
+    this.trails.update(this.dashers(world), (p) => this.particles.dust(p.x, p.z, p.dirX, p.dirZ, this.dustColor, p.size));
+  }
+
+  private *dashers(world: World) {
+    yield* world.players;
+    yield* world.monsters;
+  }
+
+  /**
+   * Sparks off the face of a struck monster that its attacker hit (the side facing the camera
+   * when nobody is credited), sprayed back out of the body; harder hits throw more.
+   */
+  private hitSparks(world: World, by: number, m: Unit, damage: number) {
+    const from = by >= 0 ? (world.players.find((u) => u.id === by) ?? world.rookies.find((u) => u.id === by)) : undefined;
+    // Towards whoever hit it, leaning towards the camera (which looks from +x +z) so the sparks
+    // come out of the near side of the body instead of hiding behind it.
+    let nx = Math.SQRT1_2;
+    let ny = Math.SQRT1_2;
+    if (from) {
+      const d = Math.hypot(from.x - m.x, from.y - m.y);
+      if (d > 1e-3) {
+        nx = (from.x - m.x) / d + Math.SQRT1_2;
+        ny = (from.y - m.y) / d + Math.SQRT1_2;
+        const l = Math.hypot(nx, ny) || 1;
+        nx /= l;
+        ny /= l;
+      }
+    }
+    const scale = MONSTERS[m.kind as MonsterKind].scale;
+    const n = Math.min(10, 4 + Math.floor(damage / 6));
+    const out = m.radius * 1.2;
+    this.particles.spark(m.x + nx * out, 0.5 * scale, m.y + ny * out, n, HIT_SPARK, 3, nx * 0.7, ny * 0.7);
+  }
+
+  /** Sword/spear swing: a crescent over the swing's real reach and arc, timed to land with the hit. */
+  private slash(world: World) {
+    const k = world.players[0];
+    const wd = world.weaponDef;
+    const shape = k && slashShape(wd, world.progression.mods.knight);
+    if (!shape) return;
+    const sweep = 0.08;
+    this.effects.later(Math.max(0, wd.hitTime - sweep), () => {
+      if (k.state === 'dead') return;
+      this.effects.slash(k.x, k.y, k.facing.x, k.facing.y, shape.reach, shape.halfArc, sweep);
+    });
   }
 
   private syncGems(world: World) {
