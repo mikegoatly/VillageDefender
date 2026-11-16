@@ -5,6 +5,7 @@ import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ROOKIES, type RookieKind } from '../data/rookies';
 import type { WeaponKind } from '../data/weapons';
 import { Ground, inBounds, type TownMap } from '../sim/map';
+import type { WeaponFx } from './upgradeFx';
 import type { Unit } from '../sim/world';
 
 export const CHARACTER_MODELS: Record<string, string> = {
@@ -34,6 +35,8 @@ export interface Attachment {
   position: [number, number, number];
   rotation: [number, number, number];
   scale?: number;
+  /** Emissive light on the model (the knight's weapon by rank and Sharpened Blade). */
+  glow?: { color: number; amount: number };
 }
 
 // Same offsets as tools/bake/specs.mjs (the bind pose is a T-pose).
@@ -159,21 +162,33 @@ export interface UnitLook {
   scale: number;
 }
 
-export function lookFor(u: Unit, weapon: WeaponKind): UnitLook {
+export function lookFor(u: Unit, weapon: WeaponKind, wfx?: WeaponFx): UnitLook {
   if (u.team === 'enemy') {
     const def = MONSTERS[u.kind as MonsterKind];
     const pallor = def.pallor ?? 0;
     return { key: `${def.sheet}:${def.alpha}:${pallor}`, sheet: def.sheet, attachments: ATTACHMENTS[def.sheet] ?? [], tint: def.tint, alpha: def.alpha, pallor, scale: def.scale };
   }
-  if (u.kind === 'knight') {
-    return { key: `knight:${weapon}`, sheet: 'knight', attachments: KNIGHT_WEAPONS[weapon], tint: 0xffffff, alpha: 1, pallor: 0, scale: 1 };
-  }
+  if (u.kind === 'knight') return knightLook(weapon, wfx && wfx.glow > 0 ? wfx : null);
   // Rank 0 is an unarmoured recruit, veterans get the full kit and captains are gilded.
   const kitted = ROOKIES[u.kind as RookieKind].sheet;
   const sheet = u.rank === 0 ? RECRUIT_SHEETS[u.kind as RookieKind] : kitted;
   const gild = u.rank >= 2 ? CAPTAIN_GILD : 0;
   // Promotions: slightly bigger body (same as the sprite renderer).
   return { key: `${sheet}:${gild}`, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint: 0xffffff, alpha: 1, pallor: 0, gild, scale: 1 + 0.06 * u.rank };
+}
+
+const knightLooks = new Map<string, UnitLook>();
+
+/** The knight's look per weapon and weapon glow (cached: it is asked for every frame). */
+function knightLook(weapon: WeaponKind, wfx: WeaponFx | null): UnitLook {
+  const key = `knight:${weapon}:${wfx ? wfx.key : 0}`;
+  let look = knightLooks.get(key);
+  if (!look) {
+    const [held, ...rest] = KNIGHT_WEAPONS[weapon];
+    const attachments = wfx ? [{ ...held, glow: { color: wfx.color, amount: wfx.glow } }, ...rest] : KNIGHT_WEAPONS[weapon];
+    knightLooks.set(key, (look = { key, sheet: 'knight', attachments, tint: 0xffffff, alpha: 1, pallor: 0, scale: 1 }));
+  }
+  return look;
 }
 
 /** Sheet an unranked rookie of each class is drawn with. */

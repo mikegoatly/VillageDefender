@@ -1,12 +1,14 @@
 // Low-poly particles, one instanced mesh per kind and no per-frame allocation:
 // - puffs: smoke and dust that swell and then shrink away (instances cannot fade individually
 //   without a custom shader);
-// - sparks: small unlit chips thrown out fast that fall under gravity and shrink (hit sparks).
+// - sparks: small unlit chips thrown out fast that fall under gravity and shrink (hit sparks);
+// - motes: small unlit specks that hang where they are made and shrink (trails, embers, glints).
 
 import * as THREE from 'three';
 
 const PUFF_CAPACITY = 700;
 const SPARK_CAPACITY = 400;
+const MOTE_CAPACITY = 600;
 const GRAVITY = 9;
 
 export interface EmitterSpec {
@@ -173,16 +175,26 @@ export class Particles {
     sizeAt: (t) => 1 - t,
     spinRate: 12,
   });
+  private readonly motes = new Pool({
+    capacity: MOTE_CAPACITY,
+    geometry: new THREE.OctahedronGeometry(1, 0),
+    material: new THREE.MeshBasicMaterial(),
+    gravity: 0,
+    drag: 3,
+    bounce: 0,
+    sizeAt: (t) => 1 - t,
+    spinRate: 4,
+  });
   private readonly emitters = new Set<Emitter>();
   /** Deterministic jitter (looks only; never touches the sim's RNG). */
   private seed = 1;
 
   constructor() {
-    this.root.add(this.puffs.mesh, this.sparks.mesh);
+    this.root.add(this.puffs.mesh, this.sparks.mesh, this.motes.mesh);
   }
 
   get live(): number {
-    return this.puffs.count + this.sparks.count;
+    return this.puffs.count + this.sparks.count + this.motes.count;
   }
 
   addEmitter(spec: EmitterSpec): EmitterSpec {
@@ -232,6 +244,11 @@ export class Particles {
     }
   }
 
+  /** A glowing speck at a point, drifting at (vx, vy, vz) and shrinking away over `life` seconds. */
+  mote(x: number, y: number, z: number, color: number, size: number, life: number, vx = 0, vy = 0, vz = 0) {
+    this.motes.spawn(x, y, z, vx, vy, vz, color, size * (0.8 + this.rand() * 0.4), life * (0.8 + this.rand() * 0.4), this.rand() * Math.PI * 2);
+  }
+
   update(dt: number) {
     for (const e of this.emitters) {
       e.timer -= dt;
@@ -243,11 +260,13 @@ export class Particles {
     }
     this.puffs.update(dt);
     this.sparks.update(dt);
+    this.motes.update(dt);
   }
 
   dispose() {
     this.puffs.dispose();
     this.sparks.dispose();
+    this.motes.dispose();
     this.root.removeFromParent();
   }
 

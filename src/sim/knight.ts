@@ -90,6 +90,16 @@ export function swingShape(wd: WeaponDef, km: Mods['knight']): { reach: number; 
   return { reach: wd.range * km.rangeMul, halfArc: Math.min(Math.PI, wd.arc * km.arcMul) };
 }
 
+/** Warhammer ('area'): how far ahead the slam lands and its radius, after upgrades. */
+export function slamShape(wd: WeaponDef, km: Mods['knight']): { reach: number; radius: number } {
+  return { reach: wd.range * km.rangeMul, radius: wd.arc * km.arcMul };
+}
+
+/** Flail ('spin'): radius of the ring the spin hits, after upgrades. */
+export function spinRadius(wd: WeaponDef, km: Mods['knight']): number {
+  return wd.range * km.rangeMul * Math.sqrt(km.arcMul);
+}
+
 /** Applies the knight's weapon at the moment the attack lands. */
 function weaponHit(w: World, u: Unit, wd: WeaponDef) {
   const km = w.progression.mods.knight;
@@ -100,8 +110,8 @@ function weaponHit(w: World, u: Unit, wd: WeaponDef) {
     swingHits(w, u, s.reach, s.halfArc, damage, knockback);
   } else if (wd.style === 'area') {
     // Warhammer: slam centred ahead of the knight.
-    const reach = wd.range * km.rangeMul;
-    areaHits(w, u.id, u.x + u.facing.x * reach, u.y + u.facing.y * reach, wd.arc * km.arcMul, damage, knockback);
+    const s = slamShape(wd, km);
+    areaHits(w, u.id, u.x + u.facing.x * s.reach, u.y + u.facing.y * s.reach, s.radius, damage, knockback);
   } else if (wd.style === 'boomerang') {
     throwAxe(w, u, wd, damage);
   }
@@ -118,7 +128,7 @@ function updateSpin(w: World, u: Unit, held: boolean, wd: WeaponDef) {
   if (u.attackCooldown > 0) return;
   u.attackCooldown = wd.cooldown * km.cooldownMul;
   const damage = knightDamage(w, u, wd);
-  areaHits(w, u.id, u.x, u.y, wd.range * km.rangeMul * Math.sqrt(km.arcMul), damage, wd.knockback * km.knockbackMul);
+  areaHits(w, u.id, u.x, u.y, spinRadius(wd, km), damage, wd.knockback * km.knockbackMul);
   w.events.push({ type: 'swing', unit: u.id, weapon: w.weapon });
 }
 

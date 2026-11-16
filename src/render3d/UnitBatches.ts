@@ -14,6 +14,7 @@ import type { ModelLibrary } from './assets';
 import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, lookFor, unitFx, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
 import { withFxAttribute, withUnitFx } from './unitFx';
+import type { WeaponFx } from './upgradeFx';
 
 /** Character size relative to one ground cell (milestone 0 look test: ~1.5x reads well). */
 export const CHAR_SCALE = 1.5;
@@ -107,7 +108,8 @@ export class UnitBatches {
     this.flashes.set(unitId, Math.max(seconds, this.flashes.get(unitId) ?? 0));
   }
 
-  sync(world: World, dt: number) {
+  /** `wfx`: the knight's weapon look this frame. */
+  sync(world: World, dt: number, wfx: WeaponFx) {
     this.clock += dt;
     for (const [id, t] of this.flashes) {
       if (t - dt <= 0) this.flashes.delete(id);
@@ -119,7 +121,7 @@ export class UnitBatches {
     for (const list of [world.players, world.rookies, world.monsters]) {
       for (const u of list) {
         live.add(u.id);
-        const look = lookFor(u, world.weapon);
+        const look = lookFor(u, world.weapon, wfx);
         const rot = this.animate(u, dt);
         const a = this.anims.get(u.id)!;
         a.wade += (wadeDepth(world.map, u, look.scale) - a.wade) * Math.min(1, dt * WADE.rate);
@@ -254,8 +256,21 @@ export class UnitBatches {
       part.position.set(...a.position);
       part.rotation.set(...a.rotation);
       if (a.scale) part.scale.setScalar(a.scale);
+      if (a.glow) this.light(part, a.glow.color, a.glow.amount);
       bone.add(part);
     }
+  }
+
+  /** Gives a model's meshes their own copy of their material, lit from within. */
+  private light(part: THREE.Object3D, color: number, amount: number) {
+    part.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const m = this.own((mesh.material as THREE.MeshStandardMaterial).clone());
+      m.emissive.setHex(color);
+      m.emissiveIntensity = amount;
+      mesh.material = m;
+    });
   }
 
   /** Shared per (source material, alpha); tint comes from the per-instance colour. */

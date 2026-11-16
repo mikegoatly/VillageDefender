@@ -16,6 +16,8 @@ const ARROW_SCALE = 1.6;
 const AXE = { scale: 0.18, centre: 1.5, spin: 18 };
 /** Effects lie just above the ground and roads. */
 const GROUND_Y = 0.06;
+/** Warhammer ground cracks. */
+const CRACK = { color: 0x3b2f24, opacity: 0.55, width: 0.07, life: 1.2 };
 /** Slash crescent: waist height, colour, fill and edge opacity, and sweep and fade times (s). */
 export const SLASH = { y: 0.4, color: 0xf6f2e6, fill: 0.22, edge: 0.85, sweep: 0.08, fade: 0.2 };
 
@@ -32,6 +34,8 @@ export class Effects {
   private readonly arrows: InstancedModel;
   private readonly axes: InstancedModel;
   private readonly spin: THREE.Group;
+  /** A unit square lying flat, scaled into each crack stroke. */
+  private readonly crackStroke = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private spinRadius = 0;
   private clock = 0;
   private readonly m = new THREE.Matrix4();
@@ -161,7 +165,7 @@ export class Effects {
    * Sword/spear slash: a pale crescent at waist height that sweeps across the swing's arc in
    * SLASH.sweep seconds, then fades. Its size is the swing's real reach and arc, so upgrades show.
    */
-  slash(x: number, z: number, facingX: number, facingZ: number, reach: number, halfArc: number) {
+  slash(x: number, z: number, facingX: number, facingZ: number, reach: number, halfArc: number, color = SLASH.color) {
     const segments = Math.max(4, Math.ceil(halfArc * 16));
     const angle = -Math.atan2(facingZ, facingX);
     // A faint fan over the whole arc and a bright band along its edge, centred on the facing.
@@ -169,7 +173,7 @@ export class Effects {
       { inner: Math.min(0.3, reach * 0.4), opacity: SLASH.fill },
       { inner: reach * 0.82, opacity: SLASH.edge },
     ].map(({ inner, opacity }) => {
-      const mesh = this.flat(new THREE.RingGeometry(inner, reach, segments, 1, -halfArc, halfArc * 2), SLASH.color, opacity, x, z, SLASH.y - GROUND_Y);
+      const mesh = this.flat(new THREE.RingGeometry(inner, reach, segments, 1, -halfArc, halfArc * 2), color, opacity, x, z, SLASH.y - GROUND_Y);
       mesh.rotation.y = angle;
       return { mesh, material: mesh.material as THREE.MeshBasicMaterial, opacity, perSegment: mesh.geometry.index!.count / segments };
     });
@@ -187,6 +191,51 @@ export class Effects {
         return t < SLASH.sweep + SLASH.fade;
       },
       dispose: () => layers.forEach((l) => disposeMesh(l.mesh)),
+    });
+  }
+
+  /**
+   * Cracks in the ground: `lines` dark jagged strokes radiating up to `radius` from a point,
+   * fading out over a second (warhammer slams; more lines at higher ranks).
+   */
+  crack(x: number, z: number, radius: number, lines: number, seed: number) {
+    const mat = new THREE.MeshBasicMaterial({ color: CRACK.color, transparent: true, opacity: CRACK.opacity, depthWrite: false });
+    const group = new THREE.Group();
+    group.position.set(x, GROUND_Y + 0.002, z);
+    let r = seed * 9301 + 49297;
+    const rand = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+    for (let k = 0; k < lines; k++) {
+      // Each crack is two or three short strokes that wander off the radial line.
+      let a = ((k + rand() * 0.6) / lines) * Math.PI * 2;
+      let px = 0;
+      let pz = 0;
+      const len = radius * (0.55 + rand() * 0.45);
+      const strokes = 2 + Math.floor(rand() * 2);
+      for (let s = 0; s < strokes; s++) {
+        const l = len / strokes;
+        const m = new THREE.Mesh(this.crackStroke, mat);
+        m.scale.set(l, 1, CRACK.width * (1 - s / (strokes + 1)));
+        m.position.set(px + (Math.cos(a) * l) / 2, 0, pz + (Math.sin(a) * l) / 2);
+        m.rotation.y = -a;
+        m.renderOrder = 1;
+        group.add(m);
+        px += Math.cos(a) * l;
+        pz += Math.sin(a) * l;
+        a += (rand() - 0.5) * 0.9;
+      }
+    }
+    this.root.add(group);
+    let t = 0;
+    this.items.push({
+      update: (dt) => {
+        t += dt;
+        mat.opacity = CRACK.opacity * Math.min(1, Math.max(0, (CRACK.life - t) / 0.4));
+        return t < CRACK.life;
+      },
+      dispose: () => {
+        group.removeFromParent();
+        mat.dispose();
+      },
     });
   }
 
@@ -211,6 +260,7 @@ export class Effects {
     for (const i of this.items) i.dispose();
     this.items.length = 0;
     for (const c of [...this.spin.children]) disposeMesh(c as THREE.Mesh);
+    this.crackStroke.dispose();
     this.arrows.dispose();
     this.axes.dispose();
     this.root.removeFromParent();

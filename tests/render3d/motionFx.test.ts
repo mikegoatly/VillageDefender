@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MONSTERS } from '../../src/data/monsters';
-import { rankedWeapon, WEAPONS } from '../../src/data/weapons';
-import { computeMods } from '../../src/data/upgrades';
-import { dashSize, DUST_SPACING, DustTrails, slashShape, sparkNormal } from '../../src/render3d/motionFx';
+import { dashSize, DUST_SPACING, DustTrails, sparkNormal } from '../../src/render3d/motionFx';
 import type { Unit } from '../../src/sim/world';
 import { aWorld } from '../helpers/worldBuilder';
 
@@ -94,25 +92,6 @@ describe('DustTrails', () => {
     step(trails, knight, 0, 0);
     trails.update([[]], () => {});
     expect(trails.tracked).toBe(0);
-  });
-});
-
-describe('slashShape', () => {
-  it('matches the sword swing the sim applies, upgrades and ranks included', () => {
-    const mods = computeMods({ arc: 2, reach: 1 });
-    const wd = rankedWeapon('sword', 2);
-    const s = slashShape(wd, mods.knight)!;
-    expect(s.reach).toBeCloseTo(wd.range * mods.knight.rangeMul);
-    expect(s.halfArc).toBeCloseTo(Math.min(Math.PI, wd.arc * mods.knight.arcMul));
-    expect(s.halfArc).toBeGreaterThan(WEAPONS.sword.arc);
-  });
-
-  it('caps the arc at a full circle and skips weapons that do not sweep', () => {
-    const mods = computeMods({ arc: 3 });
-    const wide = { ...WEAPONS.sword, arc: 3 };
-    expect(slashShape(wide, mods.knight)!.halfArc).toBeCloseTo(Math.PI);
-    expect(slashShape(WEAPONS.hammer, mods.knight)).toBeNull();
-    expect(slashShape(WEAPONS.flail, mods.knight)).toBeNull();
   });
 });
 

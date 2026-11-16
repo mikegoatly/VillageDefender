@@ -4,6 +4,8 @@ import { MAX_WEAPON_RANK, RANK_DAMAGE, rankedWeapon, WEAPON_ORDER, WEAPONS, type
 import type { World, Unit } from '../../src/sim/world';
 import { aWorld, collectEvents, dummy, holdAttack, runTicks, type WorldBuilder } from '../helpers/worldBuilder';
 import { emptyInput } from '../../src/sim/types';
+import { computeMods } from '../../src/data/upgrades';
+import { slamShape, spinRadius, swingShape } from '../../src/sim/knight';
 
 const K = 20; // knight position (open field, centre)
 
@@ -302,3 +304,21 @@ describe('weapon ranks (decision 49)', () => {
 });
 
 const WEAPON_RANK_DELTA_SWORD = rankedWeapon('sword', 1).arc - WEAPONS.sword.arc;
+
+describe('weapon shapes (shared with the renderer)', () => {
+  const mods = computeMods({ arc: 2, reach: 1 }).knight;
+
+  it('sweeps the ranked arc and reach, capped at a full circle', () => {
+    const wd = rankedWeapon('sword', 2);
+    expect(swingShape(wd, mods)).toEqual({ reach: wd.range * mods.rangeMul, halfArc: wd.arc * mods.arcMul });
+    expect(swingShape({ ...wd, arc: 3 }, mods).halfArc).toBeCloseTo(Math.PI);
+  });
+
+  it('grows the hammer slam and flail ring with ranks and Wide Sweep', () => {
+    const base = computeMods({}).knight;
+    expect(slamShape(rankedWeapon('hammer', 3), base).radius).toBeGreaterThan(slamShape(WEAPONS.hammer, base).radius);
+    expect(slamShape(WEAPONS.hammer, mods).radius).toBeGreaterThan(slamShape(WEAPONS.hammer, base).radius);
+    expect(spinRadius(rankedWeapon('flail', 3), base)).toBeGreaterThan(spinRadius(WEAPONS.flail, base));
+    expect(spinRadius(WEAPONS.flail, mods)).toBeGreaterThan(spinRadius(WEAPONS.flail, base));
+  });
+});

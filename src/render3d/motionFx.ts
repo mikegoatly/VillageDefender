@@ -1,17 +1,14 @@
 // Render-side motion cues worked out from sim state alone (no three.js here, so they are unit
-// tested): dust trails behind dashing units, the knight's slash and where hit sparks fly.
+// tested): trails behind dashing units and flying things, and where hit sparks fly.
 
 import { MONSTERS, type MonsterKind } from '../data/monsters';
-import type { Mods } from '../data/upgrades';
-import type { WeaponDef } from '../data/weapons';
-import { swingShape } from '../sim/knight';
 import type { Vec2 } from '../sim/types';
 import { norm } from '../sim/units';
 import type { Unit } from '../sim/world';
 
 /** Ground distance between dust puffs in a dash trail. */
 export const DUST_SPACING = 0.22;
-/** A jump further than this in one frame is a teleport (debug, respawn), not a dash. */
+/** A jump further than this in one frame is a teleport (debug, respawn), not travel. */
 const TELEPORT = 3;
 /** A charging boss throws up more dust than his size alone suggests. */
 const CHARGE_DUST = 1.6;
@@ -25,7 +22,7 @@ export function dashSize(u: Pick<Unit, 'team' | 'kind' | 'state' | 'burstTime' |
   return u.burstTime > 0 ? scale : 0;
 }
 
-/** Receives one puff of dash dust: where it starts, the way it drifts (unit vector) and its size multiplier. */
+/** Receives one puff: where it starts, the way it drifts (unit vector, back along the path) and its size multiplier. */
 export type DustEmit = (x: number, z: number, dirX: number, dirZ: number, size: number) => void;
 
 interface Trail {
@@ -33,65 +30,82 @@ interface Trail {
   y: number;
   /** Distance travelled since the last puff. */
   carry: number;
-  /** Last update this unit was dashing in (stale trails are dropped). */
-  frame: number;
+  /** Last pass this thing was moving in (stale trails are dropped). */
+  pass: number;
 }
 
 /**
- * Lays dust behind dashing units, one puff every DUST_SPACING travelled, so the trail looks the
- * same at any frame rate or dash speed. A unit's trail starts fresh with each dash.
+ * Lays puffs behind moving things (by id), one every `spacing` travelled, so a trail looks the
+ * same at any frame rate or speed. Call begin(), add() each thing that should leave a trail this
+ * frame, then end(); a trail starts fresh after a frame without it.
  */
-export class DustTrails {
+export class SpacedTrails {
   private readonly trails = new Map<number, Trail>();
-  private frame = 0;
+  private pass = 0;
 
-  /** Units currently leaving a trail. */
+  constructor(private readonly spacing: number) {}
+
+  /** Things currently leaving a trail. */
   get tracked(): number {
     return this.trails.size;
   }
 
-  update(lists: readonly (readonly Unit[])[], emit: DustEmit) {
-    const frame = ++this.frame;
-    for (const list of lists) {
-      for (const u of list) {
-        const size = dashSize(u);
-        if (size > 0) this.step(u, size, frame, emit);
-      }
-    }
-    if (this.trails.size === 0) return;
-    for (const [id, t] of this.trails) if (t.frame !== frame) this.trails.delete(id);
+  begin() {
+    this.pass++;
   }
 
-  private step(u: Unit, size: number, frame: number, emit: DustEmit) {
-    const t = this.trails.get(u.id);
-    const dx = t ? u.x - t.x : 0;
-    const dy = t ? u.y - t.y : 0;
+  /** (backX, backY) is the drift direction for the first puff, before there is a path. */
+  add(id: number, x: number, y: number, backX: number, backY: number, size: number, emit: DustEmit) {
+    const t = this.trails.get(id);
+    const dx = t ? x - t.x : 0;
+    const dy = t ? y - t.y : 0;
     const d = Math.hypot(dx, dy);
     if (!t || d > TELEPORT) {
-      // Kick-off: a puff where the dash starts.
-      this.trails.set(u.id, { x: u.x, y: u.y, carry: 0, frame });
-      emit(u.x, u.y, -u.facing.x, -u.facing.y, size);
+      // Kick-off: a puff where the trail starts.
+      this.trails.set(id, { x, y, carry: 0, pass: this.pass });
+      emit(x, y, backX, backY, size);
       return;
     }
-    t.frame = frame;
+    t.pass = this.pass;
     if (d <= 0) return;
     const ux = dx / d;
     const uy = dy / d;
     // Puffs fall at fixed distances along this frame's path.
-    let along = DUST_SPACING - t.carry;
+    let along = this.spacing - t.carry;
     while (along <= d + 1e-9) {
       emit(t.x + ux * along, t.y + uy * along, -ux, -uy, size);
-      along += DUST_SPACING;
+      along += this.spacing;
     }
-    t.carry = d - (along - DUST_SPACING);
-    t.x = u.x;
-    t.y = u.y;
+    t.carry = d - (along - this.spacing);
+    t.x = x;
+    t.y = y;
+  }
+
+  end() {
+    if (this.trails.size === 0) return;
+    for (const [id, t] of this.trails) if (t.pass !== this.pass) this.trails.delete(id);
   }
 }
 
-/** The sweep a sword or spear swing covers (null for weapons that don't sweep). */
-export function slashShape(wd: WeaponDef, km: Mods['knight']): { reach: number; halfArc: number } | null {
-  return wd.style === 'arc' ? swingShape(wd, km) : null;
+/** Dust behind dashing units (see dashSize). */
+export class DustTrails {
+  private readonly trails = new SpacedTrails(DUST_SPACING);
+
+  /** Units currently leaving a trail. */
+  get tracked(): number {
+    return this.trails.tracked;
+  }
+
+  update(lists: readonly (readonly Unit[])[], emit: DustEmit) {
+    this.trails.begin();
+    for (const list of lists) {
+      for (const u of list) {
+        const size = dashSize(u);
+        if (size > 0) this.trails.add(u.id, u.x, u.y, -u.facing.x, -u.facing.y, size, emit);
+      }
+    }
+    this.trails.end();
+  }
 }
 
 /**

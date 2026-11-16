@@ -5,9 +5,9 @@ import * as THREE from 'three';
 import { BUILDING, MAP } from '../data/balance';
 import { BOSS, MONSTERS, type MonsterKind } from '../data/monsters';
 import { ROLES, type RoleKind } from '../data/roles';
-import { WEAPONS } from '../data/weapons';
 import type { Renderer, RendererStats } from '../game/Renderer';
 import { ISO_HX } from '../sim/iso';
+import { slamShape, spinRadius, swingShape } from '../sim/knight';
 import { friendlyById, monsterById } from '../sim/queries';
 import type { Vec2 } from '../sim/types';
 import { norm } from '../sim/units';
@@ -18,7 +18,8 @@ import { CAMERA_DIR, ELEVATION, fitView } from './camera';
 import { DebugOverlay3D } from './DebugOverlay3D';
 import { Effects, SLASH } from './Effects';
 import { Labels } from './Labels';
-import { DustTrails, slashShape, sparkNormal, type DustEmit } from './motionFx';
+import { DustTrails, SpacedTrails, sparkNormal, type DustEmit } from './motionFx';
+import { knightWeaponFx, weaponFx } from './upgradeFx';
 import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
@@ -31,6 +32,20 @@ const BAR_COLORS = { good: '#8cc152', hurt: '#f0ad4e', bad: '#d9534f' };
 /** Dash dust per town theme: sandy on grass, grey on graveyard soil. */
 const DASH_DUST = { meadow: 0xc9b29b, graveyard: 0x8f8a80 };
 const HIT_SPARK = 0xfff0c0;
+/** Top-rank embers. */
+const EMBER = 0xff9a3c;
+/** Top-rank and per-rank weapon flourishes: embers along a slash edge, slam dust/cracks/embers, flail embers. */
+const FLAIR = {
+  edgeEmbers: { count: 9, size: 0.06, life: 0.5, rise: 0.8 },
+  slamDust: 6,
+  cracks: 3,
+  slamEmbers: 10,
+  spinEmbers: { count: 6, size: 0.05, life: 0.45, speed: 2 },
+};
+/** Height of the flail's spinning head. */
+const SPIN_Y = 0.35;
+/** Motes behind a thrown axe: height, spacing, and size and life at rank 0 (they grow with the glow). */
+const AXE_TRAIL = { y: 0.55, spacing: 0.12, size: 0.05, life: 0.18 };
 /** Ground direction towards the camera, so hit sparks come out of the near side of a body. */
 const CAMERA_GROUND = norm({ x: CAMERA_DIR.x, y: CAMERA_DIR.z });
 
@@ -55,6 +70,11 @@ export class ThreeRenderer implements Renderer {
   private readonly units: UnitBatches;
   private readonly particles = new Particles();
   private readonly trails = new DustTrails();
+  private readonly axeTrails = new SpacedTrails(AXE_TRAIL.spacing);
+  /** The knight's weapon look (shop rank and Sharpened Blade), refreshed every frame. */
+  private wfx = weaponFx(0, 0);
+  /** Seeds each slam's crack pattern. */
+  private cracks = 0;
   private readonly dustColor: number;
   private readonly effects: Effects;
   private readonly labels: Labels;
@@ -93,12 +113,14 @@ export class ThreeRenderer implements Renderer {
   sync(world: World, dt: number) {
     const t0 = performance.now();
     this.clock += dt;
-    this.units.sync(world, dt);
+    this.wfx = knightWeaponFx(world);
+    this.units.sync(world, dt, this.wfx);
     this.town.sync(world.buildings, dt);
     this.syncDust(world);
     this.particles.update(dt);
     this.effects.update(dt, world.projectiles);
     this.syncFlail(world);
+    this.syncAxeTrails(world);
     this.syncGems(world);
     this.syncLabels(world);
     this.labels.layout();
@@ -127,15 +149,7 @@ export class ThreeRenderer implements Renderer {
       case 'swing':
         // Flail: restart the swing on every damage pulse so it keeps spinning.
         if (e.weapon === 'flail') this.units.restartAnim(e.unit);
-        this.slash(world);
-        if (e.weapon === 'hammer') {
-          // Shockwave where the slam lands, timed with the hit.
-          const k = world.players[0];
-          const r = WEAPONS.hammer.range * world.progression.mods.knight.rangeMul;
-          const x = k.x + k.facing.x * r;
-          const y = k.y + k.facing.y * r;
-          this.effects.later(WEAPONS.hammer.hitTime, () => this.effects.shockwave(x, y, WEAPONS.hammer.arc));
-        }
+        this.swingFx(world);
         return;
       case 'bossSpawn':
         this.stage.shake(500, 0.008);
@@ -279,8 +293,23 @@ export class ThreeRenderer implements Renderer {
   private syncFlail(world: World) {
     const k = world.players[0];
     const spinning = world.weapon === 'flail' && k && k.state === 'attack';
-    this.effects.spinRing(spinning ? k.x : null, k?.y ?? 0, WEAPONS.flail.range * world.progression.mods.knight.rangeMul);
+    this.effects.spinRing(spinning ? k.x : null, k?.y ?? 0, spinRadius(world.weaponDef, world.progression.mods.knight));
   }
+
+  /** A fading streak behind each thrown axe, longer and brighter with the weapon's rank. */
+  private syncAxeTrails(world: World) {
+    this.axeTrails.begin();
+    if (world.weapon === 'axes') {
+      for (const p of world.projectiles) if (p.kind === 'axe') this.axeTrails.add(p.id, p.x, p.y, 0, 0, 1, this.emitAxeTrail);
+    }
+    this.axeTrails.end();
+  }
+
+  private readonly emitAxeTrail: DustEmit = (x, z) => {
+    const { glow, color, flourish } = this.wfx;
+    this.particles.mote(x, AXE_TRAIL.y, z, color, AXE_TRAIL.size * (1 + glow), AXE_TRAIL.life * (1 + glow * 2));
+    if (flourish) this.particles.spark(x, AXE_TRAIL.y, z, 1, EMBER, 0.6);
+  };
 
   /** Dust behind the dodging knight, lunging and fleeing monsters and a charging boss. */
   private syncDust(world: World) {
@@ -294,19 +323,72 @@ export class ThreeRenderer implements Renderer {
     const n = sparkNormal(m, friendlyById(world, by), CAMERA_GROUND);
     const count = Math.min(10, 4 + Math.floor(damage / 6));
     const out = m.radius * 1.2;
-    this.particles.spark(m.x + n.x * out, 0.5 * scale, m.y + n.y * out, count, HIT_SPARK, 3, n.x * 0.7, n.y * 0.7);
+    const color = by === world.players[0]?.id && world.weaponRank > 0 ? this.wfx.color : HIT_SPARK;
+    this.particles.spark(m.x + n.x * out, 0.5 * scale, m.y + n.y * out, count, color, 3, n.x * 0.7, n.y * 0.7);
   }
 
-  /** Sword/spear swing: a crescent over the swing's real reach and arc, timed to land with the hit. */
-  private slash(world: World) {
+  /** The knight's swing or slam, drawn to its real size and dressed for the weapon's rank. */
+  private swingFx(world: World) {
     const k = world.players[0];
+    if (!k) return;
     const wd = world.weaponDef;
-    const shape = k && slashShape(wd, world.progression.mods.knight);
-    if (!shape) return;
-    const { reach, halfArc } = shape;
-    this.effects.later(Math.max(0, wd.hitTime - SLASH.sweep), () => {
-      if (k.state !== 'dead') this.effects.slash(k.x, k.y, k.facing.x, k.facing.y, reach, halfArc);
+    const km = world.progression.mods.knight;
+    if (wd.style === 'arc') this.slashFx(k, wd.hitTime, swingShape(wd, km), world.weaponRank);
+    else if (wd.style === 'area') this.slamFx(k, wd.hitTime, slamShape(wd, km), world.weaponRank);
+    else if (wd.style === 'spin') this.spinFx(k, spinRadius(wd, km), world.weaponRank);
+  }
+
+  /** Sword/spear: the slash; ranked, a glint at the blade's point; top rank, embers along the edge. */
+  private slashFx(k: Unit, hitTime: number, { reach, halfArc }: { reach: number; halfArc: number }, rank: number) {
+    const wfx = this.wfx;
+    this.effects.later(Math.max(0, hitTime - SLASH.sweep), () => {
+      if (k.state === 'dead') return;
+      this.effects.slash(k.x, k.y, k.facing.x, k.facing.y, reach, halfArc, wfx.color);
+      const fa = Math.atan2(k.facing.y, k.facing.x);
+      if (rank > 0) this.glint(k.x + Math.cos(fa) * reach, k.y + Math.sin(fa) * reach, wfx.color);
+      if (!wfx.flourish) return;
+      const { count, size, life, rise } = FLAIR.edgeEmbers;
+      for (let n = 0; n < count; n++) {
+        const a = fa - halfArc + (2 * halfArc * n) / (count - 1);
+        this.particles.mote(k.x + Math.cos(a) * reach, SLASH.y, k.y + Math.sin(a) * reach, EMBER, size, life, 0, rise, 0);
+      }
     });
+  }
+
+  /** Warhammer: shockwave, dust and cracks where the slam lands (more with rank), timed with the hit. */
+  private slamFx(k: Unit, hitTime: number, { reach, radius }: { reach: number; radius: number }, rank: number) {
+    const wfx = this.wfx;
+    const x = k.x + k.facing.x * reach;
+    const y = k.y + k.facing.y * reach;
+    this.effects.later(hitTime, () => {
+      this.effects.shockwave(x, y, radius, rank > 0 ? wfx.color : undefined);
+      this.particles.burst(x, 0.1, y, FLAIR.slamDust + rank * 2, this.dustColor, 0.18, 1.6, 0.8);
+      this.effects.crack(x, y, radius, FLAIR.cracks + rank * 2, ++this.cracks);
+      if (wfx.flourish) this.particles.spark(x, 0.15, y, FLAIR.slamEmbers, EMBER, 2.6);
+    });
+  }
+
+  /** Flail: sparks off the spinning head each pulse (more with rank); top rank sheds circling embers. */
+  private spinFx(k: Unit, r: number, rank: number) {
+    const wfx = this.wfx;
+    const n = 1 + rank;
+    for (let s = 0; s < n; s++) {
+      const a = this.clock * 12 + (s * Math.PI * 2) / n;
+      this.particles.spark(k.x + Math.cos(a) * r, SPIN_Y, k.y + Math.sin(a) * r, 2, wfx.color, 1.6, Math.cos(a) * 0.5, Math.sin(a) * 0.5);
+    }
+    if (!wfx.flourish) return;
+    const { count, size, life, speed } = FLAIR.spinEmbers;
+    for (let s = 0; s < count; s++) {
+      const a = (s * Math.PI * 2) / count + this.clock;
+      // Tangential drift so the embers carry on round the knight.
+      this.particles.mote(k.x + Math.cos(a) * r, SPIN_Y, k.y + Math.sin(a) * r, EMBER, size, life, -Math.sin(a) * speed, 0.2, Math.cos(a) * speed);
+    }
+  }
+
+  /** A quick star of light at a point (a ranked blade's tip). */
+  private glint(x: number, z: number, color: number) {
+    this.particles.mote(x, SLASH.y, z, 0xffffff, 0.09, 0.18);
+    for (let n = 0; n < 3; n++) this.particles.mote(x, SLASH.y, z, color, 0.05, 0.3, (n - 1) * 0.8, 0.6, (1 - n) * 0.5);
   }
 
   private syncGems(world: World) {

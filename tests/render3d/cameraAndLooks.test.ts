@@ -5,6 +5,7 @@ import { animFor, CHARACTER_MODELS, characterModelPaths, clipNames, CORPSE_SINK,
 import { mapFromAscii } from '../helpers/mapBuilder';
 import { generateTown } from '../../src/sim/map';
 import { aWorld } from '../helpers/worldBuilder';
+import { RANK_COLORS, weaponFx } from '../../src/render3d/upgradeFx';
 
 describe('fitView', () => {
   it('keeps every edge cell of the town inside the view', () => {
@@ -47,6 +48,17 @@ describe('lookFor', () => {
     const { knight } = aWorld().build();
     expect(lookFor(knight, 'sword').key).not.toBe(lookFor(knight, 'hammer').key);
     expect(lookFor(knight, 'hammer').attachments[0].model).toContain('hammer');
+  });
+
+  it('lights the knight\'s weapon (not his shield) by rank and blade, one batch per look', () => {
+    const { knight } = aWorld().build();
+    const plain = lookFor(knight, 'sword', weaponFx(0, 0));
+    const ranked = lookFor(knight, 'sword', weaponFx(3, 1));
+    expect(plain.attachments[0].glow).toBeUndefined();
+    expect(ranked.attachments[0].glow).toEqual({ color: RANK_COLORS[3], amount: weaponFx(3, 1).glow });
+    expect(ranked.attachments[1].glow).toBeUndefined();
+    expect(ranked.key).not.toBe(plain.key);
+    expect(lookFor(knight, 'sword', weaponFx(3, 1)).key).toBe(ranked.key);
   });
 
   it('draws brutes as bigger, tinted orcs that share the orc batch', () => {
