@@ -27,6 +27,8 @@ const modelPacks = [
       'character-human', 'character-orc',
       'weapon-sword', 'weapon-spear', 'shield-round', 'shield-rectangle',
       'barrel', 'chest', 'coin', 'potion',
+      // Spiked Doors upgrade.
+      'trap',
     ],
   },
   {
@@ -54,7 +56,7 @@ const modelPacks = [
   {
     src: '3D assets/Mini Forest/Models/GLB format',
     dest: 'mini-forest',
-    files: ['character-archer', 'weapon-bow', 'weapon-arrow', 'bridge', 'plant'],
+    files: ['character-archer', 'weapon-bow', 'weapon-arrow', 'bridge', 'plant', 'ladder'],
   },
   {
     src: '3D assets/Mini Arena/Models/GLB format',
@@ -85,7 +87,7 @@ const modelPacks = [
   {
     src: '3D assets/Survival Kit/Models/GLB format',
     dest: 'survival',
-    files: ['workbench-anvil', 'grass', 'grass-large', 'resource-planks'],
+    files: ['workbench-anvil', 'grass', 'grass-large', 'resource-planks', 'fence-fortified'],
   },
 ];
 

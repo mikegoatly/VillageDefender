@@ -13,7 +13,7 @@
 import { magnetRadius } from '../sim/gems';
 import type { Unit, World } from '../sim/world';
 import type { Effects } from './Effects';
-import { DashEchoes, SpacedTrails, type DustEmit } from './motionFx';
+import { DashEchoes, Rate, SpacedTrails, type DustEmit } from './motionFx';
 import type { Particles } from './Particles';
 import type { Echo } from './UnitBatches';
 import { lerp, upgradeTier, type KnightGear } from './upgradeFx';
@@ -35,23 +35,6 @@ const KFX = {
 const HAND_Y = 0.6;
 const FEET_Y = 0.12;
 const WIND = 0xffffff;
-
-/** Something emitted at a steady rate per second, whole items at a time. */
-class Rate {
-  private owed = 0;
-
-  /** How many to emit this frame at `perSecond`. */
-  take(perSecond: number, dt: number): number {
-    this.owed += perSecond * dt;
-    const n = Math.floor(this.owed);
-    this.owed -= n;
-    return n;
-  }
-
-  reset() {
-    this.owed = 0;
-  }
-}
 
 export class KnightVisuals {
   private readonly echoes = new DashEchoes();

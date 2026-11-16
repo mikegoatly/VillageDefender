@@ -166,3 +166,20 @@ export function sparkNormal(struck: Vec2, from: Vec2 | null, camera: Vec2): Vec2
   const toward = from ? norm({ x: from.x - struck.x, y: from.y - struck.y }) : camera;
   return norm({ x: toward.x + camera.x, y: toward.y + camera.y });
 }
+
+/** Something emitted at a steady rate per second, whole items at a time. */
+export class Rate {
+  private owed = 0;
+
+  /** How many to emit this frame at `perSecond`. */
+  take(perSecond: number, dt: number): number {
+    this.owed += perSecond * dt;
+    const n = Math.floor(this.owed);
+    this.owed -= n;
+    return n;
+  }
+
+  reset() {
+    this.owed = 0;
+  }
+}

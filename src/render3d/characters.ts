@@ -5,7 +5,7 @@ import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ROOKIES, type RookieKind } from '../data/rookies';
 import type { WeaponKind } from '../data/weapons';
 import { Ground, inBounds, type TownMap } from '../sim/map';
-import type { KnightGear } from './upgradeFx';
+import type { ArmyGear, KnightGear } from './upgradeFx';
 import type { Unit } from '../sim/world';
 
 export const CHARACTER_MODELS: Record<string, string> = {
@@ -162,19 +162,37 @@ export interface UnitLook {
   scale: number;
 }
 
-export function lookFor(u: Unit, weapon: WeaponKind, gear?: KnightGear): UnitLook {
+export function lookFor(u: Unit, weapon: WeaponKind, gear?: KnightGear, army?: ArmyGear): UnitLook {
   if (u.team === 'enemy') {
     const def = MONSTERS[u.kind as MonsterKind];
     const pallor = def.pallor ?? 0;
     return { key: `${def.sheet}:${def.alpha}:${pallor}`, sheet: def.sheet, attachments: ATTACHMENTS[def.sheet] ?? [], tint: def.tint, alpha: def.alpha, pallor, scale: def.scale };
   }
   if (u.kind === 'knight') return knightLook(weapon, gear);
-  // Rank 0 is an unarmoured recruit, veterans get the full kit and captains are gilded.
-  const kitted = ROOKIES[u.kind as RookieKind].sheet;
-  const sheet = u.rank === 0 ? RECRUIT_SHEETS[u.kind as RookieKind] : kitted;
-  const gild = u.rank >= 2 ? CAPTAIN_GILD : 0;
-  // Promotions: slightly bigger body (same as the sprite renderer).
-  return { key: `${sheet}:${gild}`, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint: 0xffffff, alpha: 1, pallor: 0, gild, scale: 1 + 0.06 * u.rank };
+  return rookieLook(u.kind as RookieKind, u.rank, army);
+}
+
+const rookieLooks = new Map<string, UnitLook>();
+
+/**
+ * Rank 0 is an unarmoured recruit, veterans get the full kit and captains are gilded; promotions
+ * and Drilled Recruits make them bigger, and Better Arms lights their weapons (cached per look).
+ */
+function rookieLook(kind: RookieKind, rank: number, army: ArmyGear | undefined): UnitLook {
+  const sheet = rank === 0 ? RECRUIT_SHEETS[kind] : ROOKIES[kind].sheet;
+  const gild = rank >= 2 ? CAPTAIN_GILD : 0;
+  const glow = army?.glow ?? 0;
+  const key = `${sheet}:${gild}:${glow}`;
+  const scale = (1 + 0.06 * rank) * (army?.scale ?? 1);
+  // Scale is per instance, so looks that differ only in scale share a batch (same key).
+  const cacheKey = `${key}:${scale}`;
+  let look = rookieLooks.get(cacheKey);
+  if (!look) {
+    const [held, ...rest] = ATTACHMENTS[sheet] ?? [];
+    const attachments = held && glow > 0 ? [{ ...held, glow: { color: army!.color, amount: glow } }, ...rest] : (ATTACHMENTS[sheet] ?? []);
+    rookieLooks.set(cacheKey, (look = { key, sheet, attachments, tint: 0xffffff, alpha: 1, pallor: 0, gild, scale }));
+  }
+  return look;
 }
 
 const knightLooks = new Map<string, UnitLook>();

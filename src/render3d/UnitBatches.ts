@@ -15,7 +15,7 @@ import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFo
 import { ECHO_ALPHA } from './motionFx';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
 import { withFxAttribute, withUnitFx } from './unitFx';
-import type { KnightGear } from './upgradeFx';
+import type { ArmyGear, KnightGear } from './upgradeFx';
 
 /** Character size relative to one ground cell (milestone 0 look test: ~1.5x reads well). */
 export const CHAR_SCALE = 1.5;
@@ -116,8 +116,8 @@ export class UnitBatches {
     this.flashes.set(unitId, Math.max(seconds, this.flashes.get(unitId) ?? 0));
   }
 
-  /** `gear`: how the knight is drawn this frame; `echoes`: dash afterimages to draw behind him. */
-  sync(world: World, dt: number, gear: KnightGear, echoes: readonly Echo[]) {
+  /** `gear`/`army`: how the knight and rookies are drawn this frame; `echoes`: dash afterimages behind the knight. */
+  sync(world: World, dt: number, gear: KnightGear, army: ArmyGear, echoes: readonly Echo[]) {
     this.clock += dt;
     for (const [id, t] of this.flashes) {
       if (t - dt <= 0) this.flashes.delete(id);
@@ -129,7 +129,7 @@ export class UnitBatches {
     for (const list of [world.players, world.rookies, world.monsters]) {
       for (const u of list) {
         live.add(u.id);
-        const look = lookFor(u, world.weapon, gear);
+        const look = lookFor(u, world.weapon, gear, army);
         const rot = this.animate(u, dt);
         const a = this.anims.get(u.id)!;
         a.wade += (wadeDepth(world.map, u, look.scale) - a.wade) * Math.min(1, dt * WADE.rate);

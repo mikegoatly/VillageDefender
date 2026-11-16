@@ -19,8 +19,9 @@ import { DebugOverlay3D } from './DebugOverlay3D';
 import { Effects, SLASH } from './Effects';
 import { Labels } from './Labels';
 import { DustTrails, SpacedTrails, sparkNormal, type DustEmit } from './motionFx';
-import { knightGear, type KnightGear } from './upgradeFx';
+import { armyGear, knightGear, townFort, type KnightGear } from './upgradeFx';
 import { KnightVisuals } from './KnightVisuals';
+import { TownVisuals } from './TownVisuals';
 import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
@@ -79,6 +80,7 @@ export class ThreeRenderer implements Renderer {
   private readonly dustColor: number;
   private readonly effects: Effects;
   private readonly knight: KnightVisuals;
+  private readonly townFx: TownVisuals;
   private readonly labels: Labels;
   private debug: DebugOverlay3D | null = null;
   private readonly gems: THREE.InstancedMesh;
@@ -100,6 +102,7 @@ export class ThreeRenderer implements Renderer {
     this.units = new UnitBatches(library, { silhouettes: opts.silhouettes });
     this.effects = new Effects(library);
     this.knight = new KnightVisuals(this.particles, this.effects, this.dustColor);
+    this.townFx = new TownVisuals(this.particles);
     this.labels = new Labels(stage, stage.canvas.parentElement!);
     // Faceted sapphire, as in the sprite renderer.
     this.gems = new THREE.InstancedMesh(
@@ -118,9 +121,10 @@ export class ThreeRenderer implements Renderer {
     const t0 = performance.now();
     this.clock += dt;
     const gear = (this.gear = knightGear(world));
-    this.units.sync(world, dt, gear, this.knight.sync(world, dt, gear));
-    this.town.sync(world.buildings, dt);
+    this.units.sync(world, dt, gear, armyGear(world), this.knight.sync(world, dt, gear));
+    this.town.sync(world.buildings, dt, townFort(world));
     this.syncDust(world);
+    this.townFx.sync(world, dt);
     this.particles.update(dt);
     this.effects.update(dt, world.projectiles);
     this.syncFlail(world);
@@ -134,6 +138,7 @@ export class ThreeRenderer implements Renderer {
 
   /** Game-feel effects: flashes, damage numbers, shakes, telegraphs, floating text. */
   onEvent(world: World, e: SimEvent) {
+    this.townFx.onEvent(world, e);
     switch (e.type) {
       case 'hit': {
         this.units.flash(e.unit, 0.08);

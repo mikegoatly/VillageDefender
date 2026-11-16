@@ -4,6 +4,7 @@
 import { UPGRADE_BY_ID } from '../data/upgrades';
 import { MAX_WEAPON_RANK } from '../data/weapons';
 import type { World } from '../sim/world';
+import type { TownFort } from './buildings';
 
 /** Strength 0..1 of an upgrade at `level` of `max`, and whether it is maxed (the capstone). */
 export function fxTier(level: number, max: number): { t: number; capstone: boolean } {
@@ -61,25 +62,66 @@ export interface KnightGear {
   key: string;
 }
 
-let lastGear: { stamp: string; gear: KnightGear } | null = null;
-
-/** The knight's gear (memoised on the last inputs: it is asked for every frame). */
-export function knightGear(w: Pick<World, 'progression' | 'weaponRank'>): KnightGear {
-  const { levels } = w.progression;
-  const blade = levels.blade ?? 0;
-  const reach = levels.reach ?? 0;
-  const tough = levels.tough ?? 0;
-  const stamp = `${w.weaponRank}:${blade}:${reach}:${tough}`;
-  if (lastGear?.stamp === stamp) return lastGear.gear;
-  const bladeT = fxTier(blade, UPGRADE_BY_ID.blade.max).t;
-  const weapon = weaponFx(w.weaponRank, bladeT);
-  const gear = {
-    weapon,
-    blade: bladeT,
-    weaponScale: 1 + GEAR.reachScale * reach,
-    bodyScale: 1 + GEAR.toughScale * tough,
-    key: `${weapon.glow > 0 ? weapon.key : 0}:${reach}:${tough}`,
+/** A function that rebuilds its value only when `stamp` changes (asked for every frame, changes rarely). */
+function memoLast<A extends unknown[], T>(stamp: (...a: A) => string, build: (...a: A) => T): (...a: A) => T {
+  let last: { stamp: string; value: T } | null = null;
+  return (...a) => {
+    const s = stamp(...a);
+    if (last?.stamp !== s) last = { stamp: s, value: build(...a) };
+    return last.value;
   };
-  lastGear = { stamp, gear };
-  return gear;
 }
+
+type Levels = Record<string, number>;
+const lv = (w: Pick<World, 'progression'>, id: string) => w.progression.levels[id] ?? 0;
+
+/** The knight's gear (rank, Sharpened Blade, Long Reach, Toughness). */
+export const knightGear = memoLast(
+  (w: Pick<World, 'progression' | 'weaponRank'>) => `${w.weaponRank}:${lv(w, 'blade')}:${lv(w, 'reach')}:${lv(w, 'tough')}`,
+  (w): KnightGear => {
+    const reach = lv(w, 'reach');
+    const tough = lv(w, 'tough');
+    const blade = fxTier(lv(w, 'blade'), UPGRADE_BY_ID.blade.max).t;
+    const weapon = weaponFx(w.weaponRank, blade);
+    return {
+      weapon,
+      blade,
+      weaponScale: 1 + GEAR.reachScale * reach,
+      bodyScale: 1 + GEAR.toughScale * tough,
+      key: `${weapon.glow > 0 ? weapon.key : 0}:${reach}:${tough}`,
+    };
+  },
+);
+
+/** Upgrade ids behind each TownFort field. */
+const FORT_IDS = { walls: 'walls', thorns: 'thorns', slits: 'slits', crews: 'crews', tar: 'braziers', recruit: 'recruit', garrison: 'garrison' } as const;
+
+function fortOf(levels: Levels): TownFort {
+  const f = Object.fromEntries(Object.entries(FORT_IDS).map(([k, id]) => [k, levels[id] ?? 0])) as Omit<TownFort, 'key'>;
+  return { ...f, key: Object.values(f).join(':') };
+}
+
+/** A town with no upgrades. */
+export const NO_FORT: TownFort = fortOf({});
+
+/** The town and army upgrade stacks buildings show (one object per distinct fort, so it compares by identity). */
+export const townFort = memoLast(
+  (w: Pick<World, 'progression'>) => Object.values(FORT_IDS).map((id) => lv(w, id)).join(':'),
+  (w) => fortOf(w.progression.levels),
+);
+
+/** Rookie size per Drilled Recruits stack and weapon glow per Better Arms stack (army blue). */
+const ARMY = { drillScale: 0.05, armsGlow: 0.3, color: 0x7fb3e6 };
+
+/** How rookies are drawn: bigger with Drilled Recruits, weapons lit with Better Arms. */
+export interface ArmyGear {
+  scale: number;
+  glow: number;
+  color: number;
+}
+
+/** The rookies' gear. */
+export const armyGear = memoLast(
+  (w: Pick<World, 'progression'>) => `${lv(w, 'drill')}:${lv(w, 'arms')}`,
+  (w): ArmyGear => ({ scale: 1 + ARMY.drillScale * lv(w, 'drill'), glow: ARMY.armsGlow * lv(w, 'arms'), color: ARMY.color }),
+);

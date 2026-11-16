@@ -8,8 +8,8 @@ import { Ground, type Building, type TownMap } from '../sim/map';
 import type { BuildingState } from '../sim/world';
 import { markOccluder, type ModelLibrary } from './assets';
 import {
-  auraCells, buildingPieces, decorPiece, footprintOutline, hash01, ROCK, smokeSources, wallLevels,
-  type BuildingLook, type DamageState, type Piece, type SmokeSource,
+  auraCells, buildingPieces, decorPiece, footprintOutline, hash01, ROCK, SLIT, smokeSources, TAR, wallLevels,
+  type BuildingLook, type DamageState, type Piece, type SmokeSource, type TownFort,
 } from './buildings';
 import type { EmitterSpec, Particles } from './Particles';
 
@@ -19,7 +19,10 @@ const AURA_OPACITY = { planning: 0.38, playing: 0.1 };
 const SMOKE: Record<SmokeSource['kind'], Omit<EmitterSpec, 'x' | 'y' | 'z'>> = {
   chimney: { every: 0.4, color: 0xb0aaa4, size: 0.14, rise: 0.5, life: 2.4 },
   fire: { every: 0.14, color: 0x5b4a44, size: 0.2, rise: 0.8, life: 1.8 },
+  brazier: { every: 0.08, color: 0xff8a2a, size: 0.07, rise: 0.9, life: 0.5 },
 };
+/** Generated building pieces (Tar Pits puddles, Arrow Slits). */
+const GENERATED = { slit: { color: 0x1d1410, size: [0.03, 0.3, 0.08] }, tar: { color: 0x17110d, radius: 0.3, y: 0.012 } };
 const DUST = 0xc9b29b;
 const DAMAGED = new THREE.Color(0x8f6f60);
 /** Planning selection: roof/wall glow pulses between these, plus a gold outline and a bobbing arrow. */
@@ -73,6 +76,15 @@ export class TownView {
   private readonly barGeo: THREE.BoxGeometry;
   private readonly glow = new THREE.Color();
   private time = 0;
+  /** Generated pieces' geometry and material (Arrow Slits, Tar Pits). */
+  private readonly slit: [THREE.BufferGeometry, THREE.Material] = [
+    this.own(new THREE.BoxGeometry(...GENERATED.slit.size)),
+    this.own(new THREE.MeshStandardMaterial({ color: GENERATED.slit.color })),
+  ];
+  private readonly tar: [THREE.BufferGeometry, THREE.Material] = [
+    this.own(new THREE.CircleGeometry(GENERATED.tar.radius, 12).rotateX(-Math.PI / 2).translate(0, GENERATED.tar.y, 0)),
+    this.own(new THREE.MeshStandardMaterial({ color: GENERATED.tar.color, roughness: 0.2 })),
+  ];
 
   constructor(private readonly library: ModelLibrary, private readonly map: TownMap, private readonly particles: Particles) {
     this.makeGround();
@@ -108,17 +120,19 @@ export class TownView {
     this.root.add(this.marker);
   }
 
-  /** Rebuilds buildings whose role or damage state changed; darkens with damage; hit shake. */
-  sync(states: BuildingState[], dt: number) {
+  /** Rebuilds buildings whose role, damage state or town upgrades changed; darkens with damage; hit shake. */
+  sync(states: BuildingState[], dt: number, fort: TownFort) {
     for (const s of states) {
       const v = this.views[s.id];
       if (!v) continue;
       if (v.shake > 0) this.updateShake(v, dt);
       const frac = Math.max(0, s.hp / s.maxHp);
       const damage: DamageState = s.ruined ? 'ruined' : frac < BUILDING.damagedAt ? 'damaged' : 'intact';
-      if (!v.look || v.look.damage !== damage || v.look.role !== s.role) {
+      // Ruins show no upgrades, so a new fort doesn't rebuild them.
+      const shown = damage === 'ruined' ? undefined : fort;
+      if (!v.look || v.look.damage !== damage || v.look.role !== s.role || v.look.fort !== shown) {
         const wasStanding = v.look && v.look.damage !== 'ruined';
-        this.rebuild(v, { role: s.role, damage });
+        this.rebuild(v, { role: s.role, damage, fort: shown });
         if (damage === 'ruined' && wasStanding) this.dustBurst(v.def);
         v.lastFrac = -1;
       }
@@ -214,7 +228,11 @@ export class TownView {
     for (const e of v.emitters) this.particles.removeEmitter(e);
 
     const group = new THREE.Group();
-    for (const p of buildingPieces(v.def, look)) group.add(this.place(this.library.clone(p.model), p));
+    const generated: Piece[] = [];
+    for (const p of buildingPieces(v.def, look)) {
+      if (p.model === SLIT || p.model === TAR) generated.push(p);
+      else group.add(this.place(this.library.clone(p.model), p));
+    }
     // Own materials so this building can darken and glow on its own.
     const cloned = new Map<THREE.Material, THREE.MeshStandardMaterial>();
     group.traverse((o) => {
@@ -224,6 +242,8 @@ export class TownView {
       if (!cloned.has(src)) cloned.set(src, src.clone());
       mesh.material = cloned.get(src)!;
     });
+    // Slits and tar keep their own colour: damage and highlights tint the kit pieces only.
+    for (const p of generated) group.add(this.place(new THREE.Mesh(...(p.model === SLIT ? this.slit : this.tar)), p));
     this.root.add(group);
     v.group = group;
     v.materials = [...cloned.values()];
