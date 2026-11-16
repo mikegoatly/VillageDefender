@@ -1,5 +1,9 @@
 // Touch overlay: floating left-half joystick + right-side attack/dodge/rally buttons.
 // All styling lives in STYLE below so Phase 2 can swap in Kenney art in one place.
+// In 'pad' mode the buttons stay on screen as a legend: not tappable, each badged with its
+// controller button glyph and lit while that pad button is held.
+
+import { glyph } from './prompts';
 
 const STYLE = `
 .vd-touch { position: absolute; inset: 0; pointer-events: none; display: none; touch-action: none;
@@ -13,6 +17,11 @@ const STYLE = `
 .vd-touch-knob { width: 56px; height: 56px; margin: -28px 0 0 -28px; background: rgba(59, 36, 24, 0.55); pointer-events: none; }
 .vd-touch-btn { pointer-events: auto; touch-action: none; display: flex; align-items: center; justify-content: center;
   color: rgba(255, 240, 220, 0.9); font: 600 28px sans-serif; }
+.vd-touch .vd-touch-glyph { display: none; position: absolute; right: -8px; bottom: -8px;
+  width: 30px; height: 30px; margin: 0; background-color: #3b2418; border-radius: 50%; background-size: 115%; }
+.vd-touch.vd-touch-pad .vd-touch-zone { display: none; }
+.vd-touch.vd-touch-pad .vd-touch-btn { pointer-events: none; }
+.vd-touch.vd-touch-pad .vd-touch-glyph { display: block; }
 .vd-touch-btn.vd-pressed { background: rgba(120, 76, 50, 0.6); border-color: rgba(255, 255, 255, 0.9); }
 .vd-touch-attack { width: 88px; height: 88px;
   right: calc(24px + env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
@@ -23,6 +32,9 @@ const STYLE = `
 `;
 
 export const JOYSTICK_RADIUS = 60;
+
+/** 'touch': interactive; 'pad': buttons shown as a controller legend; 'off': hidden. */
+export type TouchMode = 'touch' | 'pad' | 'off';
 
 export interface TouchState {
   move: { x: number; y: number };
@@ -50,6 +62,8 @@ export class TouchControls {
   private stickId: number | null = null;
   private originX = 0;
   private originY = 0;
+  private mode: TouchMode = 'off';
+  private readonly buttons: Record<'attack' | 'dodge' | 'rally', HTMLDivElement>;
 
   constructor(root: HTMLElement) {
     injectStyle();
@@ -64,6 +78,12 @@ export class TouchControls {
     const attack = this.div('vd-touch-btn vd-touch-attack', this.el, '⚔');
     const dodge = this.div('vd-touch-btn vd-touch-dodge', this.el, '»');
     const rally = this.div('vd-touch-btn vd-touch-rally', this.el, '⚑');
+    this.buttons = { attack, dodge, rally };
+    for (const [btn, g] of [[attack, 'a'], [dodge, 'b'], [rally, 'lb']] as const) {
+      const badge = glyph(g);
+      badge.classList.add('vd-touch-glyph');
+      btn.appendChild(badge);
+    }
     this.bindStick(zone);
     this.bindButton(rally, (v) => {
       this.state.rally = v;
@@ -84,8 +104,22 @@ export class TouchControls {
   }
 
   setVisible(v: boolean): void {
-    this.el.classList.toggle('vd-touch-on', v);
-    if (!v) this.releaseAll();
+    this.setMode(v ? 'touch' : 'off');
+  }
+
+  setMode(mode: TouchMode): void {
+    const wasTouch = this.mode === 'touch';
+    this.mode = mode;
+    this.el.classList.toggle('vd-touch-on', mode !== 'off');
+    this.el.classList.toggle('vd-touch-pad', mode === 'pad');
+    // Anything but staying interactive drops in-flight touches (and any pad highlight).
+    if (!(wasTouch && mode === 'touch')) this.releaseAll();
+  }
+
+  /** In pad mode, lights the buttons whose controller buttons are held. */
+  showPadPressed(held: { attack: boolean; dodge: boolean; rally: boolean }): void {
+    if (this.mode !== 'pad') return;
+    for (const k of ['attack', 'dodge', 'rally'] as const) this.buttons[k].classList.toggle('vd-pressed', held[k]);
   }
 
   destroy(): void {

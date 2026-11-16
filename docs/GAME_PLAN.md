@@ -485,4 +485,6 @@ Findings:
 - Shared `input/PadNav` for every overlay: rising-edge buttons merged across all connected pads, D-pad/left stick with hold-to-repeat, and anything held when a screen opens must be released first.
 - Button prompts from Kenney Input Prompts (`public/assets/ui/prompts/<xbox|ps|switch>`), picked from the Gamepad id and shown only while a controller is the last-used input (`<html data-input data-pad>`, `ui/prompts.ts`). Keyboard hints like "(R)" hide while a pad is in use.
 - End-of-run panel is now usable by pad (D-pad + A, 600 ms guard). Main menu focus is also tracked with a class, so the highlight shows even when the window is unfocused.
+- Gameplay input (`GamepadSource`) also merges every connected pad, so a controller behind an idle device in slot 0 still moves the knight (2026-11-16).
+- With a controller, the touch buttons stay on screen as a legend: not tappable, badged with their pad glyphs (attack A, dodge B, rally LB) and lit while held.
 

@@ -16,45 +16,47 @@ const TRIGGER_THRESHOLD = 0.3;
 
 type PadLike = Pick<Gamepad, 'axes' | 'buttons' | 'connected'>;
 
-/** Gamepad (standard mapping) -> InputState. Uses the first connected pad. */
+/**
+ * Gamepad (standard mapping) -> InputState. All connected pads are merged (buttons OR-ed, the
+ * stick pushed furthest wins, any D-pad overrides the sticks), so a controller works whichever
+ * slot it landed in, even behind an idle device such as a virtual HID in slot 0.
+ */
 export class GamepadSource {
   constructor(private readonly getPads: () => ArrayLike<PadLike | null> = () => navigator.getGamepads?.() ?? []) {}
 
-  private firstPad(): PadLike | null {
-    const pads = this.getPads();
-    for (let i = 0; i < pads.length; i++) {
-      const p = pads[i];
-      if (p && p.connected) return p;
-    }
-    return null;
-  }
-
-  /** Reads the pad now. Returns neutral input when no pad is connected. */
+  /** Reads the pads now. Returns neutral input when no pad is connected. */
   poll(): InputState {
     const s = emptyInput();
-    const pad = this.firstPad();
-    if (!pad) return s;
-    const b = (i: number): boolean => !!pad.buttons[i]?.pressed;
-
-    const stick = applyRadialDeadzone(pad.axes[0] ?? 0, pad.axes[1] ?? 0, STICK_DEADZONE);
-    // D-pad: 12 up, 13 down, 14 left, 15 right. Overrides the stick when pressed.
-    let dx = (b(15) ? 1 : 0) - (b(14) ? 1 : 0);
-    let dy = (b(13) ? 1 : 0) - (b(12) ? 1 : 0);
+    const pads = this.getPads();
+    let sx = 0;
+    let sy = 0;
+    let dx = 0;
+    let dy = 0;
+    for (let i = 0; i < pads.length; i++) {
+      const pad = pads[i];
+      if (!pad || !pad.connected) continue;
+      const b = (n: number): boolean => !!pad.buttons[n]?.pressed;
+      const x = pad.axes[0] ?? 0;
+      const y = pad.axes[1] ?? 0;
+      if (Math.hypot(x, y) > Math.hypot(sx, sy)) { sx = x; sy = y; }
+      // D-pad: 12 up, 13 down, 14 left, 15 right.
+      dx += (b(15) ? 1 : 0) - (b(14) ? 1 : 0);
+      dy += (b(13) ? 1 : 0) - (b(12) ? 1 : 0);
+      s.attack ||= b(0) || (pad.buttons[7]?.value ?? 0) > TRIGGER_THRESHOLD;
+      s.dodge ||= b(1);
+      s.ability1 ||= b(2);
+      s.ability2 ||= b(3);
+      s.rally ||= b(4);
+      s.pause ||= b(9);
+    }
+    dx = Math.sign(dx);
+    dy = Math.sign(dy);
     if (dx !== 0 || dy !== 0) {
       const len = Math.hypot(dx, dy);
-      dx /= len;
-      dy /= len;
-      s.move = { x: dx, y: dy };
+      s.move = { x: dx / len, y: dy / len };
     } else {
-      s.move = stick;
+      s.move = applyRadialDeadzone(sx, sy, STICK_DEADZONE);
     }
-
-    s.attack = b(0) || (pad.buttons[7]?.value ?? 0) > TRIGGER_THRESHOLD;
-    s.dodge = b(1);
-    s.ability1 = b(2);
-    s.ability2 = b(3);
-    s.rally = b(4);
-    s.pause = b(9);
     return s;
   }
 }

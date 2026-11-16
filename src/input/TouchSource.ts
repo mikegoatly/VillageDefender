@@ -1,5 +1,5 @@
 import { emptyInput, type InputState } from '../sim/types';
-import { TouchControls } from '../ui/TouchControls';
+import { TouchControls, type TouchMode } from '../ui/TouchControls';
 
 /** Touch -> InputState. Owns the DOM overlay (TouchControls) and reads its state. */
 export class TouchSource {
@@ -26,6 +26,10 @@ export class TouchSource {
 
   setVisible(v: boolean): void {
     this.controls.setVisible(v);
+  }
+
+  setMode(mode: TouchMode): void {
+    this.controls.setMode(mode);
   }
 
   destroy(): void {

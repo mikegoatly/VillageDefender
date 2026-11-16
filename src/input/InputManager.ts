@@ -2,6 +2,10 @@ import { emptyInput, type InputDevice, type InputState } from '../sim/types';
 import { GamepadSource, isNonNeutral } from './GamepadSource';
 import { KeyboardSource } from './KeyboardSource';
 import { TouchSource } from './TouchSource';
+import type { TouchMode } from '../ui/TouchControls';
+
+/** Touch buttons are interactive for touch, a labelled legend for a controller, hidden for keyboard. */
+const TOUCH_MODE: Record<InputDevice, TouchMode> = { touch: 'touch', gamepad: 'pad', keyboard: 'off' };
 
 export interface InputManagerOptions {
   root: HTMLElement;
@@ -58,7 +62,7 @@ export class InputManager {
     this.touch = new TouchSource(opts.root);
     const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     if (coarse) this.device = 'touch';
-    this.touch.setVisible(this.device === 'touch');
+    this.touch.setMode(TOUCH_MODE[this.device]);
     opts.root.addEventListener('pointerdown', this.onRootPointerDown);
   }
 
@@ -96,6 +100,7 @@ export class InputManager {
       if (active[d] && !this.wasActive[d]) this.setDevice(d);
     }
     this.wasActive = active;
+    if (this.device === 'gamepad') this.touch.controls.showPadPressed(gp);
 
     const state = this.override
       ? { ...this.override, move: { ...this.override.move } }
@@ -118,7 +123,7 @@ export class InputManager {
   private setDevice(d: InputDevice): void {
     if (d === this.device) return;
     this.device = d;
-    this.touch.setVisible(d === 'touch');
+    this.touch.setMode(TOUCH_MODE[d]);
     for (const cb of [...this.listeners]) cb(d);
   }
 }

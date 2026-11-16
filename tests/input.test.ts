@@ -4,6 +4,7 @@ import { InputManager, mergeInputs } from '../src/input/InputManager';
 import { applyRadialDeadzone } from '../src/input/GamepadSource';
 import { TouchSource } from '../src/input/TouchSource';
 import { emptyInput, type InputState } from '../src/sim/types';
+import { aPad, type FakePad } from './helpers/pad';
 
 function key(type: 'keydown' | 'keyup', code: string): KeyboardEvent {
   const e = new KeyboardEvent(type, { code, cancelable: true });
@@ -187,5 +188,59 @@ describe('TouchSource rally button', () => {
     fire(root.querySelector('.vd-touch-rally')!, 'pointerdown');
     ts.setVisible(false);
     expect(ts.poll().rally).toBe(false);
+  });
+});
+
+describe('InputManager touch buttons as a controller legend', () => {
+  let root: HTMLElement;
+  let im: InputManager;
+  let pads: (FakePad | null)[];
+  const realGetPads = navigator.getGamepads;
+  const overlay = () => root.querySelector('.vd-touch')!;
+  const btn = (name: string) => root.querySelector(`.vd-touch-${name}`)!;
+  beforeEach(() => {
+    pads = [];
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => pads });
+    root = document.createElement('div');
+    document.body.appendChild(root);
+    im = new InputManager({ root });
+  });
+  afterEach(() => {
+    im.destroy();
+    root.remove();
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: realGetPads });
+  });
+
+  it('shows the buttons, badged with their pad glyphs, once a pad is used', () => {
+    expect(overlay().classList.contains('vd-touch-on')).toBe(false);
+    pads = [aPad([], [1, 0])];
+    im.poll();
+    expect(im.activeDevice).toBe('gamepad');
+    expect(overlay().classList.contains('vd-touch-on')).toBe(true);
+    expect(overlay().classList.contains('vd-touch-pad')).toBe(true);
+    const badge = (name: string) => (btn(name).querySelector('.vd-touch-glyph') as HTMLElement).dataset.btn;
+    expect([badge('attack'), badge('dodge'), badge('rally')]).toEqual(['a', 'b', 'lb']);
+  });
+
+  it('lights a button while its pad button is held', () => {
+    pads = [aPad(['b'])];
+    im.poll();
+    expect(btn('dodge').classList.contains('vd-pressed')).toBe(true);
+    expect(btn('attack').classList.contains('vd-pressed')).toBe(false);
+    pads = [aPad([])];
+    im.poll();
+    expect(btn('dodge').classList.contains('vd-pressed')).toBe(false);
+  });
+
+  it('hides them again when the keyboard is used', () => {
+    pads = [aPad(['a'])];
+    im.poll();
+    pads = [aPad([])];
+    im.poll();
+    press('KeyW');
+    im.poll();
+    release('KeyW');
+    expect(overlay().classList.contains('vd-touch-on')).toBe(false);
+    expect(btn('attack').classList.contains('vd-pressed')).toBe(false);
   });
 });
