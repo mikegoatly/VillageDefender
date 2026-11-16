@@ -15,7 +15,7 @@ import { ModelLibrary } from './assets';
 import { characterModelPaths } from './characters';
 import { EFFECT_MODELS } from './Effects';
 import { Stage } from './Stage';
-import { ThreeRenderer } from './ThreeRenderer';
+import { ThreeRenderer, type RenderPerf } from './ThreeRenderer';
 import { TOWN_MODELS } from './buildings';
 
 export async function startThreeGame(root: HTMLElement) {
@@ -82,7 +82,7 @@ class PerfMeter {
   private frameMs = 16.7;
   private updateMs = 0;
   private renderMs = 0;
-  private draw = { calls: 0, triangles: 0, units: 0, particles: 0 };
+  private draw: RenderPerf = { renderMs: 0, calls: 0, triangles: 0, units: 0, particles: 0 };
   private el: HTMLPreElement | null = null;
   private lastText = 0;
 
@@ -93,7 +93,7 @@ class PerfMeter {
     document.body.appendChild(this.el);
   }
 
-  frame(frameMs: number, updateMs: number, perf: { renderMs: number; calls: number; triangles: number; units: number; particles: number }, world: World) {
+  frame(frameMs: number, updateMs: number, perf: RenderPerf, world: World) {
     const k = 0.05;
     this.frameMs += (Math.min(frameMs, 250) - this.frameMs) * k;
     this.updateMs += (updateMs - this.updateMs) * k;

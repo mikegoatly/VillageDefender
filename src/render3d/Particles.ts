@@ -35,6 +35,8 @@ interface PoolStyle {
   gravity: number;
   /** Fraction of sideways speed lost per second. */
   drag: number;
+  /** Fraction of falling speed kept when bouncing off the ground (0: pass through it). */
+  bounce: number;
   /** Size over life, t = 0..1. */
   sizeAt(t: number): number;
   /** Sparks tumble quickly; puffs turn slowly. */
@@ -87,7 +89,7 @@ class Pool {
   }
 
   update(dt: number) {
-    const { gravity, drag, spinRate } = this.style;
+    const { gravity, drag, bounce, spinRate } = this.style;
     const keep = 1 - Math.min(1, dt * drag);
     let k = 0;
     while (k < this.count) {
@@ -99,10 +101,9 @@ class Pool {
       const i = k * 3;
       this.vel[i + 1] -= gravity * dt;
       for (let a = 0; a < 3; a++) this.pos[i + a] += this.vel[i + a] * dt;
-      // Sparks bounce off the ground instead of sinking through it.
-      if (this.pos[i + 1] < 0.02 && this.vel[i + 1] < 0) {
+      if (bounce > 0 && this.pos[i + 1] < 0.02 && this.vel[i + 1] < 0) {
         this.pos[i + 1] = 0.02;
-        this.vel[i + 1] *= -0.3;
+        this.vel[i + 1] *= -bounce;
       }
       // Drag on the sideways throw so bursts settle into a drifting cloud.
       this.vel[i] *= keep;
@@ -155,6 +156,7 @@ export class Particles {
     material: new THREE.MeshLambertMaterial({ flatShading: true }),
     gravity: 0,
     drag: 2,
+    bounce: 0,
     // Swell quickly, then shrink to nothing.
     sizeAt: (t) => Math.min(1, 0.35 + t * 3) * (1 - t * t),
     spinRate: 1,
@@ -166,6 +168,8 @@ export class Particles {
     material: new THREE.MeshBasicMaterial(),
     gravity: GRAVITY,
     drag: 1.5,
+    // Bounce off the ground instead of sinking through it.
+    bounce: 0.3,
     sizeAt: (t) => 1 - t,
     spinRate: 12,
   });

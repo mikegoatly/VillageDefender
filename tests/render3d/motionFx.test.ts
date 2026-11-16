@@ -2,16 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { MONSTERS } from '../../src/data/monsters';
 import { rankedWeapon, WEAPONS } from '../../src/data/weapons';
 import { computeMods } from '../../src/data/upgrades';
-import { dashSize, DUST_SPACING, DustTrails, slashShape, type DustPuff } from '../../src/render3d/motionFx';
+import { dashSize, DUST_SPACING, DustTrails, slashShape, sparkNormal } from '../../src/render3d/motionFx';
 import type { Unit } from '../../src/sim/world';
 import { aWorld } from '../helpers/worldBuilder';
 
+interface Puff { x: number; z: number; dirX: number; dirZ: number; size: number }
+
 /** Moves `u` by (dx, dy) and runs one trail update, returning the puffs it made. */
-function step(trails: DustTrails, u: Unit, dx: number, dy: number): DustPuff[] {
+function step(trails: DustTrails, u: Unit, dx: number, dy: number): Puff[] {
   u.x += dx;
   u.y += dy;
-  const out: DustPuff[] = [];
-  trails.update([u], (p) => out.push({ ...p }));
+  const out: Puff[] = [];
+  trails.update([[u]], (x, z, dirX, dirZ, size) => out.push({ x, z, dirX, dirZ, size }));
   return out;
 }
 
@@ -89,6 +91,9 @@ describe('DustTrails', () => {
     expect(trails.tracked).toBe(1);
     trails.update([], () => {});
     expect(trails.tracked).toBe(0);
+    step(trails, knight, 0, 0);
+    trails.update([[]], () => {});
+    expect(trails.tracked).toBe(0);
   });
 });
 
@@ -108,5 +113,23 @@ describe('slashShape', () => {
     expect(slashShape(wide, mods.knight)!.halfArc).toBeCloseTo(Math.PI);
     expect(slashShape(WEAPONS.hammer, mods.knight)).toBeNull();
     expect(slashShape(WEAPONS.flail, mods.knight)).toBeNull();
+  });
+});
+
+describe('sparkNormal', () => {
+  const camera = { x: Math.SQRT1_2, y: Math.SQRT1_2 };
+  const len = (v: { x: number; y: number }) => Math.hypot(v.x, v.y);
+
+  it('points between the attacker and the camera', () => {
+    const n = sparkNormal({ x: 5, y: 5 }, { x: 4, y: 5 }, camera);
+    expect(len(n)).toBeCloseTo(1);
+    expect(n.x).toBeLessThan(camera.x);
+    expect(n.y).toBeGreaterThan(0);
+  });
+
+  it('faces the camera when nobody is credited with the hit', () => {
+    const n = sparkNormal({ x: 5, y: 5 }, null, camera);
+    expect(n.x).toBeCloseTo(camera.x);
+    expect(n.y).toBeCloseTo(camera.y);
   });
 });

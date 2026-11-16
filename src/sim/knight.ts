@@ -2,6 +2,7 @@
 
 import { DT, KNIGHT } from '../data/balance';
 import { RALLY } from '../data/rookies';
+import type { Mods } from '../data/upgrades';
 import type { WeaponDef } from '../data/weapons';
 import { areaHits, swingHits } from './combat';
 import { screenDirToGround } from './iso';
@@ -84,13 +85,19 @@ function knightDamage(w: World, u: Unit, wd: WeaponDef): number {
   return wd.damage * w.progression.mods.knight.damageMul * w.smithyMulAt(u.x, u.y);
 }
 
+/** Reach and half-angle an 'arc' weapon sweeps after upgrades (the renderer draws the same shape). */
+export function swingShape(wd: WeaponDef, km: Mods['knight']): { reach: number; halfArc: number } {
+  return { reach: wd.range * km.rangeMul, halfArc: Math.min(Math.PI, wd.arc * km.arcMul) };
+}
+
 /** Applies the knight's weapon at the moment the attack lands. */
 function weaponHit(w: World, u: Unit, wd: WeaponDef) {
   const km = w.progression.mods.knight;
   const damage = knightDamage(w, u, wd);
   const knockback = wd.knockback * km.knockbackMul;
   if (wd.style === 'arc') {
-    swingHits(w, u, wd.range * km.rangeMul, Math.min(Math.PI, wd.arc * km.arcMul), damage, knockback);
+    const s = swingShape(wd, km);
+    swingHits(w, u, s.reach, s.halfArc, damage, knockback);
   } else if (wd.style === 'area') {
     // Warhammer: slam centred ahead of the knight.
     const reach = wd.range * km.rangeMul;

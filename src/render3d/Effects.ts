@@ -16,9 +16,8 @@ const ARROW_SCALE = 1.6;
 const AXE = { scale: 0.18, centre: 1.5, spin: 18 };
 /** Effects lie just above the ground and roads. */
 const GROUND_Y = 0.06;
-/** Slashes are drawn at about waist height. */
-const SLASH_Y = 0.4;
-const SLASH_COLOR = 0xf6f2e6;
+/** Slash crescent: waist height, colour, fill and edge opacity, and sweep and fade times (s). */
+export const SLASH = { y: 0.4, color: 0xf6f2e6, fill: 0.22, edge: 0.85, sweep: 0.08, fade: 0.2 };
 
 interface Transient {
   /** Advances by dt; returns false when finished. */
@@ -160,39 +159,34 @@ export class Effects {
 
   /**
    * Sword/spear slash: a pale crescent at waist height that sweeps across the swing's arc in
-   * `sweep` seconds, then fades. Its size is the swing's real reach and arc, so upgrades show.
+   * SLASH.sweep seconds, then fades. Its size is the swing's real reach and arc, so upgrades show.
    */
-  slash(x: number, z: number, facingX: number, facingZ: number, reach: number, halfArc: number, sweep = 0.08) {
-    const inner = Math.min(0.3, reach * 0.4);
+  slash(x: number, z: number, facingX: number, facingZ: number, reach: number, halfArc: number) {
     const segments = Math.max(4, Math.ceil(halfArc * 16));
-    const group = new THREE.Group();
-    // A faint fan over the whole arc and a bright band along its edge.
-    const fill = this.arc(group, inner, reach, segments, halfArc, 0.22);
-    const edge = this.arc(group, reach * 0.82, reach, segments, halfArc, 0.85);
-    group.position.set(x, SLASH_Y, z);
-    group.rotation.y = -Math.atan2(facingZ, facingX);
-    this.root.add(group);
-    const fade = 0.2;
+    const angle = -Math.atan2(facingZ, facingX);
+    // A faint fan over the whole arc and a bright band along its edge, centred on the facing.
+    const layers = [
+      { inner: Math.min(0.3, reach * 0.4), opacity: SLASH.fill },
+      { inner: reach * 0.82, opacity: SLASH.edge },
+    ].map(({ inner, opacity }) => {
+      const mesh = this.flat(new THREE.RingGeometry(inner, reach, segments, 1, -halfArc, halfArc * 2), SLASH.color, opacity, x, z, SLASH.y - GROUND_Y);
+      mesh.rotation.y = angle;
+      return { mesh, material: mesh.material as THREE.MeshBasicMaterial, opacity, perSegment: mesh.geometry.index!.count / segments };
+    });
     let t = 0;
     this.items.push({
       update: (dt) => {
         t += dt;
         // RingGeometry indexes segment by segment from thetaStart, so a partial draw range sweeps it.
-        const reveal = Math.min(1, t / sweep);
-        for (const m of [fill, edge]) {
-          const n = m.geometry.index!.count / segments;
-          m.geometry.setDrawRange(0, Math.ceil(segments * reveal) * n);
+        const shown = Math.ceil(segments * Math.min(1, t / SLASH.sweep));
+        const fade = 1 - Math.max(0, (t - SLASH.sweep) / SLASH.fade);
+        for (const l of layers) {
+          l.mesh.geometry.setDrawRange(0, shown * l.perSegment);
+          l.material.opacity = l.opacity * fade;
         }
-        const k = Math.max(0, (t - sweep) / fade);
-        (fill.material as THREE.MeshBasicMaterial).opacity = 0.22 * (1 - k);
-        (edge.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - k);
-        return t < sweep + fade;
+        return t < SLASH.sweep + SLASH.fade;
       },
-      dispose: () => {
-        group.removeFromParent();
-        disposeMesh(fill);
-        disposeMesh(edge);
-      },
+      dispose: () => layers.forEach((l) => disposeMesh(l.mesh)),
     });
   }
 
@@ -241,18 +235,6 @@ export class Effects {
     }
     this.arrows.setCount(arrows);
     this.axes.setCount(axes);
-  }
-
-  /** A flat ring sector centred on +X (before the group's rotation), added to `group`. */
-  private arc(group: THREE.Group, inner: number, outer: number, segments: number, halfArc: number, opacity: number): THREE.Mesh {
-    const mesh = new THREE.Mesh(
-      // Flat on the ground; after rotateX(-π/2) the ring's angle θ points along (cos θ, −sin θ) in x/z.
-      new THREE.RingGeometry(inner, outer, segments, 1, -halfArc, halfArc * 2).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: SLASH_COLOR, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }),
-    );
-    mesh.renderOrder = 2;
-    group.add(mesh);
-    return mesh;
   }
 
   /** A flat, unlit, see-through shape on the ground. */
