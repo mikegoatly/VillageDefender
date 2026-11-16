@@ -211,7 +211,7 @@ export class UnitBatches {
     const gltf = this.library.gltf(CHARACTER_MODELS[look.sheet]);
     const model = cloneSkinned(gltf.scene);
     this.attach(model, look.attachments);
-    const parts = collectParts(model, (m) => this.unitMaterial(m, look.alpha, look.pallor));
+    const parts = collectParts(model, (m) => this.unitMaterial(m, look.alpha, look.pallor, look.gild ?? 0));
     for (const p of parts) if (p.owned) this.owned.push(p.geometry);
 
     const mixer = new THREE.AnimationMixer(model);
@@ -259,11 +259,11 @@ export class UnitBatches {
   }
 
   /** Shared per (source material, alpha); tint comes from the per-instance colour. */
-  private unitMaterial(src: THREE.Material, alpha: number, pallor: number): THREE.Material {
-    const key = `${src.uuid}:${alpha}:${pallor}`;
+  private unitMaterial(src: THREE.Material, alpha: number, pallor: number, gild: number): THREE.Material {
+    const key = `${src.uuid}:${alpha}:${pallor}:${gild}`;
     let m = this.materials.get(key);
     if (!m) {
-      const c = this.own(withUnitFx((src as THREE.MeshStandardMaterial).clone(), pallor));
+      const c = this.own(withUnitFx((src as THREE.MeshStandardMaterial).clone(), pallor, gild));
       if (alpha < 1) {
         c.transparent = true;
         c.opacity = alpha;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MONSTERS, type MonsterKind } from '../../src/data/monsters';
 import { fitView, frustumFor, projectGround } from '../../src/render3d/camera';
-import { animFor, CHARACTER_MODELS, characterModelPaths, CORPSE_SINK, lookFor, unitFx, WADE, wadeDepth } from '../../src/render3d/characters';
+import { animFor, CHARACTER_MODELS, characterModelPaths, clipNames, CORPSE_SINK, lookFor, unitFx, WADE, wadeDepth } from '../../src/render3d/characters';
 import { mapFromAscii } from '../helpers/mapBuilder';
 import { generateTown } from '../../src/sim/map';
 import { aWorld } from '../helpers/worldBuilder';
@@ -69,6 +69,30 @@ describe('lookFor', () => {
     const base = lookFor(rookies[0], 'sword').scale;
     rookies[0].rank = 2;
     expect(lookFor(rookies[0], 'sword').scale).toBeGreaterThan(base);
+  });
+
+  it.each(['swordsman', 'archer'] as const)('starts a %s as a recruit, kits them out as a veteran and gilds a captain', (kind) => {
+    const { rookies } = aWorld().withRookie(kind, 3, 3).build();
+    const r = rookies[0];
+    const [recruit, veteran, captain] = [0, 1, 2].map((rank) => {
+      r.rank = rank;
+      return lookFor(r, 'sword');
+    });
+    expect(CHARACTER_MODELS[recruit.sheet]).toBe('mini-characters/character-male-f');
+    expect(CHARACTER_MODELS[veteran.sheet]).not.toBe(CHARACTER_MODELS[recruit.sheet]);
+    expect(captain.sheet).toBe(veteran.sheet);
+    expect(recruit.gild ?? 0).toBe(0);
+    expect(veteran.gild ?? 0).toBe(0);
+    expect(captain.gild).toBeGreaterThan(0);
+    expect(new Set([recruit.key, veteran.key, captain.key]).size).toBe(3);
+  });
+
+  it('gives recruit archers a bow and the shooting clip, and recruit swordsmen a melee swing', () => {
+    const { rookies } = aWorld().withRookie('archer', 3, 3).withRookie('swordsman', 4, 4).build();
+    const [archer, swordsman] = [lookFor(rookies[0], 'sword'), lookFor(rookies[1], 'sword')];
+    expect(archer.attachments[0].model).toContain('bow');
+    expect(clipNames(archer.sheet).attack).toBe('holding-both-shoot');
+    expect(clipNames(swordsman.sheet).attack).toBe('attack-melee-right');
   });
 });
 

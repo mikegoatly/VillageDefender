@@ -16,6 +16,9 @@ export const CHARACTER_MODELS: Record<string, string> = {
   vampire: 'graveyard/character-vampire',
   swordsman: 'mini-arena/character-soldier',
   archer: 'mini-forest/character-archer',
+  // Unranked rookies are the same scowling recruit; promotion swaps in the kitted-out model.
+  recruitSwordsman: 'mini-characters/character-male-f',
+  recruitArcher: 'mini-characters/character-male-f',
   necromancer: 'graveyard/character-vampire',
   skeletonArcher: 'graveyard/character-skeleton',
   sapper: 'mini-characters/character-male-a',
@@ -53,6 +56,8 @@ const ATTACHMENTS: Record<string, Attachment[]> = {
   orc: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
   swordsman: [{ ...RIGHT, model: 'mini-arena/weapon-sword' }, { ...SHIELD, scale: 0.6 }],
   archer: [BOW],
+  recruitSwordsman: [{ ...RIGHT, model: 'medieval-weapons/club-a', scale: 0.13 }],
+  recruitArcher: [BOW],
   skeletonArcher: [BOW],
   sapper: [{ ...RIGHT, model: 'mini-dungeon/barrel', scale: 0.45 }],
   necromancer: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
@@ -66,13 +71,16 @@ export function characterModelPaths(): string[] {
   return [...new Set([...Object.values(CHARACTER_MODELS), ...attached])];
 }
 
+/** Sheets that shoot (play the bow clip instead of a melee swing). */
+const BOW_SHEETS = new Set(['archer', 'recruitArcher', 'skeletonArcher']);
+
 export type AnimName = 'idle' | 'walk' | 'sprint' | 'attack' | 'die';
 
 /** Clip in the model's GLB for each animation the game plays. */
 export function clipNames(sheet: string): Record<AnimName, string> {
   return {
     idle: 'idle', walk: 'walk', sprint: 'sprint', die: 'die',
-    attack: sheet === 'archer' || sheet === 'skeletonArcher' ? 'holding-both-shoot' : 'attack-melee-right',
+    attack: BOW_SHEETS.has(sheet) ? 'holding-both-shoot' : 'attack-melee-right',
   };
 }
 
@@ -145,6 +153,8 @@ export interface UnitLook {
   alpha: number;
   /** Colour drained towards grey, 0..1 (MonsterDef.pallor). */
   pallor: number;
+  /** Colour pushed towards gold, 0..1 (captains). */
+  gild?: number;
   /** Size relative to a normal character. */
   scale: number;
 }
@@ -158,7 +168,16 @@ export function lookFor(u: Unit, weapon: WeaponKind): UnitLook {
   if (u.kind === 'knight') {
     return { key: `knight:${weapon}`, sheet: 'knight', attachments: KNIGHT_WEAPONS[weapon], tint: 0xffffff, alpha: 1, pallor: 0, scale: 1 };
   }
-  const sheet = ROOKIES[u.kind as RookieKind].sheet;
+  // Rank 0 is an unarmoured recruit, veterans get the full kit and captains are gilded.
+  const kitted = ROOKIES[u.kind as RookieKind].sheet;
+  const sheet = u.rank === 0 ? RECRUIT_SHEETS[u.kind as RookieKind] : kitted;
+  const gild = u.rank >= 2 ? CAPTAIN_GILD : 0;
   // Promotions: slightly bigger body (same as the sprite renderer).
-  return { key: sheet, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint: 0xffffff, alpha: 1, pallor: 0, scale: 1 + 0.06 * u.rank };
+  return { key: `${sheet}:${gild}`, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint: 0xffffff, alpha: 1, pallor: 0, gild, scale: 1 + 0.06 * u.rank };
 }
+
+/** Sheet an unranked rookie of each class is drawn with. */
+const RECRUIT_SHEETS: Record<RookieKind, string> = { swordsman: 'recruitSwordsman', archer: 'recruitArcher' };
+
+/** How far a captain's colours are pushed to gold, 0..1 (see withUnitFx). */
+export const CAPTAIN_GILD = 0.8;

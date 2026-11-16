@@ -48,7 +48,8 @@ const modelPacks = [
   {
     src: '3D assets/Mini Characters/Models/GLB format',
     dest: 'mini-characters',
-    files: ['character-male-a', 'character-female-b'],
+    // male-f: the scowling recruit every rookie starts as.
+    files: ['character-male-a', 'character-female-b', 'character-male-f'],
   },
   {
     src: '3D assets/Mini Forest/Models/GLB format',

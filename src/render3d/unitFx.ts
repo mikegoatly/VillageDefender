@@ -12,17 +12,27 @@ function pallorCode(pallor: number): string {
   return `gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(${luma}) * vec3(0.92, 1.0, 1.04) + 0.04, ${pallor.toFixed(3)});\n`;
 }
 
+/**
+ * Fragment code gilding colour by `gild` (0 = none): keeps the shading but swaps the hue for a
+ * bright gold. A plain tint multiplies, so on dark armour it would only get muddier.
+ */
+function gildCode(gild: number): string {
+  if (gild <= 0) return '';
+  const luma = 'dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11))';
+  return `gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(${luma}) * vec3(2.2, 1.25, 0.25) + vec3(0.1, 0.03, 0.0), ${gild.toFixed(3)});\n`;
+}
+
 /** Adds the instanceFx attribute to a standard material's shaders (call once per material). */
-export function withUnitFx<T extends THREE.Material>(material: T, pallor = 0): T {
+export function withUnitFx<T extends THREE.Material>(material: T, pallor = 0, gild = 0): T {
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\nattribute vec2 ${FX_ATTRIBUTE};\nvarying vec2 vUnitFx;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>\nvUnitFx = ${FX_ATTRIBUTE};`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vUnitFx;')
-      .replace('#include <opaque_fragment>', `#include <opaque_fragment>\n${pallorCode(pallor)}gl_FragColor.rgb = mix(gl_FragColor.rgb, vUnitFx.x < 0.0 ? vec3(1.0, 0.1, 0.05) : vec3(1.0), abs(vUnitFx.x));\ngl_FragColor.a *= vUnitFx.y;`);
+      .replace('#include <opaque_fragment>', `#include <opaque_fragment>\n${pallorCode(pallor)}${gildCode(gild)}gl_FragColor.rgb = mix(gl_FragColor.rgb, vUnitFx.x < 0.0 ? vec3(1.0, 0.1, 0.05) : vec3(1.0), abs(vUnitFx.x));\ngl_FragColor.a *= vUnitFx.y;`);
   };
-  material.customProgramCacheKey = () => `vd-unit-fx-${pallor}`;
+  material.customProgramCacheKey = () => `vd-unit-fx-${pallor}-${gild}`;
   return material;
 }
 
