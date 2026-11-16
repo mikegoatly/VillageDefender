@@ -58,6 +58,12 @@ export interface Unit {
   burstCooldown: number;
   /** Necromancer: seconds until the next raise. Sapper: seconds of fuse left (0 = not lit). */
   abilityIn: number;
+  /** Seconds of stun left (banshee wail, gravekeeper toll): the unit can't move or attack. */
+  stun: number;
+  /** Banshee: seconds of wail wind-up left (0 = not wailing). */
+  windup: number;
+  /** Gravedigger: travelling underground, out of reach of every weapon. */
+  burrowed: boolean;
   /** Id of the necromancer that raised this monster (raised monsters give no xp or coins). */
   raisedBy?: number;
   /** Orc Warlord only. */
@@ -142,6 +148,9 @@ export type SimEvent =
   | { type: 'bossBoulderWarn'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'bossBoulder'; unit: number; x: number; y: number; radius: number }
   | { type: 'bossSummon'; unit: number; count: number; side: Side }
+  | { type: 'wailWarn'; unit: number; x: number; y: number; radius: number; time: number }
+  | { type: 'wail'; unit: number; x: number; y: number; radius: number }
+  | { type: 'monsterSurfaced'; unit: number; x: number; y: number }
   | { type: 'levelEnd'; won: boolean; stars: number; reason: 'knight' | 'town' | null };
 
 export interface WorldOptions {

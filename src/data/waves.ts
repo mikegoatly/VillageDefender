@@ -43,6 +43,24 @@ export const TOWN2_WAVES: WaveDef[] = [
   { monsters: { troll: 1, zombie: 6, orc: 3, sapper: 2, skeletonArcher: 2, imp: 4 }, sides: 3 },
 ];
 
+/**
+ * Town 3 (haunted graveyard): plated bone knights (1), banshees whose wail stuns (3),
+ * gravediggers that tunnel past every chokepoint (4), then the older Town 2 threats mixed back in.
+ * The Gravekeeper raises the dead from the gravestones in wave 10.
+ */
+export const TOWN3_WAVES: WaveDef[] = [
+  { monsters: { zombie: 8, skeleton: 3, boneKnight: 1 }, sides: 1 },
+  { monsters: { zombie: 7, orc: 3, boneKnight: 2, ghost: 2 }, sides: 2 },
+  { monsters: { zombie: 8, orc: 3, skeleton: 3, boneKnight: 1, banshee: 1 }, sides: 2 },
+  { monsters: { zombie: 8, orc: 4, gravedigger: 3, skeletonArcher: 2 }, sides: 2 },
+  { monsters: { zombie: 8, orc: 4, boneKnight: 2, banshee: 2, necromancer: 1 }, sides: 3 },
+  { monsters: { zombie: 9, orc: 5, gravedigger: 3, vampire: 2, sapper: 2 }, sides: 3 },
+  { monsters: { zombie: 10, boneKnight: 3, banshee: 2, skeletonArcher: 3, ghost: 2 }, sides: 3 },
+  { monsters: { zombie: 10, orc: 6, gravedigger: 4, necromancer: 1, brute: 1, boneKnight: 2 }, sides: 3 },
+  { monsters: { zombie: 10, orc: 6, banshee: 3, gravedigger: 3, vampire: 2, boneKnight: 3, brute: 1 }, sides: 3 },
+  { monsters: { gravekeeper: 1, zombie: 6, boneKnight: 3, banshee: 2, gravedigger: 3, skeletonArcher: 2 }, sides: 3 },
+];
+
 /** Flattens a wave into a spawn order that mixes kinds rather than sending them in blocks. */
 export function spawnOrder(w: WaveDef): MonsterKind[] {
   const left = { ...w.monsters } as Record<MonsterKind, number>;

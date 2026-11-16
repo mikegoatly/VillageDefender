@@ -107,6 +107,9 @@ describe('TOWN_MODELS', () => {
       }
     }
     for (const k of ['tree', 'well'] as const) used.add(decorPiece(aDecor(k)).model);
+    for (let i = 0; i < 40; i++) {
+      for (const k of ['tree', 'rock', 'well'] as const) used.add(decorPiece(aDecor(k, i, i * 3), 'graveyard').model);
+    }
     used.delete(ROCK);
     for (const m of used) expect(TOWN_MODELS).toContain(m);
   });

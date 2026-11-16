@@ -3,6 +3,7 @@
 import { WAVES } from '../data/balance';
 import type { MonsterKind } from '../data/monsters';
 import type { RookieKind } from '../data/rookies';
+import { MAX_WEAPON_RANK, type WeaponKind } from '../data/weapons';
 import { damageBuilding, damageUnit } from './combat';
 import { grantXp } from './gems';
 import type { Side } from './map';
@@ -35,6 +36,12 @@ export function debugAddRookie(w: World, kind: RookieKind) {
   const r = w.addRookie(k.x + 0.6, k.y + 0.6, kind);
   collideCells(w, r);
   w.events.push({ type: 'rookieJoined', unit: r.id, kind, building: -1 });
+}
+
+/** Equips a weapon at a shop rank immediately, even mid-run. */
+export function debugSetWeapon(w: World, kind: WeaponKind, rank: number) {
+  w.weapon = kind;
+  w.weaponRanks[kind] = Math.max(0, Math.min(MAX_WEAPON_RANK, Math.round(rank)));
 }
 
 export function debugHealKnight(w: World) {

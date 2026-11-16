@@ -2,8 +2,8 @@
 
 import { DT } from '../data/balance';
 import { MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
-import { updateBoss } from './boss';
-import { damageBuilding, damageUnit, hurtFriendliesInRadius, hurtFriendly } from './combat';
+import { tickBossTimers, updateBoss } from './boss';
+import { damageBuilding, damageUnit, hurtFriendliesInRadius, hurtFriendly, stunFriendliesInRadius } from './combat';
 import type { FlowField } from './flowField';
 import { isWalkable } from './map';
 import type { Unit } from './model';
@@ -21,6 +21,7 @@ export function updateMonster(w: World, m: Unit) {
   m.moving = false;
 
   if (def.raise) raiseDead(w, m, def);
+  if (m.boss) tickBossTimers(w, m, m.boss);
   if (def.explodes && m.abilityIn > 0) {
     burnFuse(w, m, def);
     return;
@@ -35,6 +36,11 @@ export function updateMonster(w: World, m: Unit) {
     return;
   }
 
+  if (m.burrowed) {
+    tunnel(w, m, def);
+    return;
+  }
+  if (def.wail && wail(w, m, def)) return;
   if (def.flee && fleeKnight(w, m, def)) return;
   if (def.ranged && rangedAttack(w, m, def)) return;
 
@@ -263,6 +269,51 @@ function raiseDead(w: World, m: Unit, def: MonsterDef) {
     z.raisedBy = m.id;
     w.events.push({ type: 'monsterRaised', unit: z.id, by: m.id, x, y });
   }
+}
+
+/**
+ * Banshee: when a friendly gets close and the wail is ready, stands still for the telegraph, then
+ * hurts and stuns everyone in the circle. True while it is winding up (or just started to).
+ */
+function wail(w: World, m: Unit, def: MonsterDef): boolean {
+  const wl = def.wail!;
+  if (m.windup > 0) {
+    m.windup -= DT;
+    setState(m, 'idle', true);
+    if (m.windup <= 0) {
+      m.windup = 0;
+      w.events.push({ type: 'wail', unit: m.id, x: m.x, y: m.y, radius: wl.radius });
+      stunFriendliesInRadius(w, m.x, m.y, wl.radius, wl.damage, wl.stun);
+    }
+    return true;
+  }
+  m.abilityIn = Math.max(0, m.abilityIn - DT);
+  if (m.abilityIn > 0) return false;
+  const f = nearestFriendly(w, m.x, m.y);
+  if (!f || Math.hypot(f.x - m.x, f.y - m.y) > wl.range) return false;
+  m.windup = wl.telegraph;
+  m.abilityIn = wl.every;
+  setState(m, 'idle', true);
+  w.events.push({ type: 'wailWarn', unit: m.id, x: m.x, y: m.y, radius: wl.radius, time: wl.telegraph });
+  return true;
+}
+
+/** Gravedigger: tunnels straight to the nearest building, then surfaces for good beside it. */
+function tunnel(w: World, m: Unit, def: MonsterDef) {
+  const cell = nearestStandingCell(w, m.x, m.y);
+  if (!cell) {
+    setState(m, 'idle', true);
+    return;
+  }
+  const dx = cell[0] - m.x;
+  const dy = cell[1] - m.y;
+  if (Math.hypot(dx, dy) <= def.burrows!.surfaceRange) {
+    m.burrowed = false;
+    setState(m, 'idle');
+    w.events.push({ type: 'monsterSurfaced', unit: m.id, x: m.x, y: m.y });
+    return;
+  }
+  steer(w, m, null, dx, dy, def.burrows!.speedMul);
 }
 
 /** Sapper: stands still while the fuse burns, then blows up (no reward: it did its job). */

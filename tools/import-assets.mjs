@@ -37,6 +37,12 @@ const modelPacks = [
       'character-keeper',
       // Town props (role buildings, ruins).
       'cross', 'candle-multiple', 'debris', 'debris-wood',
+      // Graveyard theme (Town 3) decor and scatter.
+      'pine', 'pine-crooked', 'pine-fall', 'pine-fall-crooked',
+      'gravestone-bevel', 'gravestone-broken', 'gravestone-cross', 'gravestone-cross-large',
+      'gravestone-round', 'gravestone-wide', 'gravestone-decorative', 'gravestone-debris',
+      'grave', 'coffin', 'fire-basket', 'lightpost-single', 'pillar-obelisk', 'pumpkin-carved',
+      'crypt-small', 'iron-fence-border', 'hay-bale',
     ],
   },
   {

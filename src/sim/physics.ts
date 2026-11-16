@@ -56,7 +56,7 @@ export function integrate(w: World, u: Unit) {
   }
   // Phasing monsters (ghosts) ignore buildings and trees; only the map edge contains them.
   const def = u.team === 'enemy' ? MONSTERS[u.kind as MonsterKind] : null;
-  if (def?.phasing) keepOnMap(w, u);
+  if (def?.phasing || u.burrowed) keepOnMap(w, u);
   else collideCells(w, u, def?.wades ? isWadeable : isWalkable);
 }
 

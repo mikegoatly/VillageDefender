@@ -18,6 +18,13 @@ export function updateKnight(w: World, u: Unit, input: InputState | undefined) {
   const km = w.progression.mods.knight;
   if (km.regen > 0) u.hp = Math.min(u.maxHp, u.hp + km.regen * DT);
   const inp = input ?? { move: { x: 0, y: 0 }, attack: false, dodge: false } as InputState;
+  if (u.stun > 0) {
+    // Stunned (wail, toll): frozen in place, unable to attack or dodge.
+    u.moving = false;
+    u.dodgeHeld = inp.dodge;
+    if (u.state !== 'idle') setState(u, 'idle');
+    return;
+  }
   const move = screenDirToGround(inp.move.x, inp.move.y);
   const moveLen = Math.hypot(move.x, move.y);
 

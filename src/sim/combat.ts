@@ -4,12 +4,29 @@ import { KNIGHT } from '../data/balance';
 import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ARMY } from '../data/rookies';
 import type { BuildingState, Unit } from './model';
+import { friendlyById } from './queries';
 import { applyRookieStats } from './rookieStats';
 import { setState } from './units';
 import type { World } from './world';
 
-/** Damages a monster; `by` is the attacking unit id (-1 for buildings/thorns). */
-export function damageUnit(w: World, u: Unit, amount: number, by: number) {
+/** Armour covers everything within about 80° of the way a plated monster faces. */
+const ARMOR_FRONT_COS = 0.17;
+
+/**
+ * Damages a monster; `by` is the attacking unit id (-1 for buildings/thorns). Plated monsters
+ * (bone knights) take reduced damage from a friendly standing in front of them, unless `ignoreArmor`.
+ */
+export function damageUnit(w: World, u: Unit, amount: number, by: number, ignoreArmor = false) {
+  const armor = u.team === 'enemy' && !ignoreArmor ? MONSTERS[u.kind as MonsterKind].armor : undefined;
+  if (armor) {
+    const attacker = friendlyById(w, by);
+    if (attacker) {
+      const dx = attacker.x - u.x;
+      const dy = attacker.y - u.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if ((dx * u.facing.x + dy * u.facing.y) / d > ARMOR_FRONT_COS) amount *= 1 - armor.front;
+    }
+  }
   u.hp -= amount;
   w.events.push({ type: 'hit', unit: u.id, by, damage: amount, x: u.x, y: u.y });
   if (u.hp <= 0) {
@@ -90,6 +107,16 @@ export function hurtFriendliesInRadius(w: World, cx: number, cy: number, radius:
   }
 }
 
+/** Hurts and stuns every living knight and rookie whose body overlaps a circle; only those actually hurt (not dodging) are stunned. */
+export function stunFriendliesInRadius(w: World, cx: number, cy: number, radius: number, damage: number, stun: number) {
+  for (const list of [w.players, w.rookies]) {
+    for (const f of list) {
+      if (f.state === 'dead' || Math.hypot(f.x - cx, f.y - cy) > radius + f.radius) continue;
+      if (hurtFriendly(w, f, damage) > 0) f.stun = Math.max(f.stun, stun);
+    }
+  }
+}
+
 /** Melee swing: hits every enemy within reach inside the facing arc. */
 export function swingHits(w: World, u: Unit, reach: number, arc: number, damage: number, knockback: number) {
   const cosArc = Math.cos(arc);
@@ -115,7 +142,7 @@ export function areaHits(w: World, owner: number, cx: number, cy: number, radius
     const dy = m.y - cy;
     const d = Math.hypot(dx, dy);
     if (d - m.radius > radius) return;
-    damageUnit(w, m, damage, owner);
+    damageUnit(w, m, damage, owner, true); // slams and spins go over the plate
     const resist = MONSTERS[m.kind as MonsterKind].knockbackResist;
     applyKnockback(m, dx, dy, d, knockback, resist);
   });

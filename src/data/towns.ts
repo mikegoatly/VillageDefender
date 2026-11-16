@@ -1,7 +1,7 @@
 // Towns (stages). "Town" is the playable map; "knight level" is the in-run XP level (decision 37).
 
 import type { MapOptions } from '../sim/map';
-import { TOWN1_WAVES, TOWN2_WAVES, type WaveDef } from './waves';
+import { TOWN1_WAVES, TOWN2_WAVES, TOWN3_WAVES, type WaveDef } from './waves';
 
 export interface TownDef {
   id: string;
@@ -28,6 +28,11 @@ export const TOWNS: TownDef[] = [
     id: 'riverside', name: 'Riverside Market',
     blurb: 'A river splits the town, but imps swim it and archers shoot over it. The River Troll wades in last.',
     planningPoints: 3, waves: TOWN2_WAVES, map: { river: true }, unlockStars: 1, bossName: 'River Troll',
+  },
+  {
+    id: 'graveyard', name: 'Haunted Hollow',
+    blurb: 'Bone knights shrug off blows, banshees wail, and gravediggers tunnel under your defences. The Gravekeeper rises last.',
+    planningPoints: 3, waves: TOWN3_WAVES, map: { theme: 'graveyard' }, unlockStars: 1, bossName: 'Gravekeeper',
   },
 ];
 

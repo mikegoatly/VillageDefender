@@ -418,6 +418,13 @@ Findings:
 - Waves: 10–29 monsters, 5 of 10 from three sides. River Troll recoloured blue.
 - Look fixes: waders (imps, troll) sink waist-deep while in the river (eased, `render3d/characters.ts` `wadeDepth`); bows (rookie and skeleton archers) are now held at the grip, not the bottom tip (the bow model's origin is its tip).
 - Bot balance (planned defender, seeds 1–5): Town 1 unchanged; Town 2 1/25 wins (axes 1/5, 0.2★, 1.6/10 standing; other weapons 0/5). Bots never leave the town to hunt necromancers or archers, which is the intended counter, so real players should do far better; play-test before tuning further. `tests/sim/bots.test.ts` now prints a Town 2 table.
+### Town 3: Haunted Hollow (2026-11-16)
+
+- Theme: `MapOptions.theme` / `TownMap.theme` ('meadow' | 'graveyard'). Graveyard = dusk lighting and fog (`Stage.setTheme`), dark ground, pines, 3x the gravestones (the rock decor), grave and candle scatter. Same building layout and RNG as a meadow map.
+- Monsters: **bone knight** (plated; damage from a friendly in front is cut 70%; area hits from hammer and flail ignore it; flank it or let rookies draw it), **banshee** (phasing; stands still 1.1 s, then a wail hurts and stuns friendlies in 2.4 cells; a dodge avoids it), **gravedigger** (tunnels straight to the nearest building untouchable, sunk in the ground, and surfaces within 2 cells; burrowed units are left out of the enemy hash).
+- New unit status `stun` (knight and rookies can't move or attack). Boss: **The Gravekeeper** (1100 HP): every 9 s a telegraphed death toll on the knight (hurt + stun), every 12 s raises skeletons and a bone knight beside gravestones (pay nothing, cap 8). His timers keep running while he swings at buildings (`tickBossTimers`).
+- Waves: 10 + boss, `TOWN3_WAVES`. Unlock: 1 star in Town 2. Not yet bot-balanced: add a Town 3 table to `tests/sim/bots.test.ts` and play-test.
+
 ## 7. Decisions
 
 ### Decided (2026-11-14)
@@ -482,6 +489,8 @@ Findings:
 48. **Play-test fixes (docs/Notes.txt, 2026-11-14):** archers need line of sight and rookie arrows stop at walls (tower/slit arrows fly over); rookies engage a boss within 14 cells; brutes and the troll swat a knight/rookie in their way (the Warlord doesn't — his slam already punishes melee); vampires lunge; ghosts flicker; rank chevrons over veterans/captains; bigger arrows/axes; flail swing animation repeats; cards say "weapon", not "sword".
 49. **Weapon ranks:** each weapon you own can be ranked I–III in the shop (150/300/500 coins, permanent). Per rank: +8% damage plus a signature perk — sword wider sweep, spear longer thrust, hammer bigger slam, axes longer/faster throw, flail wider spin. Ranks show in the planning weapon picker (src/data/weapons.ts `rankedWeapon`).
 50. **Town 2 monsters:** river imp (wades), skeleton archer (lobbed, dodgeable arrows), sapper (fuse then explodes; its keg hurts monsters if it is killed first), necromancer (holds back, raises zombies that pay nothing, and sprints away from the knight once per 8 s). Behaviours are data-driven (MonsterDef `ranged`, `standoff`, `raise`, `flee`, `explodes`).
+
+51. **Town 3 theme and monsters:** per-town `theme` on the map; bone knight (front armour), banshee (stunning wail), gravedigger (burrows past chokepoints); Gravekeeper boss (death toll + raises the dead). `stun` is a new unit status.
 
 ### Open (decide later)
 

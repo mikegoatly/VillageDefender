@@ -2,6 +2,7 @@
 // its own objects under `scene` and removes them when it is destroyed.
 
 import * as THREE from 'three';
+import type { Theme } from '../sim/map';
 import type { Vec2 } from '../sim/types';
 import { CAMERA_DIR, frustumFor, type View } from './camera';
 
@@ -21,6 +22,7 @@ export class Stage {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
   private readonly sun = new THREE.DirectionalLight(0xfff4e6, 2.2);
+  private readonly ambient = new THREE.AmbientLight(0xffffff, 1.6);
   private view: View | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -41,7 +43,7 @@ export class Stage {
     this.renderer.domElement.style.display = 'block';
     parent.prepend(this.renderer.domElement);
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.6));
+    this.scene.add(this.ambient);
     // Upper-left of the screen and slightly in front, like the Sketch tiles and the bake.
     this.sun.castShadow = opts.shadows;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -54,6 +56,22 @@ export class Stage {
 
   get canvas(): HTMLCanvasElement {
     return this.renderer.domElement;
+  }
+
+  /** Lighting and backdrop for a town's look (meadow by day, graveyard at dusk). */
+  setTheme(theme: Theme) {
+    if (theme === 'graveyard') {
+      const sky = new THREE.Color(0x2a2340);
+      this.ambient.color.setHex(0xc9c3ee); this.ambient.intensity = 1.45;
+      this.sun.color.setHex(0xd8ccff); this.sun.intensity = 1.8;
+      this.renderer.setClearColor(sky);
+      this.scene.fog = new THREE.Fog(sky, 62, 130);
+    } else {
+      this.ambient.color.setHex(0xffffff); this.ambient.intensity = 1.6;
+      this.sun.color.setHex(0xfff4e6); this.sun.intensity = 2.2;
+      this.renderer.setClearColor(0xd9bfa6);
+      this.scene.fog = null;
+    }
   }
 
   /** Frames this ground area (a new town). */

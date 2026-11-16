@@ -81,6 +81,10 @@ export function updateRookie(w: World, r: Unit) {
   if (r.state === 'dead') return;
   const def = ROOKIES[r.kind as RookieKind];
   r.moving = false;
+  if (r.stun > 0) {
+    if (r.state !== 'idle') setState(r, 'idle');
+    return;
+  }
 
   if (r.state === 'attack') {
     const target = monsterById(w, r.targetId);

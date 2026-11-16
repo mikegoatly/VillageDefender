@@ -5,7 +5,7 @@
 // the +X and +Z sides of a building face the player.
 
 import type { RoleKind } from '../data/roles';
-import type { Building, Decor } from '../sim/map';
+import type { Building, Decor, Theme } from '../sim/map';
 
 /** A model placed in the town (world units; rotY about +Y). */
 export interface Piece {
@@ -33,6 +33,13 @@ export const ROCK = 'rock';
 
 const ft = (m: string) => `fantasy-town/${m}`;
 
+const gy = (m: string) => `graveyard/${m}`;
+const GRAVEYARD_TREES = ['pine', 'pine-crooked', 'pine-fall', 'pine-fall-crooked'].map(gy);
+const GRAVESTONES = [
+  'gravestone-bevel', 'gravestone-broken', 'gravestone-cross', 'gravestone-cross-large',
+  'gravestone-round', 'gravestone-wide', 'gravestone-decorative',
+].map(gy);
+
 /** Every model the town can use, for preloading. */
 export const TOWN_MODELS = [
   ...['wall', 'wall-door', 'wall-window-shutters', 'wall-broken', 'wall-half',
@@ -41,6 +48,8 @@ export const TOWN_MODELS = [
     'tree', 'stall-red', 'road'].map(ft),
   'castle/flag', 'castle/flag-pennant', 'castle/tower-square-top', 'castle/tower-square-top-roof',
   'graveyard/cross', 'graveyard/candle-multiple', 'graveyard/debris', 'graveyard/debris-wood',
+  ...GRAVEYARD_TREES, ...GRAVESTONES,
+  'graveyard/gravestone-debris', 'graveyard/grave', 'graveyard/fire-basket',
   'survival/workbench-anvil', 'survival/grass', 'survival/grass-large', 'survival/resource-planks',
   'mini-arena/weapon-rack', 'mini-forest/bridge', 'mini-forest/plant',
 ];
@@ -242,8 +251,13 @@ export function footprintOutline(cells: readonly (readonly [number, number])[]):
 }
 
 /** Trees, the well (a market stall for now) and rocks, with a stable turn and size. */
-export function decorPiece(d: Decor): Piece {
+export function decorPiece(d: Decor, theme: Theme = 'meadow'): Piece {
   const turn = Math.floor(hash01(d.i, d.j, 1) * 8) * (Math.PI / 4);
+  if (theme === 'graveyard') {
+    const pick = <T,>(xs: T[], k: number) => xs[Math.min(xs.length - 1, Math.floor(hash01(d.i, d.j, k) * xs.length))];
+    if (d.kind === 'tree') return { model: pick(GRAVEYARD_TREES, 3), x: d.i, y: 0, z: d.j, rotY: turn, scale: 1.1 + hash01(d.i, d.j, 2) * 0.35 };
+    if (d.kind === 'rock') return { model: pick(GRAVESTONES, 4), x: d.i, y: 0, z: d.j, rotY: hash01(d.i, d.j, 5) * Math.PI * 2, scale: 1.2 };
+  }
   if (d.kind === 'tree') return { model: ft('tree'), x: d.i, y: 0, z: d.j, rotY: turn, scale: 0.9 + hash01(d.i, d.j, 2) * 0.35 };
   if (d.kind === 'well') return { model: ft('stall-red'), x: d.i, y: 0, z: d.j, rotY: 0 };
   return { model: ROCK, x: d.i, y: 0.15, z: d.j, rotY: turn };

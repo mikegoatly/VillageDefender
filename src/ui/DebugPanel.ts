@@ -7,7 +7,7 @@ import { BUILDING, KNIGHT, WAVES } from '../data/balance';
 import { BOSS, MONSTERS, type MonsterKind } from '../data/monsters';
 import { ARMY, GEMS, ROOKIES, TOWN_ARROWS } from '../data/rookies';
 import { UPGRADES } from '../data/upgrades';
-import { WEAPONS, WEAPON_ORDER } from '../data/weapons';
+import { MAX_WEAPON_RANK, WEAPONS, WEAPON_ORDER, type WeaponKind } from '../data/weapons';
 import { XP_CURVE } from '../sim/progression';
 import type { World } from '../sim/world';
 import type { Profile } from '../meta/profile';
@@ -119,6 +119,8 @@ export class DebugPanel {
     xpAmount: 10,
     upgrade: UPGRADES[0].id,
     upgradeStatus: '',
+    weapon: 'sword',
+    weaponRank: 0,
     taken: '',
     building: 0,
     buildingHp: 1,
@@ -274,8 +276,14 @@ export class DebugPanel {
     const opts = Object.fromEntries(UPGRADES.map((u) => [`${u.name} (${u.pool})`, u.id]));
     f.add(this.p, 'upgrade', opts).name('upgrade');
     f.add({ go: () => this.grant() }, 'go').name('Grant upgrade');
+    f.add(this.p, 'weapon', WEAPON_ORDER).name('weapon').onChange(() => this.equip());
+    f.add(this.p, 'weaponRank', 0, MAX_WEAPON_RANK, 1).name('weapon rank').onChange(() => this.equip());
     f.add(this.p, 'upgradeStatus').name('status').disable();
     this.takenController = f.add(this.p, 'taken').name('taken').disable();
+  }
+
+  private equip() {
+    this.w.debugSetWeapon(this.p.weapon as WeaponKind, this.p.weaponRank);
   }
 
   private grant() {

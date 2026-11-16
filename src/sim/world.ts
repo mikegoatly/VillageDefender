@@ -11,7 +11,7 @@ import type { UpgradeHost } from '../data/upgrades';
 import { TOWN1_WAVES, type WaveDef } from '../data/waves';
 import { rankedWeapon, type WeaponDef, type WeaponKind } from '../data/weapons';
 import type { RunResult } from '../data/achievements';
-import { debugAddRookie, debugEnd, debugGiveUpgrade, debugGiveXp, debugHealKnight, debugInfo, debugJumpToWave, debugKillAll, debugSetBuildingHp, debugSpawn } from './debug';
+import { debugAddRookie, debugEnd, debugGiveUpgrade, debugGiveXp, debugHealKnight, debugSetWeapon, debugInfo, debugJumpToWave, debugKillAll, debugSetBuildingHp, debugSpawn } from './debug';
 import { FlowField } from './flowField';
 import { updateGems } from './gems';
 import { makeKnight, updateKnight, updateRally } from './knight';
@@ -70,6 +70,7 @@ export class World implements UpgradeHost {
   /** Shop ranks per weapon (decision 49). */
   readonly weaponRanks: Partial<Record<WeaponKind, number>>;
   private rankedDef: WeaponDef | null = null;
+  private rankedRank = 0;
 
   /** @internal */ nextId = 1;
   /** @internal */ readonly rng: Rng;
@@ -262,7 +263,11 @@ export class World implements UpgradeHost {
 
   /** The current weapon at its shop rank (cached; it only changes during planning). */
   get weaponDef(): WeaponDef {
-    if (this.rankedDef?.kind !== this.weapon) this.rankedDef = rankedWeapon(this.weapon, this.weaponRanks[this.weapon] ?? 0);
+    const rank = this.weaponRanks[this.weapon] ?? 0;
+    if (this.rankedDef?.kind !== this.weapon || this.rankedRank !== rank) {
+      this.rankedDef = rankedWeapon(this.weapon, rank);
+      this.rankedRank = rank;
+    }
     return this.rankedDef;
   }
 
@@ -367,6 +372,7 @@ export class World implements UpgradeHost {
   debugAddRookie(kind: RookieKind) { return debugAddRookie(this, kind); }
 
   debugHealKnight() { return debugHealKnight(this); }
+  debugSetWeapon(kind: WeaponKind, rank: number) { return debugSetWeapon(this, kind, rank); }
 
   /** Next wave becomes `wave`, arriving after its normal warning. */
   debugJumpToWave(wave: number) { return debugJumpToWave(this, wave); }

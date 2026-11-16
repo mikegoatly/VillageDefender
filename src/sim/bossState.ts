@@ -1,11 +1,11 @@
 // Boss-only state, kept on the unit. A leaf module so model and waves need not import the boss AI.
 
-import { BOSS, TROLL, type BossKind } from '../data/monsters';
+import { BOSS, GRAVEKEEPER, TROLL, type BossKind } from '../data/monsters';
 
 /** Boss-only state, kept on the unit. One shape for every boss; each uses the fields it needs. */
 export interface BossState {
   kind: BossKind;
-  ability: 'none' | 'slamWindup' | 'chargeWindup' | 'charging' | 'boulderWindup';
+  ability: 'none' | 'slamWindup' | 'chargeWindup' | 'charging' | 'boulderWindup' | 'tollWindup';
   abilityTime: number;
   // Orc Warlord
   slamCd: number;
@@ -18,6 +18,13 @@ export interface BossState {
   // River Troll
   boulderIn: number;
   boulderTarget: number;
+  // Gravekeeper
+  tollIn: number;
+  tollX: number;
+  tollY: number;
+  raiseIn: number;
+  /** How many raises so far (picks which monster kind comes next). */
+  raised: number;
 }
 
 export function newBossState(kind: BossKind = 'warlord'): BossState {
@@ -26,5 +33,6 @@ export function newBossState(kind: BossKind = 'warlord'): BossState {
     slamCd: 2, chargeIn: BOSS.charge.every * 0.6, summonIn: BOSS.summon.every * 0.5,
     chargeTarget: -1, chargeDir: { x: 0, y: 0 }, slamX: 0, slamY: 0,
     boulderIn: TROLL.boulder.every * 0.5, boulderTarget: -1,
+    tollIn: GRAVEKEEPER.toll.every * 0.4, tollX: 0, tollY: 0, raiseIn: GRAVEKEEPER.raise.first, raised: 0,
   };
 }

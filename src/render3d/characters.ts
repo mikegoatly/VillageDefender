@@ -19,6 +19,10 @@ export const CHARACTER_MODELS: Record<string, string> = {
   necromancer: 'graveyard/character-vampire',
   skeletonArcher: 'graveyard/character-skeleton',
   sapper: 'mini-characters/character-male-a',
+  boneKnight: 'graveyard/character-skeleton',
+  banshee: 'graveyard/character-ghost',
+  gravedigger: 'graveyard/character-keeper',
+  gravekeeper: 'graveyard/character-keeper',
 };
 
 export interface Attachment {
@@ -52,6 +56,8 @@ const ATTACHMENTS: Record<string, Attachment[]> = {
   skeletonArcher: [BOW],
   sapper: [{ ...RIGHT, model: 'mini-dungeon/barrel', scale: 0.45 }],
   necromancer: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
+  boneKnight: [{ ...RIGHT, model: 'mini-dungeon/weapon-sword' }, { ...SHIELD, model: 'mini-dungeon/shield-rectangle', scale: 0.9 }],
+  gravedigger: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
 };
 
 /** Every character and attachment model, for preloading. */
@@ -97,6 +103,9 @@ export function wadeDepth(map: TownMap, u: Pick<Unit, 'kind' | 'team' | 'x' | 'y
   return Math.min(WADE.max, WADE.depth * scale);
 }
 
+/** How far a burrowed gravedigger is sunk into the ground (only its head shows). */
+const BURROW_SINK = 0.7;
+
 /** How far a corpse sinks, starting after its death animation (0.7 s) and taking 0.5 s. */
 export const CORPSE_SINK = { after: 0.7, time: 0.5, depth: 0.9 };
 
@@ -105,10 +114,10 @@ export const CORPSE_SINK = { after: 0.7, time: 0.5, depth: 0.9 };
  * Ghosts flicker (decision 48); hurt friendlies blink; corpses sink into the ground (instances
  * cannot fade unless their material is transparent, and only ghosts' is).
  */
-export function unitFx(u: Pick<Unit, 'id' | 'team' | 'kind' | 'state' | 'stateTime' | 'invuln'>, flashing: boolean, clock: number) {
+export function unitFx(u: Pick<Unit, 'id' | 'team' | 'kind' | 'state' | 'stateTime' | 'invuln' | 'burrowed'>, flashing: boolean, clock: number) {
   let flash = flashing ? 1 : 0;
   let alpha = 1;
-  let sink = 0;
+  let sink = u.burrowed ? BURROW_SINK : 0;
   if (u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].phasing) {
     alpha = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(clock * 2.2 + u.id * 1.7));
   }
@@ -125,6 +134,8 @@ export interface UnitLook {
   /** Multiply colour (monster archetype tint). */
   tint: number;
   alpha: number;
+  /** Colour drained towards grey, 0..1 (MonsterDef.pallor). */
+  pallor: number;
   /** Size relative to a normal character. */
   scale: number;
 }
@@ -132,12 +143,13 @@ export interface UnitLook {
 export function lookFor(u: Unit, weapon: WeaponKind): UnitLook {
   if (u.team === 'enemy') {
     const def = MONSTERS[u.kind as MonsterKind];
-    return { key: `${def.sheet}:${def.alpha}`, sheet: def.sheet, attachments: ATTACHMENTS[def.sheet] ?? [], tint: def.tint, alpha: def.alpha, scale: def.scale };
+    const pallor = def.pallor ?? 0;
+    return { key: `${def.sheet}:${def.alpha}:${pallor}`, sheet: def.sheet, attachments: ATTACHMENTS[def.sheet] ?? [], tint: def.tint, alpha: def.alpha, pallor, scale: def.scale };
   }
   if (u.kind === 'knight') {
-    return { key: `knight:${weapon}`, sheet: 'knight', attachments: KNIGHT_WEAPONS[weapon], tint: 0xffffff, alpha: 1, scale: 1 };
+    return { key: `knight:${weapon}`, sheet: 'knight', attachments: KNIGHT_WEAPONS[weapon], tint: 0xffffff, alpha: 1, pallor: 0, scale: 1 };
   }
   const sheet = ROOKIES[u.kind as RookieKind].sheet;
   // Promotions: slightly bigger body (same as the sprite renderer).
-  return { key: sheet, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint: 0xffffff, alpha: 1, scale: 1 + 0.06 * u.rank };
+  return { key: sheet, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint: 0xffffff, alpha: 1, pallor: 0, scale: 1 + 0.06 * u.rank };
 }

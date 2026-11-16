@@ -51,7 +51,12 @@ export type Side = 'top' | 'right' | 'bottom' | 'left';
 /** Every side, in the canonical order. */
 export const SIDES: readonly Side[] = ['top', 'right', 'bottom', 'left'];
 
+/** Look of a town: picks ground colour, props and lighting in the renderer. */
+export type Theme = 'meadow' | 'graveyard';
+
 export interface TownMap {
+  /** Visual theme; missing means 'meadow'. */
+  theme?: Theme;
   seed: number;
   /** Grid is size × size; cells outside the rectangle have Ground.None. */
   size: number;
@@ -69,6 +74,8 @@ export interface MapOptions {
   aspect?: number;
   /** A river through the town with bridges (Town 2). */
   river?: boolean;
+  /** Visual theme (Town 3 is a graveyard: many more gravestones, which are the rock decor). */
+  theme?: Theme;
 }
 
 export function cellIndex(map: TownMap, i: number, j: number): number {
@@ -140,7 +147,7 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
   }
 
   const map: TownMap = {
-    seed, size, centre: c, ground, blocked, buildings: [], decor: [],
+    theme: opts.theme ?? 'meadow', seed, size, centre: c, ground, blocked, buildings: [], decor: [],
     edges: { top: [], right: [], bottom: [], left: [] },
   };
 
@@ -169,6 +176,8 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
     blocked[j * size + i] = 1;
   };
 
+  // Graveyards have far more gravestones (rocks); the RNG draws are unchanged, only the threshold moves.
+  const rockChance = MAP.rockChance * (opts.theme === 'graveyard' ? 3 : 1);
   const reach = Math.ceil(m / 4) + 1;
   let plazaPlaced = false;
   let id = 0;
@@ -203,7 +212,7 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
         rng.pick(LEGACY_TREE_VARIANTS);
         map.decor.push({ i, j, kind: 'tree', blocks: true });
         block(i, j);
-      } else if (r < MAP.treeChance + MAP.rockChance) {
+      } else if (r < MAP.treeChance + rockChance) {
         map.decor.push({ i, j, kind: 'rock', blocks: true });
         block(i, j);
       }

@@ -1,21 +1,95 @@
 // Boss abilities, run from the monster update. Which set a boss uses comes from its MonsterDef.boss:
-// Orc Warlord (Town 1, decision 41) and River Troll (Town 2, decision 46).
+// Orc Warlord (Town 1, decision 41), River Troll (Town 2, decision 46) and Gravekeeper (Town 3, decision 51).
 
 import { DT } from '../data/balance';
-import { BOSS, MONSTERS, TROLL } from '../data/monsters';
+import { BOSS, GRAVEKEEPER, MONSTERS, TROLL } from '../data/monsters';
 import type { BossState } from './bossState';
-import { applyKnockback, damageBuilding, hurtFriendliesInRadius, hurtFriendly } from './combat';
-import { Ground, SIDES } from './map';
+import { applyKnockback, damageBuilding, hurtFriendliesInRadius, hurtFriendly, stunFriendliesInRadius } from './combat';
+import { Ground, isWalkable, SIDES } from './map';
 import type { BuildingState, Unit } from './model';
-import { adjacentBuilding, nearestFriendly } from './queries';
-import { centreOf } from './units';
-import { spawnMonster } from './waves';
+import { adjacentBuilding, nearestFriendly, nearestOf } from './queries';
+import { centreOf, norm } from './units';
+import { addMonster, spawnMonster } from './waves';
 import type { World } from './world';
 
 /** Runs a boss's abilities; true when an ability controlled the unit this tick. */
 export function updateBoss(w: World, m: Unit, s: BossState): boolean {
+  if (s.kind === 'gravekeeper') return updateGravekeeper(w, m, s);
   return s.kind === 'troll' ? updateTroll(w, m, s) : updateWarlord(w, m, s);
 }
+
+/**
+ * Timers that keep running while a boss is busy swinging at a building (the normal monster AI skips
+ * updateBoss during an attack), so the Gravekeeper raises the dead on schedule however he is occupied.
+ */
+export function tickBossTimers(w: World, m: Unit, s: BossState) {
+  if (s.kind !== 'gravekeeper') return;
+  s.tollIn -= DT;
+  raiseFromGraves(w, m, s);
+}
+
+/**
+ * Gravekeeper: raises the dead beside random gravestones on a timer (alongside everything else),
+ * and rings a death toll on the knight: a telegraphed circle that hurts and stuns whoever stands in it.
+ */
+function updateGravekeeper(w: World, m: Unit, s: BossState): boolean {
+  const t = GRAVEKEEPER.toll;
+  if (s.ability === 'tollWindup') {
+    s.abilityTime += DT;
+    m.moving = false;
+    if (s.abilityTime < t.telegraph) return true;
+    s.ability = 'none';
+    s.tollIn = t.every;
+    w.events.push({ type: 'bossSlam', unit: m.id, x: s.tollX, y: s.tollY, radius: t.radius });
+    stunFriendliesInRadius(w, s.tollX, s.tollY, t.radius, t.damage, t.stun);
+    return true;
+  }
+
+  if (s.tollIn <= 0) {
+    const target = nearestOf(w.players, m.x, m.y) ?? nearestFriendly(w, m.x, m.y);
+    if (target) {
+      s.ability = 'tollWindup';
+      s.abilityTime = 0;
+      s.tollX = target.x;
+      s.tollY = target.y;
+      m.facing = norm({ x: target.x - m.x, y: target.y - m.y });
+      w.events.push({ type: 'bossSlamWarn', unit: m.id, x: s.tollX, y: s.tollY, radius: t.radius, time: t.telegraph });
+      return true;
+    }
+    s.tollIn = 1;
+  }
+  return false;
+}
+
+/** Raises skeletons and bone knights next to gravestones (decor rocks), up to the cap; they pay nothing. */
+function raiseFromGraves(w: World, m: Unit, s: BossState) {
+  const r = GRAVEKEEPER.raise;
+  s.raiseIn -= DT;
+  if (s.raiseIn > 0) return;
+  s.raiseIn = r.every;
+  const graves = w.map.decor.filter((d) => d.kind === 'rock');
+  const alive = w.monsters.filter((u) => u.raisedBy === m.id && u.state !== 'dead').length;
+  const n = Math.min(r.count, r.maxAlive - alive);
+  for (let k = 0; k < n; k++) {
+    let x = m.x;
+    let y = m.y;
+    if (graves.length) {
+      const g = w.rng.pick(graves);
+      const side = GRAVE_SIDES.find(([di, dj]) => isWalkable(w.map, g.i + di, g.j + dj));
+      if (side) {
+        x = g.i + side[0];
+        y = g.j + side[1];
+      }
+    }
+    const kind = r.kinds[s.raised++ % r.kinds.length];
+    const z = addMonster(w, x, y, kind);
+    z.raisedBy = m.id;
+    w.events.push({ type: 'monsterRaised', unit: z.id, by: m.id, x, y });
+  }
+}
+
+/** Cells beside a gravestone to raise the dead on. */
+const GRAVE_SIDES: [number, number][] = [[0, 1], [1, 0], [0, -1], [-1, 0]];
 
 /**
  * River Troll: regenerates while standing in the river, and lobs boulders at buildings in range

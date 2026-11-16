@@ -3,10 +3,11 @@
 export type MonsterKind =
   | 'zombie' | 'orc' | 'brute' | 'skeleton' | 'ghost' | 'vampire'
   | 'imp' | 'necromancer' | 'skeletonArcher' | 'sapper'
-  | 'warlord' | 'troll';
+  | 'boneKnight' | 'banshee' | 'gravedigger'
+  | 'warlord' | 'troll' | 'gravekeeper';
 
 /** Boss ability sets (sim/boss.ts). */
-export type BossKind = 'warlord' | 'troll';
+export type BossKind = 'warlord' | 'troll' | 'gravekeeper';
 
 /**
  * - nearest: chases the nearest knight/rookie within aggroRange, otherwise the nearest building
@@ -23,6 +24,8 @@ export interface MonsterDef {
   scale: number;
   /** Multiply tint (0xffffff = none), so archetypes read apart at a glance (decision 8). */
   tint: number;
+  /** 0..1: drains colour towards a cold grey in the shader (a tint can only multiply, not desaturate). */
+  pallor?: number;
   /** Render alpha (ghosts are translucent). */
   alpha: number;
   target: TargetPreference;
@@ -73,6 +76,21 @@ export interface MonsterDef {
    * hurting friendlies in `radius`. Killed first, the keg goes off among the monsters instead.
    */
   explodes?: { fuse: number; radius: number; buildingDamage: number; unitDamage: number; deathDamage: number; deathKnockback: number };
+  /**
+   * Plate (bone knight): damage from a friendly standing in front of it is cut by `front` (0–1).
+   * Area hits (hammer, flail, blasts) ignore it, and so does anything from behind.
+   */
+  armor?: { front: number };
+  /**
+   * Wail (banshee): when a friendly is within `range` and the wail is ready, stands still for
+   * `telegraph` s, then hurts and stuns every friendly within `radius`. Ready `first` s after spawning, then every `every` s.
+   */
+  wail?: { range: number; every: number; first: number; telegraph: number; radius: number; damage: number; stun: number };
+  /**
+   * Burrow (gravedigger): travels underground, untouchable and unseen by weapons, straight to the
+   * nearest building, and surfaces for good within `surfaceRange` cells of it.
+   */
+  burrows?: { surfaceRange: number; speedMul: number };
   /** XP gem value dropped on death. */
   xp: number;
   /** Coins on death. */
@@ -155,6 +173,30 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     knockbackResist: 0.1, corpseTime: 0.8, xp: 3, coins: 2,
     explodes: { fuse: 1.0, radius: 1.6, buildingDamage: 70, unitDamage: 15, deathDamage: 30, deathKnockback: 4 },
   },
+  boneKnight: {
+    // Town 3: plated skeleton. Shrugs off blows from the front, so flank it or use area weapons.
+    sheet: 'boneKnight', scale: 1.2, tint: 0x9fb4d8, alpha: 1, target: 'nearest', aggroRange: 4,
+    radius: 0.27, hp: 80, speed: 1.25, speedJitter: 0.1,
+    damage: 9, buildingDamage: 4, attackWindup: 0.5, attackCooldown: 1.2, attackReach: 0.2,
+    knockbackResist: 0.6, corpseTime: 1.4, xp: 5, coins: 4,
+    armor: { front: 0.7 },
+  },
+  banshee: {
+    // Town 3: drifts through buildings and wails, hurting and stunning anyone close. Kill her first.
+    sheet: 'banshee', scale: 1.1, tint: 0xd6b0ff, alpha: 0.7, target: 'buildings', aggroRange: 0,
+    radius: 0.22, hp: 30, speed: 1.25, speedJitter: 0.1,
+    damage: 4, buildingDamage: 3, attackWindup: 0.45, attackCooldown: 1.0, attackReach: 0.2,
+    knockbackResist: 0.5, corpseTime: 1.0, phasing: true, xp: 4, coins: 3,
+    wail: { range: 2.6, every: 8, first: 3, telegraph: 1.1, radius: 2.4, damage: 6, stun: 1.2 },
+  },
+  gravedigger: {
+    // Town 3: tunnels under the town and pops up beside a building, skipping every chokepoint.
+    sheet: 'gravedigger', scale: 1.05, tint: 0xffffff, pallor: 0.8, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.24, hp: 60, speed: 1.7, speedJitter: 0.1,
+    damage: 8, buildingDamage: 12, attackWindup: 0.6, attackCooldown: 1.3, attackReach: 0.2,
+    knockbackResist: 0.3, corpseTime: 1.2, xp: 4, coins: 3,
+    burrows: { surfaceRange: 2, speedMul: 1.3 },
+  },
   warlord: {
     // Town 1 boss (decision 41). Abilities live in BOSS below.
     sheet: 'orc', scale: 2.5, tint: 0xb06060, alpha: 1, target: 'buildings', aggroRange: 0,
@@ -169,6 +211,21 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     damage: 8, buildingDamage: 30, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
     knockbackResist: 1, corpseTime: 3, xp: 50, coins: 60, wades: true, boss: 'troll', name: 'River Troll', swatsBlockers: true,
   },
+  gravekeeper: {
+    // Town 3 boss: rings a death toll on the knight and raises the dead from the gravestones.
+    sheet: 'gravekeeper', scale: 2.4, tint: 0xffffff, pallor: 0.8, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.5, hp: 1100, speed: 0.8, speedJitter: 0,
+    damage: 10, buildingDamage: 28, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
+    knockbackResist: 1, corpseTime: 3, xp: 55, coins: 70, boss: 'gravekeeper', name: 'Gravekeeper', swatsBlockers: true,
+  },
+};
+
+/** Gravekeeper abilities. */
+export const GRAVEKEEPER = {
+  /** Death toll: a telegraphed circle on the knight, then damage and a stun to everyone in it. */
+  toll: { every: 9, telegraph: 1.4, radius: 1.8, damage: 14, stun: 1.0 },
+  /** Raises the dead beside random gravestones (no xp or coins), up to `maxAlive` at once; kinds cycle. */
+  raise: { every: 12, first: 3, count: 3, maxAlive: 8, kinds: ['skeleton', 'skeleton', 'boneKnight'] as MonsterKind[] },
 };
 
 /** River Troll abilities. */

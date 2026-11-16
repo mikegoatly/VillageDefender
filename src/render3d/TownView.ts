@@ -37,6 +37,11 @@ const WATER = 0x4f9fd6;
 const SCATTER: [string, number, number][] = [
   ['survival/grass', 0.5, 1.4], ['survival/grass-large', 0.3, 1.2], ['mini-forest/plant', 0.2, 1.0],
 ];
+const GRAVEYARD_GRASS = 0x9a9466;
+const GRAVEYARD_SCATTER: [string, number, number][] = [
+  ['graveyard/gravestone-broken', 0.3, 0.8], ['graveyard/grave', 0.25, 0.8], ['graveyard/gravestone-debris', 0.25, 0.9],
+  ['graveyard/candle-multiple', 0.1, 1.0], ['graveyard/fire-basket', 0.1, 0.9],
+];
 const SCATTER_CHANCE = 0.16;
 
 interface BuildingView {
@@ -311,7 +316,7 @@ export class TownView {
     grass.forEach(([i, j], n) => {
       ground.setMatrixAt(n, m.makeTranslation(i, 0, j));
       const shade = 0.9 + 0.12 * smoothNoise(i / 4, j / 4) + 0.03 * hash01(i, j, 7);
-      ground.setColorAt(n, c.setHex(GRASS).multiplyScalar(shade));
+      ground.setColorAt(n, c.setHex(this.map.theme === 'graveyard' ? GRAVEYARD_GRASS : GRASS).multiplyScalar(shade));
     });
     ground.count = grass.length;
     this.instanced.push(ground);
@@ -336,7 +341,8 @@ export class TownView {
   private scatterOn(i: number, j: number, out: Map<string, THREE.Matrix4[]>) {
     if (hash01(i, j, 11) >= SCATTER_CHANCE) return;
     let pick = hash01(i, j, 12);
-    const entry = SCATTER.find(([, w]) => (pick -= w) < 0) ?? SCATTER[0];
+    const table = this.map.theme === 'graveyard' ? GRAVEYARD_SCATTER : SCATTER;
+    const entry = table.find(([, w]) => (pick -= w) < 0) ?? table[0];
     const [model, , scale] = entry;
     const t = new THREE.Matrix4().compose(
       new THREE.Vector3(i + (hash01(i, j, 13) - 0.5) * 0.7, 0, j + (hash01(i, j, 14) - 0.5) * 0.7),
@@ -352,7 +358,7 @@ export class TownView {
     const rockMat = this.own(new THREE.MeshStandardMaterial({ color: 0x9a948c, flatShading: true }));
     markOccluder(rockMat);
     for (const d of this.map.decor) {
-      const p = decorPiece(d);
+      const p = decorPiece(d, this.map.theme);
       const o = p.model === ROCK ? new THREE.Mesh(rockGeo, rockMat) : this.library.clone(p.model);
       o.castShadow = true;
       this.root.add(this.place(o, p));

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WAVES } from '../../src/data/balance';
+import { MAX_WEAPON_RANK } from '../../src/data/weapons';
 import { XP_DROP } from '../../src/data/rookies';
 import type { WaveDef } from '../../src/data/waves';
 import { fieldRows } from '../helpers/mapBuilder';
@@ -40,6 +41,18 @@ describe('World debug methods', () => {
     expect(world.debugGiveUpgrade('tough')).toBe(false);
     expect(knight.maxHp).toBe(maxed);
     expect(world.debugGiveUpgrade('nope')).toBe(false);
+  });
+
+  it('debugSetWeapon equips a weapon at a clamped rank, mid-run', () => {
+    const { world } = quiet().build();
+    const base = world.weaponDef.damage;
+    world.debugSetWeapon('hammer', 2);
+    expect(world.weapon).toBe('hammer');
+    expect(world.weaponRank).toBe(2);
+    world.debugSetWeapon('hammer', 99);
+    expect(world.weaponRank).toBe(MAX_WEAPON_RANK);
+    world.debugSetWeapon('sword', 3);
+    expect(world.weaponDef.damage).toBeGreaterThan(base);
   });
 
   it('debugAddRookie adds a rookie of the kind next to the knight and emits rookieJoined', () => {

@@ -57,6 +57,7 @@ export class ThreeRenderer implements Renderer {
   private lastPerf: RenderPerf = { renderMs: 0, calls: 0, triangles: 0, units: 0 };
 
   constructor(private readonly stage: Stage, library: ModelLibrary, world: World, opts: ThreeRendererOptions) {
+    stage.setTheme(world.map.theme ?? 'meadow');
     stage.setView(fitView(world.map));
     this.town = new TownView(library, world.map, this.particles);
     this.units = new UnitBatches(library, { silhouettes: opts.silhouettes });
@@ -132,6 +133,17 @@ export class ThreeRenderer implements Renderer {
       case 'bossSlam':
         this.effects.shockwave(e.x, e.y, e.radius, 0xb8322c);
         this.stage.shake(320, 0.012);
+        return;
+      case 'wailWarn':
+        this.effects.telegraph(e.x, e.y, e.radius, e.time);
+        return;
+      case 'wail':
+        this.effects.shockwave(e.x, e.y, e.radius, 0xb58cff);
+        this.particles.burst(e.x, 0.5, e.y, 10, 0xd6b0ff, 0.3, 1.6, 1);
+        this.stage.shake(180, 0.006);
+        return;
+      case 'monsterSurfaced':
+        this.particles.burst(e.x, 0.1, e.y, 12, 0x7a5a3a, 0.3, 1.4, 1);
         return;
       case 'fuseLit':
         this.effects.telegraph(e.x, e.y, e.radius, e.time);
