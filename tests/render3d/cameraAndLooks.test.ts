@@ -126,6 +126,20 @@ describe('unitFx', () => {
     knight.state = 'dodge';
     expect(unitFx(knight, false, 0.03).flash).toBe(0);
   });
+
+  it('pulses a sapper red (negative flash), harder once the fuse is lit, and leaves other monsters alone', () => {
+    const { monsters } = aWorld().withMonster('sapper', 3, 3).withMonster('zombie', 4, 4).build();
+    const [sapper, zombie] = monsters;
+    const times = Array.from({ length: 40 }, (_, k) => k * 0.05);
+    const strongest = () => Math.max(...times.map((t) => -unitFx(sapper, false, t).flash));
+    expect(times.every((t) => unitFx(sapper, false, t).flash <= 0)).toBe(true);
+    const approaching = strongest();
+    expect(approaching).toBeGreaterThan(0.1);
+    sapper.abilityIn = 1;
+    expect(strongest()).toBeGreaterThan(approaching);
+    expect(unitFx(zombie, false, 0.3).flash).toBe(0);
+    expect(unitFx(sapper, true, 0.3).flash).toBe(1);
+  });
 });
 
 describe('wadeDepth', () => {

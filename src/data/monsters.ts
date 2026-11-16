@@ -168,7 +168,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   sapper: {
     // Runs a powder keg to the nearest building. Kill it on the way, ideally among other monsters.
     sheet: 'sapper', scale: 0.95, tint: 0xd8b48a, alpha: 1, target: 'buildings', aggroRange: 0,
-    radius: 0.22, hp: 30, speed: 2.0, speedJitter: 0.1,
+    radius: 0.22, hp: 30, speed: 1.5, speedJitter: 0.1,
     damage: 0, buildingDamage: 0, attackWindup: 0, attackCooldown: 0, attackReach: 0.2,
     knockbackResist: 0.1, corpseTime: 0.8, xp: 3, coins: 2,
     explodes: { fuse: 1.0, radius: 1.6, buildingDamage: 70, unitDamage: 15, deathDamage: 30, deathKnockback: 4 },

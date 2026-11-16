@@ -1,5 +1,5 @@
 // Per-instance hit flash and opacity for instanced unit materials, via a small shader patch.
-// Each unit batch shares one `instanceFx` attribute (x = flash 0..1 towards white, y = alpha).
+// Each unit batch shares one `instanceFx` attribute (x = flash 0..1 towards white, or -1..0 towards red, y = alpha).
 
 import * as THREE from 'three';
 
@@ -20,7 +20,7 @@ export function withUnitFx<T extends THREE.Material>(material: T, pallor = 0): T
       .replace('#include <begin_vertex>', `#include <begin_vertex>\nvUnitFx = ${FX_ATTRIBUTE};`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec2 vUnitFx;')
-      .replace('#include <opaque_fragment>', `#include <opaque_fragment>\n${pallorCode(pallor)}gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), vUnitFx.x);\ngl_FragColor.a *= vUnitFx.y;`);
+      .replace('#include <opaque_fragment>', `#include <opaque_fragment>\n${pallorCode(pallor)}gl_FragColor.rgb = mix(gl_FragColor.rgb, vUnitFx.x < 0.0 ? vec3(1.0, 0.1, 0.05) : vec3(1.0), abs(vUnitFx.x));\ngl_FragColor.a *= vUnitFx.y;`);
   };
   material.customProgramCacheKey = () => `vd-unit-fx-${pallor}`;
   return material;

@@ -114,7 +114,7 @@ export const CORPSE_SINK = { after: 0.7, time: 0.5, depth: 0.9 };
  * Ghosts flicker (decision 48); hurt friendlies blink; corpses sink into the ground (instances
  * cannot fade unless their material is transparent, and only ghosts' is).
  */
-export function unitFx(u: Pick<Unit, 'id' | 'team' | 'kind' | 'state' | 'stateTime' | 'invuln' | 'burrowed'>, flashing: boolean, clock: number) {
+export function unitFx(u: Pick<Unit, 'id' | 'team' | 'kind' | 'state' | 'stateTime' | 'invuln' | 'burrowed' | 'abilityIn'>, flashing: boolean, clock: number) {
   let flash = flashing ? 1 : 0;
   let alpha = 1;
   let sink = u.burrowed ? BURROW_SINK : 0;
@@ -123,7 +123,16 @@ export function unitFx(u: Pick<Unit, 'id' | 'team' | 'kind' | 'state' | 'stateTi
   }
   if (u.state === 'dead') sink = Math.min(1, Math.max(0, u.stateTime - CORPSE_SINK.after) / CORPSE_SINK.time) * CORPSE_SINK.depth;
   else if (u.invuln > 0 && u.team === 'player' && u.state !== 'dodge' && !flashing) flash = Math.sin(clock * 30) > 0 ? 0.35 : 0;
+  else if (!flashing && u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].explodes) flash = -sapperPulse(u.abilityIn, clock, u.id);
   return { flash, alpha, sink };
+}
+
+/** Red pulse strength (0..1) of a sapper's keg: slow and faint on approach, fast and strong once the fuse is lit. */
+export function sapperPulse(fuseLeft: number, clock: number, id: number): number {
+  const lit = fuseLeft > 0;
+  const rate = lit ? 18 : 5;
+  const peak = lit ? 0.7 : 0.3;
+  return peak * (0.5 + 0.5 * Math.sin(clock * rate + id * 1.3));
 }
 
 /** How one unit is drawn. Units with the same `key` share an instanced batch. */
