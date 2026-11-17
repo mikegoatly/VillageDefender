@@ -3,7 +3,7 @@
 
 import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ROOKIES, type RookieKind } from '../data/rookies';
-import { WEAPONS, type WeaponKind } from '../data/weapons';
+import type { WeaponKind } from '../data/weapons';
 import { Ground, inBounds, type TownMap } from '../sim/map';
 import type { ArmyGear, KnightGear } from './upgradeFx';
 import type { Unit } from '../sim/world';
@@ -79,7 +79,10 @@ const BOW_SHEETS = new Set(['archer', 'recruitArcher', 'skeletonArcher']);
 
 export type AnimName = 'idle' | 'walk' | 'sprint' | 'attack' | 'die';
 
-/** Clip in the model's GLB for each animation the game plays (`attack` overrides the attack clip). */
+/**
+ * Clip for each animation the game plays: the model's own, or one built in code (clips.ts).
+ * `attack` overrides the attack clip.
+ */
 export function clipNames(sheet: string, attack?: string): Record<AnimName, string> {
   return {
     idle: 'idle', walk: 'walk', sprint: 'sprint', die: 'die',
@@ -87,34 +90,12 @@ export function clipNames(sheet: string, attack?: string): Record<AnimName, stri
   };
 }
 
-/** A weapon that stabs rather than swings: the arm-forward clip and how far the body lunges. */
-interface Thrust { clip: string; lunge: number; hitTime: number; duration: number }
-
-/** Spear: the rig has no thrust clip, so the one-hand shot (arm straight out) plus a lunge. */
-const KNIGHT_THRUSTS: Partial<Record<WeaponKind, Omit<Thrust, 'hitTime' | 'duration'>>> = {
-  spear: { clip: 'holding-right-shoot', lunge: 0.28 },
-};
+/** Knight weapons that stab rather than swing, and the attack clip they play. */
+const KNIGHT_THRUSTS: Partial<Record<WeaponKind, string>> = { spear: 'thrust' };
 
 /** Whether the knight stabs with this weapon (thrust effect instead of a slash). */
 export function isThrust(weapon: WeaponKind): boolean {
   return weapon in KNIGHT_THRUSTS;
-}
-
-/**
- * How far forward a thrusting unit is drawn `t` seconds into its attack: it drives out to the full
- * lunge by the hit (eased out), holds a moment, then eases back by the end of the attack.
- */
-export function lungeOffset(thrust: Pick<Thrust, 'lunge' | 'hitTime' | 'duration'>, t: number): number {
-  const { lunge, hitTime, duration } = thrust;
-  if (t <= 0 || t >= duration) return 0;
-  if (t < hitTime) {
-    const k = t / hitTime;
-    return lunge * (1 - (1 - k) * (1 - k));
-  }
-  const hold = hitTime + (duration - hitTime) * 0.3;
-  if (t < hold) return lunge;
-  const k = (t - hold) / (duration - hold);
-  return lunge * (1 - k * k * (3 - 2 * k));
 }
 
 /** Death and attacks play once and hold their last pose; the rest loop. */
@@ -190,8 +171,8 @@ export interface UnitLook {
   gild?: number;
   /** Size relative to a normal character. */
   scale: number;
-  /** Stabbing attack (the knight's spear): its clip and lunge. */
-  thrust?: Thrust;
+  /** Attack clip in place of the sheet's usual one (the knight's spear thrust). */
+  attackClip?: string;
 }
 
 export function lookFor(u: Unit, weapon: WeaponKind, gear?: KnightGear, army?: ArmyGear): UnitLook {
@@ -238,9 +219,8 @@ function knightLook(weapon: WeaponKind, gear: KnightGear | undefined): UnitLook 
     const wfx = gear?.weapon;
     const scale = (held.scale ?? 1) * (gear?.weaponScale ?? 1);
     const attachments = [{ ...held, scale, glow: wfx && wfx.glow > 0 ? { color: wfx.color, amount: wfx.glow } : undefined }, ...rest];
-    const t = KNIGHT_THRUSTS[weapon];
-    const thrust = t && { ...t, hitTime: WEAPONS[weapon].hitTime, duration: WEAPONS[weapon].duration };
-    knightLooks.set(key, (look = { key, sheet: 'knight', attachments, tint: 0xffffff, alpha: 1, pallor: 0, scale: gear?.bodyScale ?? 1, thrust }));
+    const attackClip = KNIGHT_THRUSTS[weapon];
+    knightLooks.set(key, (look = { key, sheet: 'knight', attachments, tint: 0xffffff, alpha: 1, pallor: 0, scale: gear?.bodyScale ?? 1, attackClip }));
   }
   return look;
 }

@@ -19,7 +19,10 @@
   `node tools/screenshot.mjs "<query>"` (needs dev server on 5173),
   `node tools/measure3d.mjs` (frame cost at full and 4× throttled CPU; noisy on a busy machine),
   `node tools/playtest.mjs "<query>" <seconds> <shots>` (scripted play via `window.__vd`,
-  saves `screenshots/playtest-N.png` and `-close.png`, needs dev server).
+  saves `screenshots/playtest-N.png` and `-close.png`, needs dev server),
+  `node tools/animframes.mjs [weapon] [times]` (knight attack frame by frame at exact times via a
+  fake animation clock, three facings; saves `screenshots/anim-<weapon>-<view>.png`, needs dev server).
+  Code-built animation clips (no clip in the Kenney rig, e.g. the spear `thrust`) live in `render3d/clips.ts`.
 - URL debug params: `?seed= &speed= &god=1 &wave= &plan=0` (`plan=0` skips the planning phase).
   Rendering: `&stress=<monsters>` (spawn at once, implies god/plan=0, shows perf), `&perf=1`,
   `&shadows=0`, `&sil=0` (no occlusion silhouettes), `&dpr=<max pixel ratio>`.

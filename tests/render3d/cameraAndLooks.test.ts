@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MONSTERS, type MonsterKind } from '../../src/data/monsters';
 import { fitView, frustumFor, projectGround } from '../../src/render3d/camera';
-import { animFor, CHARACTER_MODELS, characterModelPaths, clipNames, CORPSE_SINK, isThrust, lookFor, lungeOffset, unitFx, WADE, wadeDepth } from '../../src/render3d/characters';
+import { animFor, CHARACTER_MODELS, characterModelPaths, clipNames, CORPSE_SINK, isThrust, lookFor, unitFx, WADE, wadeDepth } from '../../src/render3d/characters';
 import { mapFromAscii } from '../helpers/mapBuilder';
 import { generateTown } from '../../src/sim/map';
 import { aWorld } from '../helpers/worldBuilder';
@@ -108,43 +108,14 @@ describe('lookFor', () => {
     expect(clipNames(swordsman.sheet).attack).toBe('attack-melee-right');
   });
 
-  it('gives the spear knight a thrust (arm-forward clip and lunge) and the sword knight a swing', () => {
+  it('gives the spear knight the thrust clip and the sword knight a swing', () => {
     const { knight } = aWorld().build();
     const spear = lookFor(knight, 'spear');
     const sword = lookFor(knight, 'sword');
-    expect(spear.thrust).toBeDefined();
-    expect(clipNames(spear.sheet, spear.thrust?.clip).attack).toBe('holding-right-shoot');
-    expect(sword.thrust).toBeUndefined();
-    expect(clipNames(sword.sheet, sword.thrust?.clip).attack).toBe('attack-melee-right');
+    expect(clipNames(spear.sheet, spear.attackClip).attack).toBe('thrust');
+    expect(clipNames(sword.sheet, sword.attackClip).attack).toBe('attack-melee-right');
     expect(isThrust('spear')).toBe(true);
     expect(isThrust('sword')).toBe(false);
-  });
-});
-
-describe('lungeOffset', () => {
-  const thrust = { lunge: 0.3, hitTime: 0.14, duration: 0.35 };
-
-  it('is at rest outside the attack', () => {
-    expect(lungeOffset(thrust, 0)).toBe(0);
-    expect(lungeOffset(thrust, thrust.duration)).toBe(0);
-    expect(lungeOffset(thrust, 1)).toBe(0);
-  });
-
-  it('drives out to the full lunge by the hit and holds there briefly', () => {
-    expect(lungeOffset(thrust, thrust.hitTime * 0.5)).toBeGreaterThan(thrust.lunge * 0.5);
-    expect(lungeOffset(thrust, thrust.hitTime)).toBeCloseTo(thrust.lunge);
-    expect(lungeOffset(thrust, thrust.hitTime + 0.03)).toBeCloseTo(thrust.lunge);
-  });
-
-  it('eases back without overshooting', () => {
-    let last = thrust.lunge;
-    for (let t = thrust.hitTime; t < thrust.duration; t += 0.01) {
-      const d = lungeOffset(thrust, t);
-      expect(d).toBeLessThanOrEqual(last + 1e-9);
-      expect(d).toBeGreaterThanOrEqual(0);
-      last = d;
-    }
-    expect(lungeOffset(thrust, thrust.duration - 0.001)).toBeLessThan(0.01);
   });
 });
 
