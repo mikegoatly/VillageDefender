@@ -27,6 +27,8 @@ export const CHARACTER_MODELS: Record<string, string> = {
   banshee: 'graveyard/character-ghost',
   gravedigger: 'graveyard/character-keeper',
   gravekeeper: 'graveyard/character-keeper',
+  // The villager who sets traps is the same recruit model, unarmed.
+  villager: 'mini-characters/character-male-f',
 };
 
 export interface Attachment {
@@ -77,16 +79,18 @@ export function characterModelPaths(): string[] {
 /** Sheets that shoot (play the bow clip instead of a melee swing). */
 const BOW_SHEETS = new Set(['archer', 'recruitArcher', 'skeletonArcher']);
 
-export type AnimName = 'idle' | 'walk' | 'sprint' | 'attack' | 'die';
+export type AnimName = 'idle' | 'walk' | 'sprint' | 'attack' | 'die' | 'work';
 
 /**
  * Clip for each animation the game plays: the model's own, or one built in code (clips.ts).
  * `attack` overrides the attack clip.
  */
-export function clipNames(sheet: string, attack?: string): Record<AnimName, string> {
+export function clipNames(sheet: string, attack?: string): Record<Exclude<AnimName, 'work'>, string> & { work?: string } {
   return {
     idle: 'idle', walk: 'walk', sprint: 'sprint', die: 'die',
     attack: attack ?? (BOW_SHEETS.has(sheet) ? 'holding-both-shoot' : 'attack-melee-right'),
+    // Only the trap villager works (building), so no other sheet bakes the clip.
+    ...(sheet === 'villager' ? { work: 'interact-right' } : {}),
   };
 }
 
@@ -103,8 +107,9 @@ export function animLoops(anim: AnimName): boolean {
   return anim !== 'die' && anim !== 'attack';
 }
 
-export function animFor(u: Pick<Unit, 'state' | 'moving'>): AnimName {
+export function animFor(u: Pick<Unit, 'state' | 'moving'> & { working?: boolean }): AnimName {
   if (u.state === 'dead') return 'die';
+  if (u.working) return 'work';
   if (u.state === 'attack') return 'attack';
   if (u.state === 'dodge') return 'sprint';
   return u.moving ? 'walk' : 'idle';
@@ -174,6 +179,9 @@ export interface UnitLook {
   /** Attack clip in place of the sheet's usual one (the knight's spear thrust). */
   attackClip?: string;
 }
+
+/** The trap villager: a recruit without a weapon. */
+export const VILLAGER_LOOK: UnitLook = { key: 'villager', sheet: 'villager', attachments: [], tint: 0xffffff, alpha: 1, pallor: 0, scale: 1 };
 
 export function lookFor(u: Unit, weapon: WeaponKind, gear?: KnightGear, army?: ArmyGear): UnitLook {
   if (u.team === 'enemy') {

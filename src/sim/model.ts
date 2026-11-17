@@ -139,6 +139,8 @@ export interface TrapRunner {
   ty: number;
   /** Seconds of setting left once there; null while still running. */
   setLeft: number | null;
+  /** Seconds the setting takes in all (set on arrival), for the progress bar. */
+  setTotal: number;
   facing: { x: number; y: number };
 }
 

@@ -6,8 +6,8 @@ export const TRAP = {
   /** Seconds before the power can be used again; refunded if the villager is caught on the way. */
   cooldown: 9,
   /** Villager run speed (cells per second) and seconds spent setting the trap on arrival. */
-  runnerSpeed: 7,
-  setTime: 0.6,
+  runnerSpeed: 2.6,
+  setTime: 6,
   /** Extra reach (cells) a monster needs to catch the runner, added to its own radius. */
   catchReach: 0.2,
   radius: 1.3,

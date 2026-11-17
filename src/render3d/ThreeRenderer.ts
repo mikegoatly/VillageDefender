@@ -31,11 +31,13 @@ import { CHAR_HEIGHT, CHAR_SCALE, HALO_ROOKIE, UnitBatches } from './UnitBatches
 
 const MAX_GEMS = 1024;
 /** Label heights above the ground (world units). */
-const HEAD = { knight: 1.5, rookie: 1.35, monster: 1.1 };
+const HEAD = { knight: 1.5, rookie: 1.35, monster: 1.1, villager: 1.25 };
 const BAR_COLORS = { good: '#8cc152', hurt: '#f0ad4e', bad: '#d9534f' };
 /** Dash dust per town theme: sandy on grass, grey on graveyard soil. */
 const DASH_DUST = { meadow: 0xc9b29b, graveyard: 0x8f8a80 };
 const HIT_SPARK = 0xfff0c0;
+/** Progress bar over a villager building a trap. */
+const TRAP_BAR = '#e8a45a';
 /** Top-rank embers. */
 const EMBER = 0xff9a3c;
 /** Top-rank and per-rank weapon flourishes: embers along a slash edge, slam dust/cracks/embers, flail embers. */
@@ -130,7 +132,7 @@ export class ThreeRenderer implements Renderer {
     this.townFx.sync(world, dt);
     this.particles.update(dt);
     this.effects.update(dt, world.projectiles);
-    this.traps.sync(world.traps, world.trapRunners, dt);
+    this.traps.sync(world.traps);
     this.syncFlail(world);
     this.syncAxeTrails(world);
     this.syncGems(world);
@@ -456,6 +458,9 @@ export class ThreeRenderer implements Renderer {
         this.labels.bar(`bar${b.id}`, top.x, top.y, top.z, frac, color);
       }
       if (b.role) this.labels.badge(`role${b.id}`, top.x, top.y + 0.35, top.z, ROLES[b.role].icon, '#3b2418', 0.3, '#f3e3d0');
+    }
+    for (const r of world.trapRunners) {
+      if (r.setLeft !== null) this.labels.bar(`trap${r.id}`, r.x, HEAD.villager, r.y, 1 - r.setLeft / r.setTotal, TRAP_BAR);
     }
     for (const r of world.rookies) {
       if (r.rank <= 0 || r.state === 'dead') continue;

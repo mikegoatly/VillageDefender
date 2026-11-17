@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DT } from '../../src/data/balance';
+import { DT, KNIGHT } from '../../src/data/balance';
 import { MONSTERS, type MonsterKind } from '../../src/data/monsters';
 import { TRAP } from '../../src/data/traps';
 import type { UpgradeOffer } from '../../src/data/upgrades';
@@ -19,7 +19,7 @@ function setTraps(world: World, n = 1) {
     runTicks(world, 1, press());
     runTicks(world, 1);
     world.trapCooldown = 0; // skip the wait between traps
-    runUntil(world, (w) => w.traps.length >= k + 1, 600);
+    runUntil(world, (w) => w.traps.length >= k + 1, 2400);
   }
 }
 
@@ -45,11 +45,46 @@ describe('trap power', () => {
     runTicks(world, 1, press());
     knight.x = 10;
     knight.y = 10;
-    runUntil(world, (w) => w.traps.length === 1, 600);
+    runUntil(world, (w) => w.traps.length === 1, 2400);
     expect(world.traps).toHaveLength(1);
     expect(world.traps[0].x).toBeCloseTo(25, 1);
     expect(world.traps[0].y).toBeCloseTo(25, 1);
     expect(world.trapRunners).toHaveLength(0);
+  });
+
+  it('the villager walks at a believable pace, slower than the knight', () => {
+    const { world } = town().build();
+    runTicks(world, 1, press());
+    const r = world.trapRunners[0];
+    const [x0, y0] = [r.x, r.y];
+    runSeconds(world, 1);
+    expect(Math.hypot(r.x - x0, r.y - y0)).toBeCloseTo(TRAP.runnerSpeed, 0);
+    expect(TRAP.runnerSpeed).toBeLessThan(KNIGHT.speed);
+  });
+
+  it('building takes the full set time, with progress to show, and the trap only appears at the end', () => {
+    const { world } = town().build();
+    runTicks(world, 1, press());
+    runUntil(world, (w) => w.trapRunners[0]?.setLeft !== null, 2400);
+    const r = world.trapRunners[0];
+    expect(r.setTotal).toBeCloseTo(TRAP.setTime, 6);
+    runSeconds(world, TRAP.setTime / 2);
+    expect(world.traps).toHaveLength(0);
+    expect(r.setLeft).toBeCloseTo(TRAP.setTime / 2, 1);
+    runSeconds(world, TRAP.setTime / 2 + 0.1);
+    expect(world.traps).toHaveLength(1);
+  });
+
+  it('a monster arriving while the villager builds stops the trap', () => {
+    const { world } = town().build();
+    runTicks(world, 1, press());
+    runUntil(world, (w) => w.trapRunners[0]?.setLeft !== null, 2400);
+    runSeconds(world, TRAP.setTime / 2);
+    put(world, 'zombie', 25.1, 25);
+    runSeconds(world, 0.2);
+    expect(world.trapRunners).toHaveLength(0);
+    expect(world.traps).toHaveLength(0);
+    expect(world.trapCooldown).toBe(0);
   });
 
   it('a held button does not call a second villager', () => {
@@ -102,7 +137,7 @@ describe('trap power', () => {
     dummy(monsters[0]); // waits right where the villager is headed
     const events = collectEvents(world, 1, press());
     expect(events.some((e) => e.type === 'trapCalled')).toBe(true);
-    runUntil(world, (w) => w.trapRunners.length === 0, 600);
+    runUntil(world, (w) => w.trapRunners.length === 0, 2400);
     expect(world.traps).toHaveLength(0);
     expect(world.trapCooldown).toBe(0);
   });
@@ -111,7 +146,7 @@ describe('trap power', () => {
     const { world, monsters } = town().withMonster('zombie', 25, 25).build();
     dummy(monsters[0]);
     runTicks(world, 1, press());
-    const events = collectEvents(world, 600);
+    const events = collectEvents(world, 2400);
     expect(events.filter((e) => e.type === 'trapRunnerDown')).toHaveLength(1);
   });
 });
@@ -236,7 +271,14 @@ describe('trap upgrades', () => {
     expect(world.traps[0].radius).toBeCloseTo(TRAP.radius * 1.5, 6);
   });
 
-  it('Quick Hands shortens the cooldown', () => {
+  it('Nimble Hands shortens the time spent building', () => {
+    const { world } = town().withUpgrades({ trapbuild: 2 }).build();
+    runTicks(world, 1, press());
+    runUntil(world, (w) => w.trapRunners[0]?.setLeft !== null, 2400);
+    expect(world.trapRunners[0].setTotal).toBeCloseTo(TRAP.setTime * 0.75 * 0.75, 6);
+  });
+
+  it('Trap Cache shortens the cooldown', () => {
     const { world } = town().withUpgrades({ trapquick: 1 }).build();
     runTicks(world, 1, press());
     expect(world.trapCooldown).toBeCloseTo(TRAP.cooldown * 0.75, 1);

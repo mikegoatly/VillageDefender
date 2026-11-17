@@ -1,18 +1,17 @@
-// Traps and the villagers who set them (decision 52): a spiked patch on the ground that shrinks and
-// dulls as its damage budget runs out, and a small running villager. Reads World.traps / trapRunners
-// every frame; meshes are created when an id first appears and disposed when it is gone.
+// Set traps (decision 52): a spiked patch on the ground that shortens as its damage budget runs out.
+// Reads World.traps every frame; meshes are created when an id first appears and disposed when gone.
+// The villager who sets a trap is drawn by UnitBatches.
 
 import * as THREE from 'three';
-import type { Trap, TrapRunner } from '../sim/world';
+import type { Trap } from '../sim/world';
 
 const GROUND_Y = 0.05;
-const COLORS = { patch: 0x4a3322, rim: 0xe8a45a, spike: 0xc8ccd2, body: 0xb08a5a, head: 0xe8c49a };
+const COLORS = { patch: 0x4a3322, rim: 0xe8a45a, spike: 0xc8ccd2 };
 /** Spikes in the outer ring and in the inner cluster. */
 const OUTER = 7;
 const INNER = 4;
 /** Spikes never shrink below this fraction of their height while the trap lasts. */
 const MIN_SPIKE = 0.35;
-const RUNNER_BOB = { rate: 14, height: 0.04 };
 
 interface TrapMesh {
   group: THREE.Group;
@@ -25,28 +24,16 @@ interface TrapMesh {
 export class TrapView {
   readonly root = new THREE.Group();
   private readonly traps = new Map<number, TrapMesh>();
-  private readonly runners = new Map<number, THREE.Group>();
-  private clock = 0;
   private readonly live = new Set<number>();
 
   private readonly patchGeo = new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2);
   private readonly rimGeo = new THREE.RingGeometry(0.93, 1, 40).rotateX(-Math.PI / 2);
   private readonly spikeGeo = new THREE.ConeGeometry(0.06, 0.3, 6).translate(0, 0.15, 0);
-  private readonly bodyGeo = new THREE.CapsuleGeometry(0.09, 0.22, 3, 8);
-  private readonly headGeo = new THREE.SphereGeometry(0.09, 10, 8);
   private readonly patchMat = new THREE.MeshBasicMaterial({ color: COLORS.patch, transparent: true, opacity: 0.55, depthWrite: false });
   private readonly rimMat = new THREE.MeshBasicMaterial({ color: COLORS.rim, transparent: true, opacity: 0.9, depthWrite: false });
   private readonly spikeMat = new THREE.MeshLambertMaterial({ color: COLORS.spike, flatShading: true });
-  private readonly bodyMat = new THREE.MeshLambertMaterial({ color: COLORS.body });
-  private readonly headMat = new THREE.MeshLambertMaterial({ color: COLORS.head });
 
-  sync(traps: readonly Trap[], runners: readonly TrapRunner[], dt: number) {
-    this.clock += dt;
-    this.syncTraps(traps);
-    this.syncRunners(runners);
-  }
-
-  private syncTraps(traps: readonly Trap[]) {
+  sync(traps: readonly Trap[]) {
     const live = this.live;
     live.clear();
     for (const t of traps) {
@@ -90,41 +77,9 @@ export class TrapView {
     return { group, spikes, left: 1 };
   }
 
-  private syncRunners(runners: readonly TrapRunner[]) {
-    const live = this.live;
-    live.clear();
-    for (const r of runners) {
-      live.add(r.id);
-      let g = this.runners.get(r.id);
-      if (!g) this.runners.set(r.id, (g = this.makeRunner()));
-      const running = r.setLeft === null;
-      // Bob while running, crouch while setting the trap.
-      const bob = running ? Math.abs(Math.sin(this.clock * RUNNER_BOB.rate + r.id)) * RUNNER_BOB.height : 0;
-      g.position.set(r.x, GROUND_Y + bob, r.y);
-      g.rotation.y = Math.atan2(r.facing.x, r.facing.y);
-      g.scale.y = running ? 1 : 0.7;
-    }
-    for (const [id, g] of this.runners) {
-      if (live.has(id)) continue;
-      g.removeFromParent();
-      this.runners.delete(id);
-    }
-  }
-
-  private makeRunner(): THREE.Group {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(this.bodyGeo, this.bodyMat);
-    body.position.y = 0.2;
-    const head = new THREE.Mesh(this.headGeo, this.headMat);
-    head.position.y = 0.46;
-    g.add(body, head);
-    this.root.add(g);
-    return g;
-  }
-
   dispose() {
     this.root.removeFromParent();
-    for (const o of [this.patchGeo, this.rimGeo, this.spikeGeo, this.bodyGeo, this.headGeo,
-      this.patchMat, this.rimMat, this.spikeMat, this.bodyMat, this.headMat]) o.dispose();
+    for (const o of [this.patchGeo, this.rimGeo, this.spikeGeo,
+      this.patchMat, this.rimMat, this.spikeMat]) o.dispose();
   }
 }

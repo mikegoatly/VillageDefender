@@ -9,9 +9,10 @@
 
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import type { Unit, World } from '../sim/world';
+import { unitBase } from '../sim/units';
+import type { TrapRunner, Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
-import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFor, unitFx, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
+import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFor, unitFx, VILLAGER_LOOK, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
 import { findClip } from './clips';
 import { ECHO_ALPHA } from './motionFx';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
@@ -66,6 +67,7 @@ export class UnitBatches {
   readonly root = new THREE.Group();
   private readonly batches = new Map<string, Batch>();
   private readonly anims = new Map<number, UnitAnim>();
+  private readonly villagers = new Map<number, Unit & { working?: boolean }>();
   private readonly materials = new Map<string, THREE.Material>();
   private readonly owned: { dispose(): void }[] = [];
   private readonly silhouettes: Record<Unit['team'], THREE.MeshBasicMaterial>;
@@ -136,15 +138,17 @@ export class UnitBatches {
         a.wade += (wadeDepth(world.map, u, look.scale) - a.wade) * Math.min(1, dt * WADE.rate);
         this.place(u, look, rot);
         if (u.kind === 'knight') for (const e of echoes) this.place(u, echoLook(look, ECHO_ALPHA), rot, e);
-        if (u.team === 'player' && u.state !== 'dead' && halos < HALO_CAPACITY) {
-          const knight = u.kind === 'knight';
-          this.outM.compose(this.pos.set(u.x, 0.03, u.y), this.quat.identity(), this.scl.setScalar(knight ? 1.3 : 1));
-          this.halos.setMatrixAt(halos, this.outM);
-          this.halos.setColorAt(halos, this.col.setHex(knight ? HALO_KNIGHT : HALO_ROOKIE[u.rank]));
-          halos++;
-        }
+        if (u.team === 'player' && u.state !== 'dead') halos = this.halo(u, halos);
       }
     }
+    // Villagers on their way to set a trap, or busy setting it.
+    for (const r of world.trapRunners) {
+      const u = this.villager(r);
+      live.add(u.id);
+      this.place(u, VILLAGER_LOOK, this.animate(u, dt));
+      halos = this.halo(u, halos);
+    }
+    for (const id of this.villagers.keys()) if (!live.has(id)) this.villagers.delete(id);
     for (const id of this.anims.keys()) if (!live.has(id)) this.anims.delete(id);
     for (const id of this.flashes.keys()) if (!live.has(id)) this.flashes.delete(id);
 
@@ -160,6 +164,28 @@ export class UnitBatches {
       for (const g of b.ghosts) g.count = b.count;
       b.fx.needsUpdate = true;
     }
+  }
+
+  /** Friendly halo under a unit (decision 8); returns the next free halo slot. */
+  private halo(u: Unit, n: number): number {
+    if (n >= HALO_CAPACITY) return n;
+    const knight = u.kind === 'knight';
+    this.outM.compose(this.pos.set(u.x, 0.03, u.y), this.quat.identity(), this.scl.setScalar(knight ? 1.3 : 1));
+    this.halos.setMatrixAt(n, this.outM);
+    this.halos.setColorAt(n, this.col.setHex(knight ? HALO_KNIGHT : HALO_ROOKIE[u.rank]));
+    return n + 1;
+  }
+
+  /** The drawable stand-in for a trap runner (the sim has no unit for it), kept per runner id. */
+  private villager(r: TrapRunner): Unit & { working?: boolean } {
+    let u = this.villagers.get(r.id);
+    if (!u) this.villagers.set(r.id, (u = { ...unitBase(r.id, r.x, r.y), kind: 'swordsman', team: 'player', radius: 0.2, hp: 1, maxHp: 1, speed: 0 }));
+    u.x = r.x;
+    u.y = r.y;
+    u.facing = r.facing;
+    u.working = r.setLeft !== null;
+    u.moving = !u.working;
+    return u;
   }
 
   dispose() {

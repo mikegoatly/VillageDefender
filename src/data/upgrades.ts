@@ -49,6 +49,8 @@ export interface Mods {
     radiusMul: number;
     /** Extra traps allowed on the field at once. */
     capAdd: number;
+    /** Multiplies the time the villager spends building. */
+    buildMul: number;
     /** Multiplies the cooldown. */
     cooldownMul: number;
     /** Fraction of speed monsters lose inside a trap (0..1). */
@@ -61,7 +63,7 @@ export function baseMods(): Mods {
     knight: { damageMul: 1, cooldownMul: 1, arcMul: 1, rangeMul: 1, speedMul: 1, maxHpAdd: 0, regen: 0, magnetMul: 1, knockbackMul: 1, dodgeCooldownMul: 1 },
     army: { thresholdMul: 1, capAdd: 0, hpMul: 1, damageMul: 1, startRank: 0 },
     town: { maxHpMul: 1, thorns: 0, arrowSlits: 0, regenFrac: 0, slow: 0 },
-    trap: { budgetMul: 1, radiusMul: 1, capAdd: 0, cooldownMul: 1, slow: 0 },
+    trap: { budgetMul: 1, radiusMul: 1, capAdd: 0, buildMul: 1, cooldownMul: 1, slow: 0 },
   };
 }
 
@@ -115,7 +117,8 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'trapdmg', name: 'Heavy Jaws', pool: 'trap', power: 'trap', max: 3, describe: () => `Traps last ${pct(0.4)} longer (more damage before they break)`, apply: (m) => { m.trap.budgetMul += 0.4; } },
   { id: 'traprad', name: 'Wide Snare', pool: 'trap', power: 'trap', max: 3, describe: () => `Traps cover ${pct(0.25)} more ground`, apply: (m) => { m.trap.radiusMul += 0.25; } },
   { id: 'trapcap', name: 'Trap Line', pool: 'trap', power: 'trap', max: 3, describe: () => 'Keep one more trap out at a time', apply: (m) => { m.trap.capAdd += 1; } },
-  { id: 'trapquick', name: 'Quick Hands', pool: 'trap', power: 'trap', max: 3, describe: () => `Set traps ${pct(0.25)} more often`, apply: (m) => { m.trap.cooldownMul *= 0.75; } },
+  { id: 'trapbuild', name: 'Nimble Hands', pool: 'trap', power: 'trap', max: 3, describe: () => `Villagers build traps ${pct(0.25)} faster`, apply: (m) => { m.trap.buildMul *= 0.75; } },
+  { id: 'trapquick', name: 'Trap Cache', pool: 'trap', power: 'trap', max: 3, describe: () => `Set traps ${pct(0.25)} more often`, apply: (m) => { m.trap.cooldownMul *= 0.75; } },
   { id: 'trapslow', name: 'Tangle Snare', pool: 'trap', power: 'trap', max: 2, describe: () => `Monsters in a trap move ${pct(0.3)} slower`, apply: (m) => { m.trap.slow += 0.3; } },
 ];
 

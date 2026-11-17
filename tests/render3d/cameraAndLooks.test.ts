@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MONSTERS, type MonsterKind } from '../../src/data/monsters';
 import { fitView, frustumFor, projectGround } from '../../src/render3d/camera';
-import { animFor, CHARACTER_MODELS, characterModelPaths, clipNames, CORPSE_SINK, isThrust, lookFor, unitFx, WADE, wadeDepth } from '../../src/render3d/characters';
+import { animFor, CHARACTER_MODELS, characterModelPaths, clipNames, CORPSE_SINK, isThrust, lookFor, unitFx, VILLAGER_LOOK, WADE, wadeDepth } from '../../src/render3d/characters';
 import { mapFromAscii } from '../helpers/mapBuilder';
 import { generateTown } from '../../src/sim/map';
 import { aWorld } from '../helpers/worldBuilder';
@@ -207,5 +207,20 @@ describe('wadeDepth', () => {
     expect(wadeDepth(map, at('imp', 3), MONSTERS.imp.scale)).toBe(0);
     expect(wadeDepth(map, at('ghost', 5), MONSTERS.ghost.scale)).toBe(0);
     expect(wadeDepth(map, { kind: 'knight', team: 'player', x: 5, y: 4 }, 1)).toBe(0);
+  });
+});
+
+describe('trap villager look', () => {
+  it('is drawn with the recruit model, unarmed', () => {
+    expect(CHARACTER_MODELS.villager).toBe(CHARACTER_MODELS.recruitSwordsman);
+    expect(VILLAGER_LOOK.sheet).toBe('villager');
+    expect(VILLAGER_LOOK.attachments).toEqual([]);
+  });
+
+  it('works with the interact clip while building, and only the villager has it', () => {
+    expect(animFor({ state: 'idle', moving: false, working: true })).toBe('work');
+    expect(animFor({ state: 'idle', moving: true })).toBe('walk');
+    expect(clipNames('villager').work).toBe('interact-right');
+    expect(clipNames('recruitSwordsman').work).toBeUndefined();
   });
 });

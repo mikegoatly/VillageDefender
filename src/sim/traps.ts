@@ -52,7 +52,7 @@ function callTrap(w: World) {
   }
   if (!home) return;
   const runner: TrapRunner = {
-    id: w.nextId++, x: home[0], y: home[1], tx: knight.x, ty: knight.y, setLeft: null,
+    id: w.nextId++, x: home[0], y: home[1], tx: knight.x, ty: knight.y, setLeft: null, setTotal: 0,
     facing: norm({ x: knight.x - home[0], y: knight.y - home[1] }),
   };
   w.trapRunners.push(runner);
@@ -80,7 +80,7 @@ function updateRunner(w: World, r: TrapRunner, index: number) {
     }
     r.x = r.tx;
     r.y = r.ty;
-    r.setLeft = TRAP.setTime;
+    r.setTotal = r.setLeft = TRAP.setTime * w.progression.mods.trap.buildMul;
     return;
   }
   r.setLeft -= DT;
