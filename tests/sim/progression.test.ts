@@ -258,14 +258,24 @@ describe('allowed cards', () => {
     expect(q.level).toBe(2);
   });
 
-  it('omitting the list allows every card', () => {
+  const seenCards = (make: (seed: number) => Progression) => {
     const seen = new Set<string>();
     for (let seed = 1; seed <= 200; seed++) {
-      const p = aProgression(seed);
+      const p = make(seed);
       p.addXp(xpToNext(1));
       p.offers!.forEach((o) => seen.add(o.id));
     }
-    expect(seen.size).toBe(UPGRADES.length);
+    return seen;
+  };
+
+  it('omitting the list allows every card except power cards', () => {
+    expect(seenCards(aProgression).size).toBe(UPGRADES.filter((u) => !u.power).length);
+  });
+
+  it('power cards appear with their power, whatever the allowed list says', () => {
+    const seen = seenCards((seed) => new Progression(new Rng(seed), ['blade'], ['trap']));
+    expect([...seen].filter((id) => !UPGRADES.find((u) => u.id === id)!.power)).toEqual(['blade']);
+    expect(seen.size).toBe(1 + UPGRADES.filter((u) => u.power === 'trap').length);
   });
 });
 

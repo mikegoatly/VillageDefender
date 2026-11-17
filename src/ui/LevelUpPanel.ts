@@ -8,8 +8,8 @@ import { promptBar } from './prompts';
 /** Input is ignored this long after show() so held attack taps / buttons cannot pick a card. */
 export const INPUT_GUARD_MS = 300;
 
-const POOL_LABEL: Record<UpgradePool, string> = { knight: 'Knight', army: 'Army', town: 'Town' };
-const POOL_COLOR: Record<UpgradePool, string> = { knight: '#ffd75e', army: '#7fb3e6', town: '#9fd27a' };
+const POOL_LABEL: Record<UpgradePool, string> = { knight: 'Knight', army: 'Army', town: 'Town', trap: 'Trap' };
+const POOL_COLOR: Record<UpgradePool, string> = { knight: '#ffd75e', army: '#7fb3e6', town: '#9fd27a', trap: '#e8a45a' };
 
 const STYLE = `
 .vd-levelup { position: fixed; inset: 0; z-index: 100; display: none; flex-direction: column; align-items: center;

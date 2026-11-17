@@ -282,3 +282,38 @@ describe('weapon choice', () => {
     expect(loaded.data.weapons).toEqual(['sword', 'spear', 'flail']);
   });
 });
+
+describe('trap power', () => {
+  it('a new profile has no powers', () => {
+    const { profile } = aProfile();
+    expect(profile.data.powers).toEqual([]);
+  });
+
+  it('reaching wave 6 unlocks the trap power, once', () => {
+    const { profile } = aProfile();
+    expect(profile.recordRun(aRun({ wave: 5 })).unlockedPowers).toEqual([]);
+    const out = profile.recordRun(aRun({ wave: 6 }));
+    expect(out.unlockedPowers).toEqual(['trap']);
+    expect(profile.data.powers).toEqual(['trap']);
+    expect(profile.recordRun(aRun({ wave: 8 })).unlockedPowers).toEqual([]);
+  });
+
+  it('an old save without powers loads with none, and keeps them once saved', () => {
+    const { store, profile } = aProfile();
+    profile.save();
+    for (const k of store.data.keys()) store.data.set(k, JSON.stringify({ version: 1 }));
+    const loaded = new Profile(store);
+    expect(loaded.data.powers).toEqual([]);
+    loaded.recordRun(aRun({ wave: 6 }));
+    expect(new Profile(store).data.powers).toEqual(['trap']);
+  });
+});
+
+describe('trap power migration', () => {
+  it('a save that already earned Holding the line gets the trap power when it loads', () => {
+    const { store, profile } = aProfile();
+    profile.save();
+    for (const k of store.data.keys()) store.data.set(k, JSON.stringify({ version: 1, achievements: ['hold-the-line'] }));
+    expect(new Profile(store).data.powers).toEqual(['trap']);
+  });
+});

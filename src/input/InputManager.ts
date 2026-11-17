@@ -81,6 +81,11 @@ export class InputManager {
     this.override = state;
   }
 
+  /** Shows the touch trap button (decision 52). */
+  setTrapAvailable(on: boolean): void {
+    this.touch.controls.setTrapAvailable(on);
+  }
+
   setAlwaysAttack(on: boolean): void {
     this.alwaysAttack = on;
   }

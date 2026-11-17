@@ -1,6 +1,7 @@
 // Achievements: persistent goals that unlock content (decision 33/35). Checked after every run.
 
 import type { RoleKind } from './roles';
+import type { PowerKind } from './upgrades';
 import type { WeaponKind } from './weapons';
 
 /** What a finished run reports to the profile. */
@@ -30,7 +31,7 @@ export interface AchievementDef {
   description: string;
   /** True once earned; sees this run and lifetime stats (already including this run). */
   check(run: RunResult, life: LifetimeStats): boolean;
-  reward?: { role?: RoleKind; weapon?: WeaponKind; card?: string };
+  reward?: { role?: RoleKind; weapon?: WeaponKind; card?: string; power?: PowerKind };
 }
 
 export const ACHIEVEMENTS: AchievementDef[] = [
@@ -52,7 +53,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   },
   {
     id: 'hold-the-line', name: 'Holding the line', description: 'Reach wave 6',
-    check: (r) => r.wave >= 6, reward: { card: 'drill' },
+    check: (r) => r.wave >= 6, reward: { card: 'drill', power: 'trap' }, // traps: decision 52, open item 17
   },
   // One boss weapon per town, so the arsenal opens up as the player progresses.
   {

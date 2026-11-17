@@ -7,7 +7,7 @@ import { ROLE_EFFECTS, ROLES, type RoleKind } from '../data/roles';
 import { ARMY, type RookieKind } from '../data/rookies';
 import { COINS } from '../data/towns';
 import { noBoosts, type MetaBoosts } from '../data/shop';
-import type { UpgradeHost } from '../data/upgrades';
+import type { PowerKind, UpgradeHost } from '../data/upgrades';
 import { TOWN1_WAVES, type WaveDef } from '../data/waves';
 import { rankedWeapon, type WeaponDef, type WeaponKind } from '../data/weapons';
 import type { RunResult } from '../data/achievements';
@@ -26,13 +26,14 @@ import { Rng } from './rng';
 import { reapRookies, updateRecruitment, updateRookie } from './rookies';
 import { makeRookie } from './rookieStats';
 import { SpatialHash } from './spatialHash';
+import { updateTraps } from './traps';
 import { applyMods, updateTown } from './town';
 import type { InputState } from './types';
 import { centreOf } from './units';
 import { addMonster, pickSides, updateWaves } from './waves';
 
-export type { BuildingState, Gem, PendingWave, Projectile, SimEvent, Unit, UnitKind, UnitState, WorldOptions } from './model';
-import type { BuildingState, Gem, PendingWave, Projectile, SimEvent, Unit, WorldOptions } from './model';
+export type { BuildingState, Gem, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, UnitKind, UnitState, WorldOptions } from './model';
+import type { BuildingState, Gem, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, WorldOptions } from './model';
 
 export class World implements UpgradeHost {
   readonly map: TownMap;
@@ -57,6 +58,13 @@ export class World implements UpgradeHost {
   /** Rally: seconds left active, and cooldown. */
   rallyTime = 0;
   rallyCooldown = 0;
+  /** Trap power (decision 52): set traps, villagers on their way to set one, and the cooldown. */
+  readonly traps: Trap[] = [];
+  readonly trapRunners: TrapRunner[] = [];
+  trapCooldown = 0;
+  /** @internal */ trapHeld = false;
+  /** Powers unlocked for this run. */
+  readonly powers: PowerKind[];
   /** 'planning' until start(); the sim only advances while 'running'. */
   phase: 'planning' | 'running';
   readonly planningPoints: number;
@@ -107,7 +115,8 @@ export class World implements UpgradeHost {
 
   constructor(opts: WorldOptions) {
     this.rng = new Rng(opts.seed * 7919 + 17);
-    this.progression = new Progression(new Rng(opts.seed * 104729 + 3), opts.cards);
+    this.powers = [...(opts.powers ?? [])];
+    this.progression = new Progression(new Rng(opts.seed * 104729 + 3), opts.cards, this.powers);
     this.map = opts.map ?? generateTown(opts.seed, opts.mapOptions);
     this.knightFlow = new FlowField(this.map);
     this.buildingFlow = new FlowField(this.map);
@@ -149,6 +158,10 @@ export class World implements UpgradeHost {
   }
 
   // ------------------------------------------------------------------ queries
+
+  hasPower(power: PowerKind): boolean {
+    return this.powers.includes(power);
+  }
 
   standingBuildings(): number {
     let n = 0;
@@ -310,6 +323,7 @@ export class World implements UpgradeHost {
     rebuildEnemyHash(this);
     this.players.forEach((p, k) => updateKnight(this, p, inputs[k]));
     updateRally(this, inputs[0]);
+    updateTraps(this, inputs[0]);
     updateRecruitment(this);
     for (const r of this.rookies) updateRookie(this, r);
     updateFlowFields(this);

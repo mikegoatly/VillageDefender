@@ -492,7 +492,23 @@ Findings:
 
 51. **Town 3 theme and monsters:** per-town `theme` on the map; bone knight (front armour), banshee (stunning wail), gravedigger (burrows past chokepoints); Gravekeeper boss (death toll + raises the dead). `stun` is a new unit status.
 
+52. **Traps (built 2026-11-17):** an unlockable power. Press the trap button and a villager runs to the knight's position and sets a trap there. Rules:
+    - Cap of **2** traps on the field at once; upgrades raise it.
+    - A trap has a **damage budget**. Each monster in its radius takes damage per tick and the budget drains by the damage dealt; at zero the trap is removed.
+    - **Flying monsters ignore traps** (none exist yet; the flag is `MonsterDef.flying`, added with the first flyer).
+    - **Bosses take half damage** and the budget is tuned so a trap can never come near killing a boss; bosses are tanks, traps chip.
+    - **No friendly fire:** knight, rookies and villagers are never hurt.
+    - If the villager is killed on the way, the trap is not placed and the cooldown is refunded.
+    - Upgrade axes (in-run cards, same data-driven shape as `UPGRADES`): damage budget, radius, trap cap, faster setup, slow on trigger, longer-lasting/shorter cooldown. New upgrade pool `trap` or folded into the town pool (undecided, see open item 17).
+    - Sim shape (src/sim/traps.ts, numbers in src/data/traps.ts): `World.traps[]`, `World.trapRunners[]`, input `ability1` (Q / pad X / touch 🪤 button, shown once unlocked), events `trapCalled`, `trapSet`, `trapPulse`, `trapSpent`, `trapRunnerDown`. A monster touching the villager (running or setting) stops the trap and refunds the cooldown. Budget drains by pre-reduction damage, so a boss loses at most `budget × 0.5` per trap. Deterministic; no RNG.
+    - Numbers: cap 2, cooldown 9 s, radius 1.3, budget 160, 40 dps in 0.25 s pulses. Untuned: needs a bot pass.
+    - Unlock: the "Holding the line" achievement (reach wave 6) grants `PowerKind` 'trap' (`Profile.data.powers`; older saves that already hold the achievement get it on load). Trap cards (`trapdmg`, `traprad`, `trapcap`, `trapquick`, `trapslow`, pool 'trap') are only offered when the power is unlocked, whatever the profile's card list says.
+    - Renderer: src/render3d/TrapView.ts (spiked patch that shortens as the budget drains, running villager).
+53. **Pets (parked):** companions that follow the knight, get knocked out and need reviving. Not started; build traps first. To keep them distinct from rookies, give each pet a utility role (taunt, heal the knight, find gems) instead of being a weaker rookie, and prefer a timed auto-revive to manual healing.
+
 ### Open (decide later)
+
+17. **Trap tuning:** budget, cooldown and upgrade steps are first guesses; the bots do not use traps yet, so the balance table is unchanged. Unlock (wave 6) can move to a boss achievement if it feels too early.
 
 15. **Distribution target:** web only first, or stores/Steam from the start.
     Affects packaging and save storage only.

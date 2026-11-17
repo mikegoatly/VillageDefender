@@ -27,6 +27,9 @@ const STYLE = `
   right: calc(24px + env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 .vd-touch-dodge { width: 64px; height: 64px; font-size: 24px;
   right: calc(24px + 88px + 16px + env(safe-area-inset-right, 0px)); bottom: calc(24px + 70px + env(safe-area-inset-bottom, 0px)); }
+.vd-touch-trap { width: 56px; height: 56px; font-size: 22px;
+  right: calc(24px + 88px + 16px + 64px + 14px + env(safe-area-inset-right, 0px)); bottom: calc(24px + 70px + env(safe-area-inset-bottom, 0px)); }
+.vd-touch-trap.vd-hidden { display: none; }
 .vd-touch-rally { width: 56px; height: 56px; font-size: 22px;
   right: calc(24px + 88px + 16px + 4px + env(safe-area-inset-right, 0px)); bottom: calc(24px + 70px + 64px + 12px + env(safe-area-inset-bottom, 0px)); }
 `;
@@ -41,6 +44,8 @@ export interface TouchState {
   attack: boolean;
   dodge: boolean;
   rally: boolean;
+  /** Trap power button (decision 52); maps to ability1. */
+  trap: boolean;
 }
 
 function injectStyle(): void {
@@ -52,7 +57,7 @@ function injectStyle(): void {
 }
 
 export class TouchControls {
-  readonly state: TouchState = { move: { x: 0, y: 0 }, attack: false, dodge: false, rally: false };
+  readonly state: TouchState = { move: { x: 0, y: 0 }, attack: false, dodge: false, rally: false, trap: false };
   private readonly el: HTMLDivElement;
   private readonly base: HTMLDivElement;
   private readonly knob: HTMLDivElement;
@@ -63,7 +68,7 @@ export class TouchControls {
   private originX = 0;
   private originY = 0;
   private mode: TouchMode = 'off';
-  private readonly buttons: Record<'attack' | 'dodge' | 'rally', HTMLDivElement>;
+  private readonly buttons: Record<'attack' | 'dodge' | 'rally' | 'trap', HTMLDivElement>;
 
   constructor(root: HTMLElement) {
     injectStyle();
@@ -78,8 +83,9 @@ export class TouchControls {
     const attack = this.div('vd-touch-btn vd-touch-attack', this.el, '⚔');
     const dodge = this.div('vd-touch-btn vd-touch-dodge', this.el, '»');
     const rally = this.div('vd-touch-btn vd-touch-rally', this.el, '⚑');
-    this.buttons = { attack, dodge, rally };
-    for (const [btn, g] of [[attack, 'a'], [dodge, 'b'], [rally, 'lb']] as const) {
+    const trap = this.div('vd-touch-btn vd-touch-trap vd-hidden', this.el, '🪤');
+    this.buttons = { attack, dodge, rally, trap };
+    for (const [btn, g] of [[attack, 'a'], [dodge, 'b'], [rally, 'lb'], [trap, 'x']] as const) {
       const badge = glyph(g);
       badge.classList.add('vd-touch-glyph');
       btn.appendChild(badge);
@@ -87,6 +93,9 @@ export class TouchControls {
     this.bindStick(zone);
     this.bindButton(rally, (v) => {
       this.state.rally = v;
+    });
+    this.bindButton(trap, (v) => {
+      this.state.trap = v;
     });
     this.bindButton(attack, (v) => {
       this.state.attack = v;
@@ -116,10 +125,16 @@ export class TouchControls {
     if (!(wasTouch && mode === 'touch')) this.releaseAll();
   }
 
-  /** In pad mode, lights the buttons whose controller buttons are held. */
-  showPadPressed(held: { attack: boolean; dodge: boolean; rally: boolean }): void {
+  /** Shows the trap button only once the power is unlocked. */
+  setTrapAvailable(on: boolean): void {
+    this.buttons.trap.classList.toggle('vd-hidden', !on);
+  }
+
+  /** In pad mode, lights the buttons whose controller buttons are held (the trap button is ability1). */
+  showPadPressed(held: { attack: boolean; dodge: boolean; rally: boolean; ability1: boolean }): void {
     if (this.mode !== 'pad') return;
     for (const k of ['attack', 'dodge', 'rally'] as const) this.buttons[k].classList.toggle('vd-pressed', held[k]);
+    this.buttons.trap.classList.toggle('vd-pressed', held.ability1);
   }
 
   destroy(): void {
@@ -222,6 +237,7 @@ export class TouchControls {
     this.state.attack = false;
     this.state.dodge = false;
     this.state.rally = false;
+    this.state.trap = false;
     this.el.querySelectorAll('.vd-pressed').forEach((n) => n.classList.remove('vd-pressed'));
   }
 }

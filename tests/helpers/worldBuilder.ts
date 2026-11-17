@@ -4,7 +4,7 @@ import { DT } from '../../src/data/balance';
 import type { MonsterKind } from '../../src/data/monsters';
 import type { RookieKind } from '../../src/data/rookies';
 import type { RoleKind } from '../../src/data/roles';
-import { UPGRADE_BY_ID, type UpgradeOffer } from '../../src/data/upgrades';
+import { UPGRADE_BY_ID, type PowerKind, type UpgradeOffer } from '../../src/data/upgrades';
 import type { WaveDef } from '../../src/data/waves';
 import type { WeaponKind } from '../../src/data/weapons';
 import type { TownMap } from '../../src/sim/map';
@@ -35,6 +35,8 @@ export class WorldBuilder {
   /** Knight's basic attack (default sword). */
   withWeapon(kind: WeaponKind) { this.opts.weapon = kind; return this; }
   withWeaponRanks(ranks: Partial<Record<WeaponKind, number>>) { this.opts.weaponRanks = ranks; return this; }
+  /** Unlocks powers (default none), e.g. 'trap'. */
+  withPowers(...powers: PowerKind[]) { this.opts.powers = powers; return this; }
   withSeed(seed: number) { this.opts.seed = seed; return this; }
   withMap(rows: string[]) { this.mapVal = mapFromAscii(rows); return this; }
   withTownMap(map: TownMap) { this.mapVal = map; return this; }

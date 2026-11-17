@@ -50,6 +50,8 @@ export interface MonsterDef {
   phasing?: boolean;
   /** Crosses river water (troll). */
   wades?: boolean;
+  /** Flies: traps never touch it (decision 52). No monster flies yet. */
+  flying?: boolean;
   /** Boss ability set; bosses get a health bar and arrival banner. */
   boss?: BossKind;
   /** Display name (bosses). */

@@ -4,7 +4,7 @@
 import { ACHIEVEMENTS, type LifetimeStats, type RunResult } from '../data/achievements';
 import { STARTING_ROLES, type RoleKind } from '../data/roles';
 import { STARTING_WEAPONS, WEAPON_ORDER, type WeaponKind } from '../data/weapons';
-import { STARTING_CARDS } from '../data/upgrades';
+import { STARTING_CARDS, type PowerKind } from '../data/upgrades';
 import { noBoosts, SHOP_BY_ID, type MetaBoosts } from '../data/shop';
 import { TOWNS } from '../data/towns';
 
@@ -17,6 +17,8 @@ export interface ProfileData {
   weapon: WeaponKind;
   /** Level-up cards that can be offered (decision 44). */
   cards: string[];
+  /** Powers earned (decision 52); their level-up cards appear once earned. */
+  powers: PowerKind[];
   /** Unlock item id → times bought (one-off unlocks). */
   purchases: Record<string, number>;
   /** Boost item id → stacks readied for the next run (consumed when it starts). */
@@ -55,7 +57,7 @@ export function browserStore(): KeyValueStore {
 }
 
 export function freshProfile(): ProfileData {
-  return { version: 1, coins: 0, roles: [...STARTING_ROLES], weapons: [...STARTING_WEAPONS], weapon: 'sword', cards: [...STARTING_CARDS], purchases: {}, boostsReady: {}, achievements: [], bestStars: {}, stats: { runs: 0, wins: 0, kills: {} } };
+  return { version: 1, coins: 0, roles: [...STARTING_ROLES], weapons: [...STARTING_WEAPONS], weapon: 'sword', cards: [...STARTING_CARDS], powers: [], purchases: {}, boostsReady: {}, achievements: [], bestStars: {}, stats: { runs: 0, wins: 0, kills: {} } };
 }
 
 export interface RunOutcome {
@@ -64,6 +66,7 @@ export interface RunOutcome {
   unlockedRoles: RoleKind[];
   unlockedWeapons: WeaponKind[];
   unlockedCards: string[];
+  unlockedPowers: PowerKind[];
   newBest: boolean;
 }
 
@@ -86,6 +89,8 @@ export class Profile {
         roles: Array.from(new Set([...(d.roles ?? []), ...STARTING_ROLES])) as RoleKind[],
         weapons: Array.from(new Set([...(d.weapons ?? []), ...STARTING_WEAPONS])) as WeaponKind[],
         cards: Array.from(new Set([...(d.cards ?? []), ...STARTING_CARDS])),
+        // Powers are also granted by achievements earned before the power existed.
+        powers: Array.from(new Set([...(d.powers ?? []), ...ACHIEVEMENTS.filter((x) => d.achievements?.includes(x.id) && x.reward?.power).map((x) => x.reward!.power!)])),
         purchases: { ...(d.purchases ?? {}) },
         boostsReady: { ...(d.boostsReady ?? {}) },
         stats: { ...base.stats, ...(d.stats ?? {}), kills: { ...(d.stats?.kills ?? {}) } },
@@ -117,6 +122,7 @@ export class Profile {
     const unlockedRoles: RoleKind[] = [];
     const unlockedWeapons: WeaponKind[] = [];
     const unlockedCards: string[] = [];
+    const unlockedPowers: PowerKind[] = [];
     for (const a of ACHIEVEMENTS) {
       if (d.achievements.includes(a.id) || !a.check(run, d.stats)) continue;
       d.achievements.push(a.id);
@@ -136,9 +142,14 @@ export class Profile {
         d.cards.push(card);
         unlockedCards.push(card);
       }
+      const power = a.reward?.power;
+      if (power && !d.powers.includes(power)) {
+        d.powers.push(power);
+        unlockedPowers.push(power);
+      }
     }
     this.save();
-    return { coins: run.coins, newAchievements, unlockedRoles, unlockedWeapons, unlockedCards, newBest };
+    return { coins: run.coins, newAchievements, unlockedRoles, unlockedWeapons, unlockedCards, unlockedPowers, newBest };
   }
 
   // ---------------------------------------------------------------- shop (decision 43)

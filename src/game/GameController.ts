@@ -7,6 +7,7 @@ import { DT } from '../data/balance';
 import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ROLE_ORDER, ROLES, type RoleKind } from '../data/roles';
 import type { TownDef } from '../data/towns';
+import { POWER_NAMES } from '../data/upgrades';
 import { RANK_NUMERALS, WEAPON_ORDER, WEAPONS, type WeaponKind } from '../data/weapons';
 import type { GameAudio } from '../audio/GameAudio';
 import { InputManager } from '../input/InputManager';
@@ -126,6 +127,7 @@ export class GameController {
     current = this;
 
     this.input = new InputManager({ root: deps.root });
+    this.input.setTrapAvailable(this.world.hasPower('trap'));
     this.uninstallRotate = installRotateOverlay(this.uiRoot);
     this.hud = new Hud(this.uiRoot, {
       onRetry: () => this.restart(this.params.seed),
@@ -247,7 +249,7 @@ export class GameController {
     this.endExtras = {
       coins: outcome.coins, wallet: this.profile.data.coins,
       achievements: outcome.newAchievements.map((a) => ({ name: a.name, description: a.description })),
-      unlocks: [...outcome.unlockedRoles.map((r) => ROLES[r].name), ...outcome.unlockedWeapons.map((w) => WEAPONS[w].name)],
+      unlocks: [...outcome.unlockedRoles.map((r) => ROLES[r].name), ...outcome.unlockedWeapons.map((w) => WEAPONS[w].name), ...outcome.unlockedPowers.map((p) => POWER_NAMES[p])],
     };
     this.audio.music(null);
   }

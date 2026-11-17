@@ -2,7 +2,12 @@
 // Effects are expressed as modifiers recomputed from upgrade levels, so they are easy to test
 // and never drift. One-off effects (heals, repairs) use `onPick`.
 
-export type UpgradePool = 'knight' | 'army' | 'town';
+export type UpgradePool = 'knight' | 'army' | 'town' | 'trap';
+
+/** Powers whose cards are only offered once the power is unlocked (decision 52). */
+export type PowerKind = 'trap';
+
+export const POWER_NAMES: Record<PowerKind, string> = { trap: 'Trap power' };
 
 export interface Mods {
   knight: {
@@ -38,6 +43,17 @@ export interface Mods {
     /** Movement slow for monsters next to buildings (0..1). */
     slow: number;
   };
+  trap: {
+    /** Multiplies the damage budget. */
+    budgetMul: number;
+    radiusMul: number;
+    /** Extra traps allowed on the field at once. */
+    capAdd: number;
+    /** Multiplies the cooldown. */
+    cooldownMul: number;
+    /** Fraction of speed monsters lose inside a trap (0..1). */
+    slow: number;
+  };
 }
 
 export function baseMods(): Mods {
@@ -45,6 +61,7 @@ export function baseMods(): Mods {
     knight: { damageMul: 1, cooldownMul: 1, arcMul: 1, rangeMul: 1, speedMul: 1, maxHpAdd: 0, regen: 0, magnetMul: 1, knockbackMul: 1, dodgeCooldownMul: 1 },
     army: { thresholdMul: 1, capAdd: 0, hpMul: 1, damageMul: 1, startRank: 0 },
     town: { maxHpMul: 1, thorns: 0, arrowSlits: 0, regenFrac: 0, slow: 0 },
+    trap: { budgetMul: 1, radiusMul: 1, capAdd: 0, cooldownMul: 1, slow: 0 },
   };
 }
 
@@ -59,6 +76,8 @@ export interface UpgradeDef {
   name: string;
   pool: UpgradePool;
   max: number;
+  /** Only offered when this power is unlocked for the run. */
+  power?: PowerKind;
   /** Text for the card when going from `level` to `level + 1`. */
   describe(level: number): string;
   /** Applies one stack. Called `level` times on fresh base mods. */
@@ -92,6 +111,12 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'slits', name: 'Arrow Slits', pool: 'town', max: 3, describe: (l) => (l === 0 ? 'Buildings shoot arrows at nearby monsters' : 'Buildings shoot faster'), apply: (m) => { m.town.arrowSlits += 1; } },
   { id: 'crews', name: 'Repair Crews', pool: 'town', max: 3, describe: () => 'Buildings slowly repair (0.4% per second)', apply: (m) => { m.town.regenFrac += 0.004; } },
   { id: 'braziers', name: 'Tar Pits', pool: 'town', max: 2, describe: () => `Monsters next to buildings move ${pct(0.25)} slower`, apply: (m) => { m.town.slow += 0.25; } },
+  // ---- trap (only offered with the trap power, decision 52)
+  { id: 'trapdmg', name: 'Heavy Jaws', pool: 'trap', power: 'trap', max: 3, describe: () => `Traps last ${pct(0.4)} longer (more damage before they break)`, apply: (m) => { m.trap.budgetMul += 0.4; } },
+  { id: 'traprad', name: 'Wide Snare', pool: 'trap', power: 'trap', max: 3, describe: () => `Traps cover ${pct(0.25)} more ground`, apply: (m) => { m.trap.radiusMul += 0.25; } },
+  { id: 'trapcap', name: 'Trap Line', pool: 'trap', power: 'trap', max: 3, describe: () => 'Keep one more trap out at a time', apply: (m) => { m.trap.capAdd += 1; } },
+  { id: 'trapquick', name: 'Quick Hands', pool: 'trap', power: 'trap', max: 3, describe: () => `Set traps ${pct(0.25)} more often`, apply: (m) => { m.trap.cooldownMul *= 0.75; } },
+  { id: 'trapslow', name: 'Tangle Snare', pool: 'trap', power: 'trap', max: 2, describe: () => `Monsters in a trap move ${pct(0.3)} slower`, apply: (m) => { m.trap.slow += 0.3; } },
 ];
 
 export const UPGRADE_BY_ID: Record<string, UpgradeDef> = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));

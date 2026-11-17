@@ -350,7 +350,8 @@ function steer(w: World, m: Unit, field: FlowField | null, dx: number, dy: numbe
   }
   // Tar pits: slowed next to buildings.
   const slow = w.progression.mods.town.slow;
-  const speed = m.speed * (slow > 0 && adjacentBuilding(w, m, 0.6) ? 1 - slow : 1) * speedMul;
+  const trapSlow = m.slowIn > 0 ? 1 - m.slowBy : 1;
+  const speed = m.speed * (slow > 0 && adjacentBuilding(w, m, 0.6) ? 1 - slow : 1) * trapSlow * speedMul;
   const dir = norm({ x: sx, y: sy });
   m.x += dir.x * speed * DT;
   m.y += dir.y * speed * DT;

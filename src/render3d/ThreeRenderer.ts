@@ -26,6 +26,7 @@ import { TownVisuals } from './TownVisuals';
 import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
+import { TrapView } from './TrapView';
 import { CHAR_HEIGHT, CHAR_SCALE, HALO_ROOKIE, UnitBatches } from './UnitBatches';
 
 const MAX_GEMS = 1024;
@@ -82,6 +83,7 @@ export class ThreeRenderer implements Renderer {
   private readonly effects: Effects;
   private readonly knight: KnightVisuals;
   private readonly townFx: TownVisuals;
+  private readonly traps = new TrapView();
   private readonly labels: Labels;
   private debug: DebugOverlay3D | null = null;
   private readonly gems: THREE.InstancedMesh;
@@ -113,7 +115,7 @@ export class ThreeRenderer implements Renderer {
     );
     this.gems.frustumCulled = false;
     this.gems.count = 0;
-    this.root.add(this.town.root, this.units.root, this.effects.root, this.gems, this.particles.root);
+    this.root.add(this.town.root, this.units.root, this.effects.root, this.traps.root, this.gems, this.particles.root);
     stage.scene.add(this.root);
     stage.canvas.addEventListener('pointerdown', this.onPointerDown);
   }
@@ -128,6 +130,7 @@ export class ThreeRenderer implements Renderer {
     this.townFx.sync(world, dt);
     this.particles.update(dt);
     this.effects.update(dt, world.projectiles);
+    this.traps.sync(world.traps, world.trapRunners, dt);
     this.syncFlail(world);
     this.syncAxeTrails(world);
     this.syncGems(world);
@@ -235,6 +238,24 @@ export class ThreeRenderer implements Renderer {
         if (r) this.labels.floatText(r.x, HEAD.rookie, r.y, e.rank === 1 ? 'Veteran!' : 'Captain!', '#ffffff');
         return;
       }
+      case 'trapCalled':
+        this.labels.floatText(e.x, HEAD.knight, e.y, 'Trap!', '#e8a45a');
+        return;
+      case 'trapSet':
+        this.effects.shockwave(e.x, e.y, e.radius, 0xe8a45a);
+        this.particles.burst(e.x, 0.1, e.y, 8, 0x8a6a48, 0.3, 1.2, 1);
+        return;
+      case 'trapPulse':
+        this.particles.burst(e.x, 0.15, e.y, 3, 0xe8a45a, 0.25, 1.4, 0.8);
+        return;
+      case 'trapSpent':
+        this.effects.shockwave(e.x, e.y, e.radius * 0.8, 0x8f8a80);
+        this.particles.burst(e.x, 0.15, e.y, 10, 0x8f8a80, 0.3, 1.4, 1);
+        return;
+      case 'trapRunnerDown':
+        this.particles.burst(e.x, 0.3, e.y, 8, 0xd9534f, 0.3, 1.4, 1);
+        this.labels.floatText(e.x, HEAD.rookie, e.y, 'Villager down!', '#f0a0a0');
+        return;
       case 'rally': {
         const k = world.players[0];
         this.effects.pulse(k.x, k.y, HALO_ROOKIE[0]);
@@ -294,6 +315,7 @@ export class ThreeRenderer implements Renderer {
     this.units.dispose();
     this.particles.dispose();
     this.effects.dispose();
+    this.traps.dispose();
     this.debug?.dispose();
     this.labels.destroy();
     this.gems.geometry.dispose();

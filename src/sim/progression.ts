@@ -1,6 +1,6 @@
 // XP, knight level and upgrade choices for one run. Pure and deterministic (uses the world's Rng).
 
-import { computeMods, UPGRADE_BY_ID, UPGRADES, type Mods, type UpgradeHost, type UpgradeOffer } from '../data/upgrades';
+import { computeMods, UPGRADE_BY_ID, UPGRADES, type PowerKind, type Mods, type UpgradeHost, type UpgradeOffer } from '../data/upgrades';
 import type { Rng } from './rng';
 
 /** XP for level 1→2 and growth per level (retune 2026-11-14: ~6 level-ups per level-1 run). */
@@ -23,7 +23,7 @@ export class Progression {
   private pending = 0;
 
   /** llowed: card ids that may be offered (unlocked cards); all cards when omitted. */
-  constructor(private readonly rng: Rng, private readonly allowed?: readonly string[]) {}
+  constructor(private readonly rng: Rng, private readonly allowed?: readonly string[], private readonly powers: readonly PowerKind[] = []) {}
 
   get xpToNext(): number {
     return xpToNext(this.level);
@@ -76,7 +76,7 @@ export class Progression {
   }
 
   private roll() {
-    const available = UPGRADES.filter((u) => (this.levels[u.id] ?? 0) < u.max && (!this.allowed || this.allowed.includes(u.id)));
+    const available = UPGRADES.filter((u) => (this.levels[u.id] ?? 0) < u.max && (u.power ? this.powers.includes(u.power) : !this.allowed || this.allowed.includes(u.id)));
     if (available.length === 0) {
       // Everything maxed: nothing to offer; drop the pending level-ups.
       this.pending = 0;

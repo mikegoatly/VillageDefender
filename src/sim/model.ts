@@ -7,6 +7,7 @@ import type { RoleKind } from '../data/roles';
 import type { WaveDef } from '../data/waves';
 import type { WeaponKind } from '../data/weapons';
 import type { MetaBoosts } from '../data/shop';
+import type { PowerKind } from '../data/upgrades';
 import type { BossState } from './bossState';
 import type { MapOptions, Side, TownMap } from './map';
 import type { Vec2 } from './types';
@@ -64,6 +65,9 @@ export interface Unit {
   windup: number;
   /** Gravedigger: travelling underground, out of reach of every weapon. */
   burrowed: boolean;
+  /** Seconds of trap slow left, and the fraction of speed it takes away. */
+  slowIn: number;
+  slowBy: number;
   /** Id of the necromancer that raised this monster (raised monsters give no xp or coins). */
   raisedBy?: number;
   /** Orc Warlord only. */
@@ -110,6 +114,34 @@ export interface Projectile {
   hitIds: number[];
 }
 
+/** A set trap (decision 52): hurts monsters in its radius until its damage budget is spent. */
+export interface Trap {
+  id: number;
+  x: number;
+  y: number;
+  radius: number;
+  /** Damage it can still deal (counted before the boss reduction). */
+  budget: number;
+  maxBudget: number;
+  /** Seconds until the next damage pulse. */
+  pulseIn: number;
+  /** Slows monsters inside by this fraction (0..1). */
+  slow: number;
+}
+
+/** The villager on their way to set a trap, then busy setting it. */
+export interface TrapRunner {
+  id: number;
+  x: number;
+  y: number;
+  /** Where the trap goes (where the knight stood when it was called). */
+  tx: number;
+  ty: number;
+  /** Seconds of setting left once there; null while still running. */
+  setLeft: number | null;
+  facing: { x: number; y: number };
+}
+
 export interface Gem {
   id: number;
   x: number;
@@ -138,6 +170,11 @@ export type SimEvent =
   | { type: 'shot'; projectile: number; from: number }
   | { type: 'rally' }
   | { type: 'axeThrow'; projectile: number }
+  | { type: 'trapCalled'; runner: number; x: number; y: number }
+  | { type: 'trapSet'; trap: number; x: number; y: number; radius: number }
+  | { type: 'trapPulse'; trap: number; x: number; y: number; radius: number }
+  | { type: 'trapSpent'; trap: number; x: number; y: number; radius: number }
+  | { type: 'trapRunnerDown'; runner: number; x: number; y: number }
   | { type: 'monsterRaised'; unit: number; by: number; x: number; y: number }
   | { type: 'fuseLit'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'explosion'; unit: number; x: number; y: number; radius: number }
@@ -185,6 +222,8 @@ export interface WorldOptions {
   boosts?: Partial<MetaBoosts>;
   /** Basic attack (decision 39); defaults to the sword. */
   weapon?: WeaponKind;
+  /** Powers unlocked for the run (decision 52); none by default. */
+  powers?: PowerKind[];
 }
 
 export interface PendingWave {

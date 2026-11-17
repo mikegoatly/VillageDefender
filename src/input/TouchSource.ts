@@ -21,6 +21,7 @@ export class TouchSource {
     s.attack = c.attack;
     s.dodge = c.dodge;
     s.rally = c.rally;
+    s.ability1 = c.trap;
     return s;
   }
 

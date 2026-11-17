@@ -11,6 +11,7 @@ export function tickTimers(u: Unit) {
   u.dodgeCooldown = Math.max(0, u.dodgeCooldown - DT);
   u.invuln = Math.max(0, u.invuln - DT);
   u.stun = Math.max(0, u.stun - DT);
+  u.slowIn = Math.max(0, u.slowIn - DT);
 }
 
 /** Changes state and resets stateTime; `keepTime` leaves the timer if the state is unchanged. Dead is final. */
@@ -29,7 +30,7 @@ export function unitBase(id: number, x: number, y: number) {
     attackCooldown: 0, hitPending: false, attackBuilding: -1,
     invuln: 0, dodgeCooldown: 0, dodgeHeld: false, moving: false,
     rank: 0, unitKills: 0, targetId: -1, retargetIn: 0, postX: x, postY: y, burstTime: 0, burstCooldown: 0,
-    abilityIn: 0, stun: 0, windup: 0, burrowed: false,
+    abilityIn: 0, stun: 0, windup: 0, burrowed: false, slowIn: 0, slowBy: 0,
   };
 }
 

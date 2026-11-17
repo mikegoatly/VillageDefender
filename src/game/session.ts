@@ -72,7 +72,7 @@ export function createSession(data: SessionData, profile: Profile, search: strin
     seed: params.seed, god: params.god, startWave: params.wave,
     planning: params.plan || inMenu, planningPoints: town.planningPoints + boosts.planningPoints,
     allowedRoles: profile.data.roles, townId: town.id, waves: town.waves,
-    mapOptions: town.map, cards: profile.data.cards, boosts, weaponRanks: profile.weaponRanks(),
+    mapOptions: town.map, cards: profile.data.cards, powers: profile.data.powers, boosts, weaponRanks: profile.weaponRanks(),
     weapon: profile.data.weapons.includes(profile.data.weapon) ? profile.data.weapon : 'sword',
   });
   return { world, params, town, inMenu };
