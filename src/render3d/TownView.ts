@@ -2,6 +2,7 @@
 // A building is rebuilt whenever its role or damage state changes.
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BUILDING } from '../data/balance';
 import { ROLES, type RoleKind } from '../data/roles';
 import { Ground, type Building, type TownMap } from '../sim/map';
@@ -21,10 +22,22 @@ const SMOKE: Record<SmokeSource['kind'], Omit<EmitterSpec, 'x' | 'y' | 'z'>> = {
   fire: { every: 0.14, color: 0x5b4a44, size: 0.2, rise: 0.8, life: 1.8 },
   brazier: { every: 0.08, color: 0xff8a2a, size: 0.07, rise: 0.9, life: 0.5 },
 };
-/** Generated building pieces (Tar Pits puddles, Arrow Slits). */
-const GENERATED = { slit: { color: 0x1d1410, size: [0.03, 0.3, 0.08] }, tar: { color: 0x17110d, radius: 0.3, y: 0.012 } };
+/**
+ * Generated building pieces. An arrow slit is a cross-shaped loop (a tall slot crossed near the
+ * top) cut through a dressed-stone surround with a sill; sizes are [out of the wall, up, along].
+ * Tar Pits pool a puddle.
+ */
+const GENERATED = {
+  slit: {
+    stone: 0xb9b2a5, hole: 0x15100c,
+    surround: [0.04, 0.44, 0.22], sill: { size: [0.08, 0.04, 0.27], y: -0.22 },
+    slot: [0.06, 0.36, 0.05], cross: { size: [0.06, 0.05, 0.17], y: 0.02 },
+  },
+  tar: { color: 0x17110d, radius: 0.3, y: 0.012 },
+} as const;
 const DUST = 0xc9b29b;
 const DAMAGED = new THREE.Color(0x8f6f60);
+const WHITE = new THREE.Color(0xffffff);
 /** Planning selection: roof/wall glow pulses between these, plus a gold outline and a bobbing arrow. */
 const HIGHLIGHT_LOW = new THREE.Color(0x4a3a10);
 const HIGHLIGHT_HIGH = new THREE.Color(0x8a6a1a);
@@ -75,12 +88,17 @@ export class TownView {
   private readonly markerMat: THREE.MeshBasicMaterial;
   private readonly barGeo: THREE.BoxGeometry;
   private readonly glow = new THREE.Color();
+  private readonly tint = new THREE.Color();
   private time = 0;
   /** Generated pieces' geometry and material (Arrow Slits, Tar Pits). */
-  private readonly slit: [THREE.BufferGeometry, THREE.Material] = [
-    this.own(new THREE.BoxGeometry(...GENERATED.slit.size)),
-    this.own(new THREE.MeshStandardMaterial({ color: GENERATED.slit.color })),
-  ];
+  private readonly slitStone = this.slitPart(GENERATED.slit.stone, [
+    new THREE.BoxGeometry(...GENERATED.slit.surround),
+    new THREE.BoxGeometry(...GENERATED.slit.sill.size).translate(0, GENERATED.slit.sill.y, 0),
+  ]);
+  private readonly slitHole = this.slitPart(GENERATED.slit.hole, [
+    new THREE.BoxGeometry(...GENERATED.slit.slot),
+    new THREE.BoxGeometry(...GENERATED.slit.cross.size).translate(0, GENERATED.slit.cross.y, 0),
+  ]);
   private readonly tar: [THREE.BufferGeometry, THREE.Material] = [
     this.own(new THREE.CircleGeometry(GENERATED.tar.radius, 12).rotateX(-Math.PI / 2).translate(0, GENERATED.tar.y, 0)),
     this.own(new THREE.MeshStandardMaterial({ color: GENERATED.tar.color, roughness: 0.2 })),
@@ -138,7 +156,8 @@ export class TownView {
       }
       if (damage !== 'ruined' && frac !== v.lastFrac) {
         v.lastFrac = frac;
-        for (const m of v.materials) m.color.setHex(0xffffff).lerp(DAMAGED, 1 - frac);
+        this.tint.copy(WHITE).lerp(DAMAGED, 1 - frac);
+        for (const m of v.materials) m.color.copy(m.userData.base as THREE.Color).multiply(this.tint);
       }
     }
     this.syncAura(states);
@@ -228,22 +247,20 @@ export class TownView {
     for (const e of v.emitters) this.particles.removeEmitter(e);
 
     const group = new THREE.Group();
-    const generated: Piece[] = [];
-    for (const p of buildingPieces(v.def, look)) {
-      if (p.model === SLIT || p.model === TAR) generated.push(p);
-      else group.add(this.place(this.library.clone(p.model), p));
-    }
-    // Own materials so this building can darken and glow on its own.
+    for (const p of buildingPieces(v.def, look)) group.add(this.place(this.pieceObject(p.model), p));
+    // Own materials so this building can darken and glow on its own (from each one's own colour).
     const cloned = new Map<THREE.Material, THREE.MeshStandardMaterial>();
     group.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       const src = mesh.material as THREE.MeshStandardMaterial;
-      if (!cloned.has(src)) cloned.set(src, src.clone());
+      if (!cloned.has(src)) {
+        const own = src.clone();
+        own.userData.base = src.color.clone();
+        cloned.set(src, own);
+      }
       mesh.material = cloned.get(src)!;
     });
-    // Slits and tar keep their own colour: damage and highlights tint the kit pieces only.
-    for (const p of generated) group.add(this.place(new THREE.Mesh(...(p.model === SLIT ? this.slit : this.tar)), p));
     this.root.add(group);
     v.group = group;
     v.materials = [...cloned.values()];
@@ -390,6 +407,28 @@ export class TownView {
     const g = this.library.instanced(model, transforms, castShadow);
     g.traverse((o) => { if ((o as THREE.InstancedMesh).isInstancedMesh) this.instanced.push(o as THREE.InstancedMesh); });
     this.root.add(g);
+  }
+
+  /** A kit model, or a generated piece (an arrow slit's stone and hole, a tar puddle). */
+  private pieceObject(model: string): THREE.Object3D {
+    if (model === TAR) return new THREE.Mesh(...this.tar);
+    if (model !== SLIT) return this.library.clone(model);
+    const slit = new THREE.Group();
+    for (const [geo, mat] of [this.slitStone, this.slitHole]) {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.userData.slit = true;
+      slit.add(mesh);
+    }
+    return slit;
+  }
+
+  /** One colour of the arrow slit: merged boxes and a material that hides units (silhouettes show). */
+  private slitPart(color: number, boxes: THREE.BufferGeometry[]): [THREE.BufferGeometry, THREE.Material] {
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+    markOccluder(mat);
+    const geo = mergeGeometries(boxes)!;
+    for (const b of boxes) b.dispose();
+    return [this.own(geo), this.own(mat)];
   }
 
   private place(o: THREE.Object3D, p: Piece): THREE.Object3D {
