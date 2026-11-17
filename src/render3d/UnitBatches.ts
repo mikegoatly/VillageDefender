@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
-import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFor, unitFx, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
+import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFor, lungeOffset, unitFx, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
 import { ECHO_ALPHA } from './motionFx';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
 import { withFxAttribute, withUnitFx } from './unitFx';
@@ -201,8 +201,10 @@ export class UnitBatches {
     const np = batch.parts.length;
     const { flash, alpha, sink } = unitFx(u, !at && this.flashes.has(u.id), this.clock);
     batch.fx.setXY(n, at ? 0 : flash, at ? at.alpha : alpha);
+    // A thrust drives the whole body forward along the facing.
+    const lunge = look.thrust && !at && a.anim === 'attack' ? lungeOffset(look.thrust, u.stateTime) : 0;
     this.unitM.compose(
-      this.pos.set(at?.x ?? u.x, -sink - a.wade, at?.y ?? u.y),
+      this.pos.set((at?.x ?? u.x) + u.facing.x * lunge, -sink - a.wade, (at?.y ?? u.y) + u.facing.y * lunge),
       this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rot),
       this.scl.setScalar(CHAR_SCALE * look.scale),
     );
@@ -228,7 +230,7 @@ export class UnitBatches {
 
     const mixer = new THREE.AnimationMixer(model);
     const clips = new Map<AnimName, PoseClip>();
-    for (const [anim, clipName] of Object.entries(clipNames(look.sheet)) as [AnimName, string][]) {
+    for (const [anim, clipName] of Object.entries(clipNames(look.sheet, look.thrust?.clip)) as [AnimName, string][]) {
       const clip = gltf.animations.find((c) => c.name === clipName);
       if (clip) clips.set(anim, bakeClip(model, mixer, clip, parts, animLoops(anim)));
     }

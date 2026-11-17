@@ -16,6 +16,7 @@ import type { OverlayName } from '../ui/DebugPanel';
 import type { ModelLibrary } from './assets';
 import { CAMERA_DIR, ELEVATION, fitView } from './camera';
 import { DebugOverlay3D } from './DebugOverlay3D';
+import { isThrust } from './characters';
 import { Effects, SLASH } from './Effects';
 import { Labels } from './Labels';
 import { DustTrails, SpacedTrails, sparkNormal, type DustEmit } from './motionFx';
@@ -351,14 +352,16 @@ export class ThreeRenderer implements Renderer {
     else if (wd.style === 'spin') this.spinFx(k, spinRadius(wd, km), world.weaponRank);
   }
 
-  /** Sword/spear: the slash; ranked, a glint at the blade's point; top rank, embers along the edge. */
+  /** Sword slash or spear thrust; ranked, a glint at the blade's point; top rank, embers along the edge. */
   private slashFx(world: World, k: Unit, hitTime: number, { reach, halfArc }: { reach: number; halfArc: number }) {
     const wfx = this.gear.weapon;
     const rank = world.weaponRank;
+    const thrust = isThrust(world.weapon);
     this.effects.later(Math.max(0, hitTime - SLASH.sweep), () => {
       if (k.state === 'dead') return;
-      this.effects.slash(k.x, k.y, k.facing.x, k.facing.y, reach, halfArc, wfx.color);
-      this.knight.onSlash(world, k, reach, halfArc, wfx.color);
+      if (thrust) this.effects.thrust(k.x, k.y, k.facing.x, k.facing.y, reach, halfArc, wfx.color);
+      else this.effects.slash(k.x, k.y, k.facing.x, k.facing.y, reach, halfArc, wfx.color);
+      this.knight.onSlash(world, k, reach, halfArc, wfx.color, thrust);
       const fa = Math.atan2(k.facing.y, k.facing.x);
       if (rank > 0) this.glint(k.x + Math.cos(fa) * reach, k.y + Math.sin(fa) * reach, wfx.color);
       if (!wfx.flourish) return;

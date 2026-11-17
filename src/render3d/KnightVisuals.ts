@@ -66,8 +66,8 @@ export class KnightVisuals {
     return this.syncNimble(world, k);
   }
 
-  /** Swift Strikes: streaks flying off a slash and, maxed, an echo slash just behind it. */
-  onSlash(world: World, k: Unit, reach: number, halfArc: number, color: number) {
+  /** Swift Strikes: streaks flying off a slash (or thrust) and, maxed, an echo just behind it. */
+  onSlash(world: World, k: Unit, reach: number, halfArc: number, color: number, thrust = false) {
     const { t, capstone } = upgradeTier(world, 'swift');
     if (t <= 0) return;
     const { streaks, y, size, life, speed, echoDelay, echoReach } = KFX.swift;
@@ -81,7 +81,8 @@ export class KnightVisuals {
     if (capstone) {
       const { x, y: z } = k;
       const { x: fx, y: fz } = k.facing;
-      this.effects.later(echoDelay, () => this.effects.slash(x, z, fx, fz, reach * echoReach, halfArc, color));
+      const echo = thrust ? this.effects.thrust : this.effects.slash;
+      this.effects.later(echoDelay, () => echo.call(this.effects, x, z, fx, fz, reach * echoReach, halfArc, color));
     }
   }
 

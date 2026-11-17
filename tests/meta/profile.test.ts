@@ -174,10 +174,10 @@ describe('weapon unlocks', () => {
   });
 
   it.each([
-    ['seasoned (knight level 8)', { knightLevel: 8 }, 'seasoned', 'spear'],
     ['brute slayer (10 brutes)', { kills: { brute: 10 } }, 'brute-slayer', 'hammer'],
-    ['hold the line (wave 6)', { wave: 6 }, 'hold-the-line', 'axes'],
-    ['kingslayer (the Warlord)', { kills: { warlord: 1 } }, 'kingslayer', 'flail'],
+    ['kingslayer (the Warlord, town 1)', { kills: { warlord: 1 } }, 'kingslayer', 'flail'],
+    ['troll hunter (the River Troll, town 2)', { kills: { troll: 1 } }, 'troll-hunter', 'spear'],
+    ['rest in peace (the Gravekeeper, town 3)', { kills: { gravekeeper: 1 } }, 'grave-keeper', 'axes'],
   ] as const)('%s unlocks a weapon', (_name, run, id, weapon) => {
     const { profile } = aProfile();
     const out = profile.recordRun(aRun(run));
@@ -187,9 +187,15 @@ describe('weapon unlocks', () => {
     expect(profile.data.weapons).toEqual(['sword', weapon]);
   });
 
-  it('wave 5 is not enough for the axes, and level 7 not for the spear', () => {
+  it('levelling up and holding waves does not unlock weapons; bosses do', () => {
     const { profile } = aProfile();
-    expect(profile.recordRun(aRun({ wave: 5, knightLevel: 7 })).unlockedWeapons).toEqual([]);
+    expect(profile.recordRun(aRun({ wave: 10, knightLevel: 12 })).unlockedWeapons).toEqual([]);
+  });
+
+  it('beating town 1 earns only the flail', () => {
+    const { profile } = aProfile();
+    const out = profile.recordRun(aRun({ won: true, stars: 1, knightLevel: 9, wave: 10, kills: { warlord: 1, brute: 5 } }));
+    expect(out.unlockedWeapons).toEqual(['flail']);
   });
 
   it('brutes count across runs toward the hammer', () => {
@@ -200,15 +206,15 @@ describe('weapon unlocks', () => {
 
   it('weapons are only reported once', () => {
     const { profile } = aProfile();
-    profile.recordRun(aRun({ knightLevel: 9, wave: 10 }));
-    const again = profile.recordRun(aRun({ knightLevel: 9, wave: 10 }));
+    profile.recordRun(aRun({ kills: { warlord: 1 } }));
+    const again = profile.recordRun(aRun({ kills: { warlord: 1 } }));
     expect(again.unlockedWeapons).toEqual([]);
-    expect(profile.data.weapons.slice().sort()).toEqual(['axes', 'spear', 'sword']);
+    expect(profile.data.weapons.slice().sort()).toEqual(['flail', 'sword']);
   });
 
   it('a big run reports every weapon it earns', () => {
     const { profile } = aProfile();
-    const out = profile.recordRun(aRun({ won: true, stars: 3, knightLevel: 9, wave: 10, kills: { brute: 12, warlord: 1 } }));
+    const out = profile.recordRun(aRun({ won: true, stars: 3, kills: { brute: 12, warlord: 1, troll: 1, gravekeeper: 1 } }));
     expect(out.unlockedWeapons.slice().sort()).toEqual(['axes', 'flail', 'hammer', 'spear']);
   });
 });
@@ -216,15 +222,15 @@ describe('weapon unlocks', () => {
 describe('weapon choice', () => {
   it('setWeapon selects an unlocked weapon and persists it', () => {
     const { store, profile } = aProfile();
-    profile.recordRun(aRun({ knightLevel: 8 }));
-    profile.setWeapon('spear');
-    expect(profile.data.weapon).toBe('spear');
-    expect(new Profile(store).data.weapon).toBe('spear');
+    profile.recordRun(aRun({ kills: { warlord: 1 } }));
+    profile.setWeapon('flail');
+    expect(profile.data.weapon).toBe('flail');
+    expect(new Profile(store).data.weapon).toBe('flail');
   });
 
   it('setWeapon ignores a weapon that is still locked', () => {
     const { profile } = aProfile();
-    profile.setWeapon('flail');
+    profile.setWeapon('axes');
     expect(profile.data.weapon).toBe('sword');
   });
 

@@ -22,6 +22,8 @@ const MAGNET_COLOR = 0x6fb8ff;
 const CRACK = { color: 0x3b2f24, opacity: 0.55, width: 0.07, life: 1.2 };
 /** Slash crescent: waist height, colour, fill and edge opacity, and sweep and fade times (s). */
 export const SLASH = { y: 0.4, color: 0xf6f2e6, fill: 0.22, edge: 0.85, sweep: 0.08, fade: 0.2 };
+/** Spear thrust lance: half-width of its shaft and how far its point runs past the reach. */
+const THRUST = { width: 0.05, point: 0.15 };
 
 interface Transient {
   /** Advances by dt; returns false when finished. */
@@ -200,6 +202,43 @@ export class Effects {
   }
 
   /**
+   * Spear thrust: a bright lance shooting straight out to the tip in SLASH.sweep seconds over a
+   * faint wedge showing the real reach and half-angle, then both fade.
+   */
+  thrust(x: number, z: number, facingX: number, facingZ: number, reach: number, halfArc: number, color = SLASH.color) {
+    const angle = -Math.atan2(facingZ, facingX);
+    const inner = Math.min(0.3, reach * 0.4);
+    const spread = Math.sin(halfArc);
+    const tipWidth = THRUST.width;
+    // Shapes in the XY plane pointing along +X (flat() lays them on the ground; rotation turns them).
+    const wedge = shape([[inner, -inner * spread], [reach, -reach * spread], [reach, reach * spread], [inner, inner * spread]]);
+    const lance = shape([[inner, -tipWidth], [reach * 0.8, -tipWidth], [reach + THRUST.point, 0], [reach * 0.8, tipWidth], [inner, tipWidth]]);
+    const layers = [
+      { geo: wedge, opacity: SLASH.fill },
+      { geo: lance, opacity: SLASH.edge },
+    ].map(({ geo, opacity }) => {
+      const mesh = this.flat(geo, color, opacity, x, z, SLASH.y - GROUND_Y);
+      mesh.rotation.y = angle;
+      return { mesh, material: mesh.material as THREE.MeshBasicMaterial, opacity };
+    });
+    let t = 0;
+    this.items.push({
+      update: (dt) => {
+        t += dt;
+        // Drives out from the knight (scaled along its length), then fades.
+        const out = Math.max(0.001, Math.min(1, t / SLASH.sweep));
+        const fade = 1 - Math.max(0, (t - SLASH.sweep) / SLASH.fade);
+        for (const l of layers) {
+          l.mesh.scale.x = out;
+          l.material.opacity = l.opacity * fade;
+        }
+        return t < SLASH.sweep + SLASH.fade;
+      },
+      dispose: () => layers.forEach((l) => disposeMesh(l.mesh)),
+    });
+  }
+
+  /**
    * Cracks in the ground: `lines` dark jagged strokes radiating up to `radius` from a point,
    * fading out over a second (warhammer slams; more lines at higher ranks).
    */
@@ -313,6 +352,11 @@ export class Effects {
     this.root.add(mesh);
     return mesh;
   }
+}
+
+/** A filled polygon in the XY plane. */
+function shape(points: [number, number][]): THREE.ShapeGeometry {
+  return new THREE.ShapeGeometry(new THREE.Shape(points.map(([px, py]) => new THREE.Vector2(px, py))));
 }
 
 function disposeMesh(m: THREE.Mesh) {

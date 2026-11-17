@@ -48,18 +48,23 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   },
   {
     id: 'seasoned', name: 'Seasoned', description: 'Reach knight level 8 in one run',
-    check: (r) => r.knightLevel >= 8, reward: { weapon: 'spear' },
+    check: (r) => r.knightLevel >= 8, reward: { card: 'magnet' },
   },
   {
     id: 'hold-the-line', name: 'Holding the line', description: 'Reach wave 6',
-    check: (r) => r.wave >= 6, reward: { weapon: 'axes', card: 'drill' },
+    check: (r) => r.wave >= 6, reward: { card: 'drill' },
   },
+  // One boss weapon per town, so the arsenal opens up as the player progresses.
   {
     id: 'kingslayer', name: 'Kingslayer', description: 'Defeat the Orc Warlord',
     check: (r) => (r.kills.warlord ?? 0) > 0, reward: { weapon: 'flail' },
   },
   {
     id: 'troll-hunter', name: 'Troll hunter', description: 'Defeat the River Troll',
-    check: (r) => (r.kills.troll ?? 0) > 0, reward: { card: 'veterans' },
+    check: (r) => (r.kills.troll ?? 0) > 0, reward: { weapon: 'spear', card: 'veterans' },
+  },
+  {
+    id: 'grave-keeper', name: 'Rest in peace', description: 'Defeat the Gravekeeper',
+    check: (r) => (r.kills.gravekeeper ?? 0) > 0, reward: { weapon: 'axes' },
   },
 ];
