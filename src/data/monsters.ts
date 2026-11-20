@@ -4,10 +4,11 @@ export type MonsterKind =
   | 'zombie' | 'orc' | 'brute' | 'skeleton' | 'ghost' | 'vampire'
   | 'imp' | 'necromancer' | 'skeletonArcher' | 'sapper'
   | 'boneKnight' | 'banshee' | 'gravedigger'
-  | 'warlord' | 'troll' | 'gravekeeper';
+  | 'kobold' | 'powderKeg' | 'shieldbearer' | 'frostShaman' | 'iceGolem' | 'iceShard' | 'iceling'
+  | 'warlord' | 'troll' | 'gravekeeper' | 'frostGiant';
 
 /** Boss ability sets (sim/boss.ts). */
-export type BossKind = 'warlord' | 'troll' | 'gravekeeper';
+export type BossKind = 'warlord' | 'troll' | 'gravekeeper' | 'frostGiant';
 
 /**
  * - nearest: chases the nearest knight/rookie within aggroRange, otherwise the nearest building
@@ -77,7 +78,31 @@ export interface MonsterDef {
    * Powder keg (sapper): lights a fuse next to a building, then blows up, wrecking buildings and
    * hurting friendlies in `radius`. Killed first, the keg goes off among the monsters instead.
    */
-  explodes?: { fuse: number; radius: number; buildingDamage: number; unitDamage: number; deathDamage: number; deathKnockback: number };
+  explodes?: {
+    fuse: number; radius: number; buildingDamage: number; unitDamage: number; deathDamage: number; deathKnockback: number;
+    /** Also hurts monsters in the blast (a kobold's planted keg, kicked among them). */
+    monsterDamage?: number;
+  };
+  /**
+   * A prop, not a creature (planted powder keg): takes no damage, is never a kill, pays nothing,
+   * and only the knight's own weapons notice it (to kick it); rookies, towers and traps ignore it.
+   */
+  inert?: boolean;
+  /** Multiplies knockback taken (a kicked keg flies). */
+  kick?: number;
+  /** Kobold miner: plants a `kind` (powder keg) beside a building, runs from it for `runFor` s, and plants again after `every` s. */
+  plants?: { kind: MonsterKind; every: number; runFor: number };
+  /** Shieldbearer: other monsters within `radius` take `reduction` (0–1) less damage. */
+  ward?: { radius: number; reduction: number };
+  /** Frost shaman: every `every` s heals each wounded monster within `radius` by `amount`. */
+  heals?: { every: number; radius: number; amount: number };
+  /**
+   * Frost shaman: freezes a friendly (rookies first) within `range`: a telegraphed circle on it,
+   * then damage and a long stun to everyone in it. Ready `first` s after spawning, then every `every` s.
+   */
+  freezes?: { every: number; first: number; range: number; telegraph: number; radius: number; damage: number; stun: number };
+  /** Ice golem: breaks into `count` of `kind` when it dies. */
+  splits?: { kind: MonsterKind; count: number };
   /**
    * Plate (bone knight): damage from a friendly standing in front of it is cut by `front` (0–1).
    * Area hits (hammer, flail, blasts) ignore it, and so does anything from behind.
@@ -169,7 +194,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   sapper: {
     // Runs a powder keg to the nearest building. Kill it on the way, ideally among other monsters.
-    sheet: 'sapper', scale: 0.95, tint: 0xd8b48a, alpha: 1, target: 'buildings', aggroRange: 0,
+    sheet: 'sapper', scale: 0.95, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.22, hp: 30, speed: 1.5, speedJitter: 0.1,
     damage: 0, buildingDamage: 0, attackWindup: 0, attackCooldown: 0, attackReach: 0.2,
     knockbackResist: 0.1, corpseTime: 0.8, xp: 3, coins: 2,
@@ -199,6 +224,62 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     knockbackResist: 0.3, corpseTime: 1.2, xp: 4, coins: 3,
     burrows: { surfaceRange: 2, speedMul: 1.3 },
   },
+  kobold: {
+    // Town 4: a kobold miner who plants a lit powder keg by a building and runs. Kick the keg away (or into the monsters).
+    sheet: 'kobold', scale: 0.85, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.21, hp: 45, speed: 1.6, speedJitter: 0.1,
+    damage: 6, buildingDamage: 5, attackWindup: 0.45, attackCooldown: 1.0, attackReach: 0.2,
+    knockbackResist: 0.3, corpseTime: 1.2, xp: 3, coins: 3,
+    plants: { kind: 'powderKeg', every: 14, runFor: 1.6 },
+  },
+  powderKeg: {
+    // Planted by a kobold: a prop with a long fuse. The knight's hits kick it (far, on ice).
+    sheet: 'powderKeg', scale: 1, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.22, hp: 1, speed: 0, speedJitter: 0,
+    damage: 0, buildingDamage: 0, attackWindup: 0, attackCooldown: 0, attackReach: 0,
+    knockbackResist: 0, corpseTime: 0.1, xp: 0, coins: 0, inert: true, kick: 6,
+    explodes: { fuse: 4, radius: 1.7, buildingDamage: 80, unitDamage: 15, deathDamage: 0, deathKnockback: 5, monsterDamage: 45 },
+  },
+  shieldbearer: {
+    // Town 4: tower shield up front, and a ward that halves damage to every monster near it. Kill it first.
+    sheet: 'shieldbearer', scale: 1.15, tint: 0xffffff, alpha: 1, target: 'nearest', aggroRange: 3,
+    radius: 0.27, hp: 90, speed: 1.3, speedJitter: 0.1,
+    damage: 8, buildingDamage: 4, attackWindup: 0.5, attackCooldown: 1.2, attackReach: 0.2,
+    knockbackResist: 0.7, corpseTime: 1.4, xp: 5, coins: 4,
+    armor: { front: 0.5 },
+    ward: { radius: 2.2, reduction: 0.5 },
+  },
+  frostShaman: {
+    // Town 4: hangs back, heals the monsters around it and freezes rookies solid.
+    sheet: 'frostShaman', scale: 1.05, tint: 0x9fd8ff, pallor: 0.5, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.23, hp: 55, speed: 1.2, speedJitter: 0.1,
+    damage: 5, buildingDamage: 2, attackWindup: 0.45, attackCooldown: 1.2, attackReach: 0.2,
+    knockbackResist: 0.2, corpseTime: 1.2, xp: 5, coins: 4,
+    standoff: 5,
+    heals: { every: 4, radius: 3.5, amount: 18 },
+    freezes: { every: 9, first: 3, range: 6, telegraph: 1.0, radius: 0.9, damage: 4, stun: 2.5 },
+  },
+  iceGolem: {
+    // Town 4: slow and tough; shatters into two shards, which shatter into two icelings each.
+    sheet: 'iceGolem', scale: 1.5, tint: 0x8cc8ff, pallor: 0.9, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.34, hp: 100, speed: 1.0, speedJitter: 0.05,
+    damage: 12, buildingDamage: 10, attackWindup: 0.7, attackCooldown: 1.5, attackReach: 0.22,
+    knockbackResist: 0.7, corpseTime: 0.8, xp: 4, coins: 3, swatsBlockers: true,
+    splits: { kind: 'iceShard', count: 2 },
+  },
+  iceShard: {
+    sheet: 'iceShard', scale: 1.0, tint: 0x8cc8ff, pallor: 0.9, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.23, hp: 40, speed: 1.4, speedJitter: 0.1,
+    damage: 7, buildingDamage: 5, attackWindup: 0.5, attackCooldown: 1.1, attackReach: 0.2,
+    knockbackResist: 0.3, corpseTime: 0.8, xp: 2, coins: 1,
+    splits: { kind: 'iceling', count: 2 },
+  },
+  iceling: {
+    sheet: 'iceling', scale: 0.65, tint: 0x8cc8ff, pallor: 0.9, alpha: 1, target: 'nearest', aggroRange: 3,
+    radius: 0.17, hp: 14, speed: 2.0, speedJitter: 0.2,
+    damage: 4, buildingDamage: 2, attackWindup: 0.35, attackCooldown: 0.9, attackReach: 0.18,
+    knockbackResist: 0, corpseTime: 0.8, xp: 1, coins: 0,
+  },
   warlord: {
     // Town 1 boss (decision 41). Abilities live in BOSS below.
     sheet: 'orc', scale: 2.5, tint: 0xb06060, alpha: 1, target: 'buildings', aggroRange: 0,
@@ -220,6 +301,21 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     damage: 10, buildingDamage: 28, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
     knockbackResist: 1, corpseTime: 3, xp: 55, coins: 70, boss: 'gravekeeper', name: 'Gravekeeper', swatsBlockers: true,
   },
+  frostGiant: {
+    // Town 4 boss: stomps the ground under the knight into ice, and hurls ice boulders at buildings.
+    sheet: 'frostGiant', scale: 2.6, tint: 0xa8d4ff, pallor: 0.85, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.58, hp: 1300, speed: 0.75, speedJitter: 0,
+    damage: 22, buildingDamage: 32, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
+    knockbackResist: 1, corpseTime: 3, xp: 60, coins: 80, boss: 'frostGiant', name: 'Frost Giant', swatsBlockers: true,
+  },
+};
+
+/** Frost Giant abilities. */
+export const FROST_GIANT = {
+  /** Stomp: a telegraphed circle on the knight; hurts whoever is in it and freezes the ground there into ice for `iceTime` s. */
+  stomp: { every: 10, first: 4, telegraph: 1.4, radius: 2.4, damage: 14, iceTime: 14 },
+  /** Hurls an ice boulder at a standing building in range (like the River Troll's). */
+  boulder: { every: 6, range: 9, telegraph: 1.2, radius: 1.3, buildingDamage: 80, unitDamage: 12 },
 };
 
 /** Gravekeeper abilities. */

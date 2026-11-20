@@ -26,6 +26,7 @@ import { TownVisuals } from './TownVisuals';
 import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
+import { FrostView } from './FrostView';
 import { TrapView } from './TrapView';
 import { CHAR_HEIGHT, CHAR_SCALE, HALO_ROOKIE, UnitBatches } from './UnitBatches';
 
@@ -33,8 +34,8 @@ const MAX_GEMS = 1024;
 /** Label heights above the ground (world units). */
 const HEAD = { knight: 1.5, rookie: 1.35, monster: 1.1, villager: 1.25 };
 const BAR_COLORS = { good: '#8cc152', hurt: '#f0ad4e', bad: '#d9534f' };
-/** Dash dust per town theme: sandy on grass, grey on graveyard soil. */
-const DASH_DUST = { meadow: 0xc9b29b, graveyard: 0x8f8a80 };
+/** Dash dust per town theme: sandy on grass, grey on graveyard soil, powder on snow. */
+const DASH_DUST = { meadow: 0xc9b29b, graveyard: 0x8f8a80, frost: 0xf0f6fb };
 const HIT_SPARK = 0xfff0c0;
 /** Progress bar over a villager building a trap. */
 const TRAP_BAR = '#e8a45a';
@@ -86,6 +87,7 @@ export class ThreeRenderer implements Renderer {
   private readonly knight: KnightVisuals;
   private readonly townFx: TownVisuals;
   private readonly traps = new TrapView();
+  private readonly frost: FrostView;
   private readonly labels: Labels;
   private debug: DebugOverlay3D | null = null;
   private readonly gems: THREE.InstancedMesh;
@@ -106,6 +108,7 @@ export class ThreeRenderer implements Renderer {
     this.town = new TownView(library, world.map, this.particles);
     this.units = new UnitBatches(library, { silhouettes: opts.silhouettes });
     this.effects = new Effects(library);
+    this.frost = new FrostView(library);
     this.knight = new KnightVisuals(this.particles, this.effects, this.dustColor);
     this.townFx = new TownVisuals(this.particles);
     this.labels = new Labels(stage, stage.canvas.parentElement!);
@@ -117,7 +120,7 @@ export class ThreeRenderer implements Renderer {
     );
     this.gems.frustumCulled = false;
     this.gems.count = 0;
-    this.root.add(this.town.root, this.units.root, this.effects.root, this.traps.root, this.gems, this.particles.root);
+    this.root.add(this.town.root, this.units.root, this.effects.root, this.traps.root, this.frost.root, this.gems, this.particles.root);
     stage.scene.add(this.root);
     stage.canvas.addEventListener('pointerdown', this.onPointerDown);
   }
@@ -133,6 +136,7 @@ export class ThreeRenderer implements Renderer {
     this.particles.update(dt);
     this.effects.update(dt, world.projectiles);
     this.traps.sync(world.traps);
+    this.frost.sync(world, dt);
     this.syncFlail(world);
     this.syncAxeTrails(world);
     this.syncGems(world);
@@ -145,6 +149,7 @@ export class ThreeRenderer implements Renderer {
   /** Game-feel effects: flashes, damage numbers, shakes, telegraphs, floating text. */
   onEvent(world: World, e: SimEvent) {
     this.townFx.onEvent(world, e);
+    this.frost.onEvent(world, e);
     switch (e.type) {
       case 'hit': {
         this.units.flash(e.unit, 0.08);
@@ -190,6 +195,29 @@ export class ThreeRenderer implements Renderer {
         this.effects.shockwave(e.x, e.y, e.radius, 0xb58cff);
         this.particles.burst(e.x, 0.5, e.y, 10, 0xd6b0ff, 0.3, 1.6, 1);
         this.stage.shake(180, 0.006);
+        return;
+      case 'freezeWarn':
+        this.effects.telegraph(e.x, e.y, e.radius, e.time);
+        return;
+      case 'freeze':
+        this.effects.shockwave(e.x, e.y, e.radius, 0x9fd8ff);
+        this.particles.burst(e.x, 0.4, e.y, 12, 0xdff4ff, 0.3, 1.6, 1);
+        return;
+      case 'iceStomp':
+        this.particles.burst(e.x, 0.2, e.y, 16, 0xe8f6ff, 0.35, 2, 1.2);
+        return;
+      case 'monsterSplit':
+        this.particles.burst(e.x, 0.5, e.y, 6, 0xbfe8ff, 0.25, 1.6, 1);
+        return;
+      case 'monstersHealed':
+        this.effects.pulse(e.x, e.y, 0x7fe0a0, e.radius);
+        for (const id of e.healed) {
+          const m = monsterById(world, id);
+          if (m) this.particles.burst(m.x, 0.6, m.y, 3, 0x7fe0a0, 0.2, 1, 0.8);
+        }
+        return;
+      case 'kegPlanted':
+        this.particles.burst(e.x, 0.2, e.y, 5, 0xc9b29b, 0.25, 1, 0.8);
         return;
       case 'monsterSurfaced':
         this.particles.burst(e.x, 0.1, e.y, 12, 0x7a5a3a, 0.3, 1.4, 1);
@@ -318,6 +346,7 @@ export class ThreeRenderer implements Renderer {
     this.particles.dispose();
     this.effects.dispose();
     this.traps.dispose();
+    this.frost.dispose();
     this.debug?.dispose();
     this.labels.destroy();
     this.gems.geometry.dispose();

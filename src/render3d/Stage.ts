@@ -58,9 +58,15 @@ export class Stage {
     return this.renderer.domElement;
   }
 
-  /** Lighting and backdrop for a town's look (meadow by day, graveyard at dusk). */
+  /** Lighting and backdrop for a town's look (meadow by day, graveyard at dusk, frost on a cold bright morning). */
   setTheme(theme: Theme) {
-    if (theme === 'graveyard') {
+    if (theme === 'frost') {
+      const sky = new THREE.Color(0xb9cfe0);
+      this.ambient.color.setHex(0xdfeaff); this.ambient.intensity = 1.5;
+      this.sun.color.setHex(0xf2f7ff); this.sun.intensity = 2.1;
+      this.renderer.setClearColor(sky);
+      this.scene.fog = new THREE.Fog(sky, 70, 140);
+    } else if (theme === 'graveyard') {
       const sky = new THREE.Color(0x2a2340);
       this.ambient.color.setHex(0xc9c3ee); this.ambient.intensity = 1.45;
       this.sun.color.setHex(0xd8ccff); this.sun.intensity = 1.8;

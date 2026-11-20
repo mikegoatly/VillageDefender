@@ -5,6 +5,7 @@ import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ARMY } from '../data/rookies';
 import type { BuildingState, Unit } from './model';
 import { friendlyById } from './queries';
+import { addMonster } from './waves';
 import { applyRookieStats } from './rookieStats';
 import { setState } from './units';
 import type { World } from './world';
@@ -17,7 +18,14 @@ const ARMOR_FRONT_COS = 0.17;
  * (bone knights) take reduced damage from a friendly standing in front of them, unless `ignoreArmor`.
  */
 export function damageUnit(w: World, u: Unit, amount: number, by: number, ignoreArmor = false) {
-  const armor = u.team === 'enemy' && !ignoreArmor ? MONSTERS[u.kind as MonsterKind].armor : undefined;
+  const own = u.team === 'enemy' ? MONSTERS[u.kind as MonsterKind] : undefined;
+  if (own?.inert) {
+    // A planted keg remembers who kicked it last, so its blast is credited to them.
+    if (by >= 0) u.targetId = by;
+    return;
+  }
+  if (own && wardedBy(w, u)) amount *= 1 - MONSTERS[wardedBy(w, u)!.kind as MonsterKind].ward!.reduction;
+  const armor = own && !ignoreArmor ? own.armor : undefined;
   if (armor) {
     const attacker = friendlyById(w, by);
     if (attacker) {
@@ -44,12 +52,34 @@ export function damageUnit(w: World, u: Unit, amount: number, by: number, ignore
       }
       const killer = w.rookies.find((r) => r.id === by);
       if (killer) creditRookieKill(w, killer);
+      if (def.splits) shatter(w, u, def.splits.kind, def.splits.count);
       // A sapper's keg goes off among the monsters when it is killed.
       if (def.explodes) {
         w.events.push({ type: 'explosion', unit: u.id, x: u.x, y: u.y, radius: def.explodes.radius });
         areaHits(w, by, u.x, u.y, def.explodes.radius, def.explodes.deathDamage, def.explodes.deathKnockback);
       }
     }
+  }
+}
+
+/** The shieldbearer (other than `u` itself) whose ward covers `u`, if any. Wards don't stack. */
+export function wardedBy(w: World, u: Unit): Unit | null {
+  for (const s of w.wards) {
+    if (s === u || s.state === 'dead') continue;
+    if (Math.hypot(s.x - u.x, s.y - u.y) <= MONSTERS[s.kind as MonsterKind].ward!.radius) return s;
+  }
+  return null;
+}
+
+/** Ice golem (and shard) death: breaks into smaller pieces that burst outward. */
+function shatter(w: World, u: Unit, kind: MonsterKind, count: number) {
+  for (let k = 0; k < count; k++) {
+    const a = w.rng.range(0, Math.PI * 2);
+    const piece = addMonster(w, u.x + Math.cos(a) * 0.2, u.y + Math.sin(a) * 0.2, kind);
+    piece.vx = Math.cos(a) * 3;
+    piece.vy = Math.sin(a) * 3;
+    if (u.raisedBy !== undefined) piece.raisedBy = u.raisedBy;
+    w.events.push({ type: 'monsterSplit', unit: piece.id, from: u.id, x: piece.x, y: piece.y });
   }
 }
 
@@ -129,8 +159,7 @@ export function swingHits(w: World, u: Unit, reach: number, arc: number, damage:
     // Inside the arc (or overlapping the attacker, which always counts).
     if (d > u.radius + m.radius && (dx * u.facing.x + dy * u.facing.y) / d < cosArc) return;
     damageUnit(w, m, damage, u.id);
-    const resist = MONSTERS[m.kind as MonsterKind].knockbackResist;
-    applyKnockback(m, dx, dy, d, knockback, resist);
+    knock(m, dx, dy, d, knockback);
   });
 }
 
@@ -143,9 +172,14 @@ export function areaHits(w: World, owner: number, cx: number, cy: number, radius
     const d = Math.hypot(dx, dy);
     if (d - m.radius > radius) return;
     damageUnit(w, m, damage, owner, true); // slams and spins go over the plate
-    const resist = MONSTERS[m.kind as MonsterKind].knockbackResist;
-    applyKnockback(m, dx, dy, d, knockback, resist);
+    knock(m, dx, dy, d, knockback);
   });
+}
+
+/** Knocks a monster back by its own resistance (and kick multiplier: kegs fly). */
+function knock(m: Unit, dx: number, dy: number, d: number, knockback: number) {
+  const def = MONSTERS[m.kind as MonsterKind];
+  applyKnockback(m, dx, dy, d, knockback * (def.kick ?? 1), def.knockbackResist);
 }
 
 /** Pushes a unit away along (dx, dy), scaled by its knockback resistance. */

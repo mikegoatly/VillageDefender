@@ -22,11 +22,18 @@ export const CHARACTER_MODELS: Record<string, string> = {
   recruitArcher: 'mini-characters/character-male-f',
   necromancer: 'graveyard/character-vampire',
   skeletonArcher: 'graveyard/character-skeleton',
-  sapper: 'mini-characters/character-male-a',
+  sapper: 'mini-dungeon/character-orc',
   boneKnight: 'graveyard/character-skeleton',
   banshee: 'graveyard/character-ghost',
   gravedigger: 'graveyard/character-keeper',
   gravekeeper: 'graveyard/character-keeper',
+  kobold: 'mini-dungeon/character-orc',
+  shieldbearer: 'mini-dungeon/character-orc',
+  frostShaman: 'graveyard/character-vampire',
+  iceGolem: 'graveyard/character-zombie',
+  iceShard: 'graveyard/character-zombie',
+  iceling: 'graveyard/character-zombie',
+  frostGiant: 'mini-dungeon/character-orc',
   // The villager who sets traps is the same recruit model, unarmed.
   villager: 'mini-characters/character-male-f',
 };
@@ -64,10 +71,11 @@ const ATTACHMENTS: Record<string, Attachment[]> = {
   recruitSwordsman: [{ ...RIGHT, model: 'medieval-weapons/club-a', scale: 0.13 }],
   recruitArcher: [BOW],
   skeletonArcher: [BOW],
-  sapper: [{ ...RIGHT, model: 'mini-dungeon/barrel', scale: 0.45 }],
   necromancer: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
   boneKnight: [{ ...RIGHT, model: 'mini-dungeon/weapon-sword' }, { ...SHIELD, model: 'mini-dungeon/shield-rectangle', scale: 0.9 }],
   gravedigger: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
+  frostShaman: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
+  frostGiant: [{ ...RIGHT, model: 'medieval-weapons/club-a', scale: 0.13 }],
 };
 
 /** Every character and attachment model, for preloading. */

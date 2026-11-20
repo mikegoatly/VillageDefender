@@ -9,10 +9,12 @@
 
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { unitBase } from '../sim/units';
 import type { TrapRunner, Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
 import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFor, unitFx, VILLAGER_LOOK, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
+import { BODIES, dressBody } from './bodies';
 import { findClip } from './clips';
 import { ECHO_ALPHA } from './motionFx';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
@@ -131,6 +133,8 @@ export class UnitBatches {
     const live = new Set<number>();
     for (const list of [world.players, world.rookies, world.monsters]) {
       for (const u of list) {
+        // Props (planted kegs) are drawn by FrostView.
+        if (u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].inert) continue;
         live.add(u.id);
         const look = lookFor(u, world.weapon, gear, army);
         const rot = this.animate(u, dt);
@@ -249,6 +253,9 @@ export class UnitBatches {
     if (batch) return batch;
     const gltf = this.library.gltf(CHARACTER_MODELS[look.sheet]);
     const model = cloneSkinned(gltf.scene);
+    // A designed body replaces the rig's own meshes (render3d/bodies.ts); attachments go on after.
+    const body = BODIES[look.sheet];
+    if (body) this.owned.push(...dressBody(model, body));
     this.attach(model, look.attachments);
     const parts = collectParts(model, (m) => this.unitMaterial(m, look.alpha, look.pallor, look.gild ?? 0));
     for (const p of parts) if (p.owned) this.owned.push(p.geometry);

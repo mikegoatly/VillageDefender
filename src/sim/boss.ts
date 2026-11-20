@@ -1,8 +1,9 @@
 // Boss abilities, run from the monster update. Which set a boss uses comes from its MonsterDef.boss:
-// Orc Warlord (Town 1, decision 41), River Troll (Town 2, decision 46) and Gravekeeper (Town 3, decision 51).
+// Orc Warlord (Town 1, decision 41), River Troll (Town 2, decision 46), Gravekeeper (Town 3, decision 51)
+// and Frost Giant (Town 4, decision 54).
 
 import { DT } from '../data/balance';
-import { BOSS, GRAVEKEEPER, MONSTERS, TROLL } from '../data/monsters';
+import { BOSS, FROST_GIANT, GRAVEKEEPER, MONSTERS, TROLL } from '../data/monsters';
 import type { BossState } from './bossState';
 import { applyKnockback, damageBuilding, hurtFriendliesInRadius, hurtFriendly, stunFriendliesInRadius } from './combat';
 import { Ground, isWalkable, SIDES } from './map';
@@ -15,6 +16,7 @@ import type { World } from './world';
 /** Runs a boss's abilities; true when an ability controlled the unit this tick. */
 export function updateBoss(w: World, m: Unit, s: BossState): boolean {
   if (s.kind === 'gravekeeper') return updateGravekeeper(w, m, s);
+  if (s.kind === 'frostGiant') return updateFrostGiant(w, m, s);
   return s.kind === 'troll' ? updateTroll(w, m, s) : updateWarlord(w, m, s);
 }
 
@@ -23,6 +25,11 @@ export function updateBoss(w: World, m: Unit, s: BossState): boolean {
  * updateBoss during an attack), so the Gravekeeper raises the dead on schedule however he is occupied.
  */
 export function tickBossTimers(w: World, m: Unit, s: BossState) {
+  if (s.kind === 'frostGiant') {
+    s.stompIn -= DT;
+    s.boulderIn -= DT;
+    return;
+  }
   if (s.kind !== 'gravekeeper') return;
   s.tollIn -= DT;
   raiseFromGraves(w, m, s);
@@ -92,6 +99,52 @@ function raiseFromGraves(w: World, m: Unit, s: BossState) {
 const GRAVE_SIDES: [number, number][] = [[0, 1], [1, 0], [0, -1], [-1, 0]];
 
 /**
+ * Frost Giant: stomps a telegraphed circle on the knight (hurting whoever is in it and icing the
+ * ground there for a while), and hurls ice boulders at buildings like the River Troll.
+ */
+function updateFrostGiant(w: World, m: Unit, s: BossState): boolean {
+  const st = FROST_GIANT.stomp;
+  if (s.ability === 'stompWindup') {
+    s.abilityTime += DT;
+    m.moving = false;
+    if (s.abilityTime < st.telegraph) return true;
+    s.ability = 'none';
+    s.stompIn = st.every;
+    w.events.push({ type: 'bossSlam', unit: m.id, x: s.slamX, y: s.slamY, radius: st.radius });
+    hurtFriendliesInRadius(w, s.slamX, s.slamY, st.radius, st.damage);
+    iceOver(w, s.slamX, s.slamY, st.radius, st.iceTime);
+    w.events.push({ type: 'iceStomp', unit: m.id, x: s.slamX, y: s.slamY, radius: st.radius, time: st.iceTime });
+    return true;
+  }
+  if (s.stompIn <= 0 && s.ability === 'none') {
+    const target = nearestOf(w.players, m.x, m.y);
+    if (target) {
+      s.ability = 'stompWindup';
+      s.abilityTime = 0;
+      s.slamX = target.x;
+      s.slamY = target.y;
+      m.facing = norm({ x: target.x - m.x, y: target.y - m.y });
+      w.events.push({ type: 'bossSlamWarn', unit: m.id, x: s.slamX, y: s.slamY, radius: st.radius, time: st.telegraph });
+      return true;
+    }
+    s.stompIn = 1;
+  }
+  return lobBoulder(w, m, s, FROST_GIANT.boulder);
+}
+
+/** Ices over every walkable cell in a circle until `time` seconds from now. */
+function iceOver(w: World, cx: number, cy: number, radius: number, time: number) {
+  const r = Math.ceil(radius);
+  for (let j = Math.round(cy) - r; j <= Math.round(cy) + r; j++) {
+    for (let i = Math.round(cx) - r; i <= Math.round(cx) + r; i++) {
+      if (!isWalkable(w.map, i, j) || Math.hypot(i - cx, j - cy) > radius) continue;
+      const k = j * w.map.size + i;
+      w.frostUntil[k] = Math.max(w.frostUntil[k], w.time + time);
+    }
+  }
+}
+
+/**
  * River Troll: regenerates while standing in the river, and lobs boulders at buildings in range
  * (telegraphed on the target, then damages the building and anyone nearby).
  */
@@ -99,7 +152,14 @@ function updateTroll(w: World, m: Unit, s: BossState): boolean {
   const k = Math.round(m.y) * w.map.size + Math.round(m.x);
   if (w.map.ground[k] === Ground.Water) m.hp = Math.min(m.maxHp, m.hp + m.maxHp * TROLL.waterRegen * DT);
   s.boulderIn -= DT;
-  const bd = TROLL.boulder;
+  return lobBoulder(w, m, s, TROLL.boulder);
+}
+
+/** Boulder throw shared by the River Troll and the Frost Giant (callers run boulderIn down). True while it controls the boss. */
+function lobBoulder(
+  w: World, m: Unit, s: BossState,
+  bd: { every: number; range: number; telegraph: number; radius: number; buildingDamage: number; unitDamage: number },
+): boolean {
 
   if (s.ability === 'boulderWindup') {
     s.abilityTime += DT;

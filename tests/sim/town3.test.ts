@@ -13,7 +13,7 @@ const graveyard = TOWN_BY_ID.graveyard;
 
 describe('Town 3: haunted graveyard', () => {
   it('is the third town, unlocked by a star in the second, with its own theme and boss', () => {
-    expect(TOWNS.map((t) => t.id)).toEqual(['village', 'riverside', 'graveyard']);
+    expect(TOWNS.map((t) => t.id).slice(0, 3)).toEqual(['village', 'riverside', 'graveyard']);
     expect(graveyard.unlockStars).toBe(1);
     expect(graveyard.map.theme).toBe('graveyard');
     expect(graveyard.waves).toBe(TOWN3_WAVES);

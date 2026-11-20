@@ -48,6 +48,16 @@ const modelPacks = [
     ],
   },
   {
+    src: '3D assets/Holiday Kit/Models/GLB format',
+    dest: 'holiday',
+    // Frostpeak theme (Town 4): snowy trees, rocks and scatter.
+    files: [
+      'tree-snow-a', 'tree-snow-b', 'tree-snow-c',
+      'rocks-large', 'rocks-medium', 'rocks-small',
+      'snow-pile', 'snow-flat', 'lantern', 'sled',
+    ],
+  },
+  {
     src: '3D assets/Mini Characters/Models/GLB format',
     dest: 'mini-characters',
     // male-f: the scowling recruit every rookie starts as.

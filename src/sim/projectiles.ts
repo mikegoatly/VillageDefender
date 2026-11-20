@@ -5,6 +5,7 @@ import type { WeaponDef } from '../data/weapons';
 import { damageBuilding, damageUnit, hurtFriendly } from './combat';
 import { isWalkable } from './map';
 import type { Projectile, Unit } from './model';
+import { isProp } from './queries';
 import { norm } from './units';
 import type { World } from './world';
 
@@ -56,7 +57,7 @@ export function updateProjectiles(w: World) {
     }
     let hit: Unit | null = null;
     w.enemyHash.query(p.x, p.y, 0.6, (m) => {
-      if (hit || m.state === 'dead') return;
+      if (hit || m.state === 'dead' || isProp(m)) return;
       if (Math.hypot(m.x - p.x, m.y - p.y) <= m.radius + 0.12) hit = m;
     });
     if (hit) damageUnit(w, hit, p.damage, p.owner);
@@ -108,7 +109,7 @@ function updateAxe(w: World, p: Projectile): boolean {
   p.x += p.vx * DT;
   p.y += p.vy * DT;
   w.enemyHash.query(p.x, p.y, 0.8, (m) => {
-    if (m.state === 'dead' || p.hitIds.includes(m.id)) return;
+    if (m.state === 'dead' || isProp(m) || p.hitIds.includes(m.id)) return;
     if (Math.hypot(m.x - p.x, m.y - p.y) > m.radius + 0.3) return;
     p.hitIds.push(m.id);
     damageUnit(w, m, p.damage, p.owner);

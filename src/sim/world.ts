@@ -95,6 +95,10 @@ export class World implements UpgradeHost {
   private startBoostsApplied = false;
   /** Building id per cell, -1 for none. Ruined buildings keep their cells (rubble blocks). */
   private readonly cellBuilding: Int32Array;
+  /** Per cell: world time until which the Frost Giant's stomp keeps it iced over. @internal */
+  readonly frostUntil: Float32Array;
+  /** Living shieldbearers (monsters with a ward), rebuilt with the enemy hash. @internal */
+  readonly wards: Unit[] = [];
   /** Living monsters only, rebuilt at the start of each tick (targeting and hits). @internal */
   readonly enemyHash = new SpatialHash<Unit>(1);
   /** Every living unit, rebuilt before separation (physics only). @internal */
@@ -134,6 +138,7 @@ export class World implements UpgradeHost {
     this.weapon = opts.weapon ?? 'sword';
     this.weaponRanks = { ...(opts.weaponRanks ?? {}) };
 
+    this.frostUntil = new Float32Array(this.map.size * this.map.size);
     this.cellBuilding = new Int32Array(this.map.size * this.map.size).fill(-1);
     this.buildings = this.map.buildings.map((b) => {
       // One wall block per storey per cell, plus one roof per cell. Every building counts the same

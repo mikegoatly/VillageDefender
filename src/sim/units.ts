@@ -30,7 +30,7 @@ export function unitBase(id: number, x: number, y: number) {
     attackCooldown: 0, hitPending: false, attackBuilding: -1,
     invuln: 0, dodgeCooldown: 0, dodgeHeld: false, moving: false,
     rank: 0, unitKills: 0, targetId: -1, retargetIn: 0, postX: x, postY: y, burstTime: 0, burstCooldown: 0,
-    abilityIn: 0, stun: 0, windup: 0, burrowed: false, slowIn: 0, slowBy: 0,
+    abilityIn: 0, stun: 0, windup: 0, aimX: 0, aimY: 0, healIn: 0, burrowed: false, slowIn: 0, slowBy: 0,
   };
 }
 

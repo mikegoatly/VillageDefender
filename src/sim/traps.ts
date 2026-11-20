@@ -7,6 +7,7 @@ import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { TRAP } from '../data/traps';
 import { damageUnit } from './combat';
 import type { Trap, TrapRunner, Unit } from './model';
+import { isProp } from './queries';
 import { norm, centreOf } from './units';
 import type { InputState } from './types';
 import type { World } from './world';
@@ -23,7 +24,7 @@ function trapCooldownTime(w: World): number {
 
 /** A monster that is alive and above ground. */
 function exposed(m: Unit): boolean {
-  return m.state !== 'dead' && !m.burrowed;
+  return m.state !== 'dead' && !m.burrowed && !isProp(m);
 }
 
 export function updateTraps(w: World, input: InputState | undefined) {

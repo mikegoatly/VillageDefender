@@ -1,15 +1,19 @@
 // Read-only lookups over the world: nearest units, buildings and cells, and the enemy spatial hash.
 
+import { MONSTERS, type MonsterKind } from '../data/monsters';
+import { Ground, inBounds } from './map';
 import type { Unit } from './model';
 import { clamp } from './units';
 import type { World } from './world';
 
-export function nearestMonster(w: World, x: number, y: number, range: number): Unit | null {
+/** Nearest living monster within range; props (planted kegs) count only when `withProps` (the knight's aim, to kick them). */
+export function nearestMonster(w: World, x: number, y: number, range: number, withProps = false): Unit | null {
   let best: Unit | null = null;
   if (w.enemyHash.size === 0) return null;
   let bestD = range;
   w.enemyHash.query(x, y, range, (m) => {
     if (m.state === 'dead' || m.team !== 'enemy') return;
+    if (!withProps && isProp(m)) return;
     const d = Math.hypot(m.x - x, m.y - y) - m.radius;
     if (d < bestD) {
       bestD = d;
@@ -118,6 +122,25 @@ export function nearestBuildingCell(w: World, m: Unit): [number, number] | null 
 
 export function rebuildEnemyHash(w: World) {
   w.enemyHash.clear();
+  w.wards.length = 0;
   // Burrowed gravediggers are left out, so no weapon, arrow or auto-aim can find them.
-  for (const m of w.monsters) if (m.state !== 'dead' && !m.burrowed) w.enemyHash.insert(m);
+  for (const m of w.monsters) {
+    if (m.state === 'dead' || m.burrowed) continue;
+    w.enemyHash.insert(m);
+    if (MONSTERS[m.kind as MonsterKind].ward) w.wards.push(m);
+  }
+}
+
+/** A planted keg or other prop: only the knight's weapons touch it. */
+export function isProp(m: Unit): boolean {
+  return m.team === 'enemy' && !!MONSTERS[m.kind as MonsterKind].inert;
+}
+
+/** True when a unit stands on ice: a frozen pond, or ground the Frost Giant has stomped. */
+export function onIce(w: World, u: Pick<Unit, 'x' | 'y'>): boolean {
+  const i = Math.round(u.x);
+  const j = Math.round(u.y);
+  if (!inBounds(w.map, i, j)) return false;
+  const k = j * w.map.size + i;
+  return w.map.ground[k] === Ground.Ice || w.frostUntil[k] > w.time;
 }

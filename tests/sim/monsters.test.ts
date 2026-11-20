@@ -146,7 +146,9 @@ describe('ghost (phaser)', () => {
 });
 
 describe('xp and coins per kind', () => {
-  it.each(Object.keys(MONSTERS) as MonsterKind[])('%s drops its definition xp and coins', (kind) => {
+  // Props (kegs) are never kills, and splitters spawn more monsters when killed (tests/sim/town4.test.ts).
+  const simple = (Object.keys(MONSTERS) as MonsterKind[]).filter((k) => !MONSTERS[k].inert && !MONSTERS[k].splits);
+  it.each(simple)('%s drops its definition xp and coins', (kind) => {
     const { world } = aWorld().withKnightAt(10, 10).withMonster(kind, 20, 20).build();
     world.debugKillAll();
     runSeconds(world, 0.1);

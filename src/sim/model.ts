@@ -63,6 +63,11 @@ export interface Unit {
   stun: number;
   /** Banshee: seconds of wail wind-up left (0 = not wailing). */
   windup: number;
+  /** Frost shaman: seconds until the next heal. */
+  healIn: number;
+  /** Frost shaman: where its freeze will land (fixed when the telegraph starts). */
+  aimX: number;
+  aimY: number;
   /** Gravedigger: travelling underground, out of reach of every weapon. */
   burrowed: boolean;
   /** Seconds of trap slow left, and the fraction of speed it takes away. */
@@ -190,6 +195,12 @@ export type SimEvent =
   | { type: 'wailWarn'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'wail'; unit: number; x: number; y: number; radius: number }
   | { type: 'monsterSurfaced'; unit: number; x: number; y: number }
+  | { type: 'kegPlanted'; unit: number; by: number; x: number; y: number }
+  | { type: 'monsterSplit'; unit: number; from: number; x: number; y: number }
+  | { type: 'monstersHealed'; unit: number; x: number; y: number; radius: number; healed: number[] }
+  | { type: 'freezeWarn'; unit: number; x: number; y: number; radius: number; time: number }
+  | { type: 'freeze'; unit: number; x: number; y: number; radius: number }
+  | { type: 'iceStomp'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'levelEnd'; won: boolean; stars: number; reason: 'knight' | 'town' | null };
 
 export interface WorldOptions {

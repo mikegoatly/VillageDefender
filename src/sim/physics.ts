@@ -1,9 +1,10 @@
 // Physics: soft separation between units, knockback integration and collision with blocked cells.
 
-import { DT, KNOCKBACK_DAMPING, SEPARATION } from '../data/balance';
+import { DT, ICE, KNOCKBACK_DAMPING, SEPARATION } from '../data/balance';
 import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { inBounds, isWadeable, isWalkable, type TownMap } from './map';
 import type { Unit } from './model';
+import { onIce } from './queries';
 import { clamp } from './units';
 import type { World } from './world';
 
@@ -49,7 +50,8 @@ export function integrate(w: World, u: Unit) {
   if (u.vx !== 0 || u.vy !== 0) {
     u.x += u.vx * DT;
     u.y += u.vy * DT;
-    const damp = Math.exp(-KNOCKBACK_DAMPING * DT);
+    // On ice pushes (and the knight's own glide) die away slowly.
+    const damp = Math.exp(-(onIce(w, u) ? ICE.damping : KNOCKBACK_DAMPING) * DT);
     u.vx *= damp;
     u.vy *= damp;
     if (Math.abs(u.vx) < 0.01 && Math.abs(u.vy) < 0.01) u.vx = u.vy = 0;

@@ -39,7 +39,7 @@ export function withUnitFx<T extends THREE.Material>(material: T, pallor = 0, gi
 /** Geometry that shares `src`'s vertex data but carries the batch's instanceFx attribute. */
 export function withFxAttribute(src: THREE.BufferGeometry, fx: THREE.InstancedBufferAttribute): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
-  for (const name of ['position', 'normal', 'uv']) {
+  for (const name of ['position', 'normal', 'uv', 'color']) {
     const a = src.getAttribute(name);
     if (a) g.setAttribute(name, a);
   }

@@ -64,6 +64,9 @@ export function planFor(events: readonly SimEvent[]): PlannedSound[] {
       case 'fuseLit': out.push({ id: 'bossSlamWarn', volume: 0.5 }); break;
       case 'explosion': out.push({ id: 'bossSlam', volume: 0.7 }); break;
       case 'monsterRaised': out.push({ id: 'waveWarning', volume: 0.3 }); break;
+      case 'freezeWarn': out.push({ id: 'bossSlamWarn', volume: 0.4 }); break;
+      case 'freeze': out.push({ id: 'hitHeavy', volume: 0.6 }); break;
+      case 'monsterSplit': out.push({ id: 'hit', volume: 0.4 }); break;
       case 'levelEnd': out.push({ id: e.won ? 'win' : 'lose' }); break;
       default: break;
     }

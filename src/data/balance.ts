@@ -70,6 +70,21 @@ export const WAVES = {
   spawnSpacing: 0.12,
   maxAlive: 300,
 };
+/**
+ * Ice (Town 4): the knight's walking builds up a glide instead of moving directly, and every
+ * push (knockback, kicks) decays far more slowly, so monsters and kegs skate a long way.
+ */
+export const ICE = {
+  /** Knight acceleration on ice, × his speed per second. */
+  accel: 4,
+  /** Glide cap, × his walking speed. */
+  maxMul: 1.15,
+  /** Replaces KNOCKBACK_DAMPING on ice. */
+  damping: 1.2,
+  /** Frozen ponds per map, and their radius range (cells). */
+  ponds: 6,
+  pondRadius: [1.6, 3] as [number, number],
+};
 /** Knockback velocity decays by this factor per second. */
 export const KNOCKBACK_DAMPING = 10;
 /** Fraction of the overlap between two units resolved per tick (0..1). */

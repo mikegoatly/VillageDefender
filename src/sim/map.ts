@@ -4,7 +4,7 @@
 // integer (i, j); a unit at ground position (x, y) stands in cell (round(x), round(y)).
 // Buildings sit on a 4-cell lattice (2×2 slot + 2-cell lanes) around central crossroads.
 
-import { MAP } from '../data/balance';
+import { ICE, MAP } from '../data/balance';
 import { ISO_HX, ISO_HY } from './iso';
 import { Rng } from './rng';
 
@@ -16,6 +16,8 @@ export const enum Ground {
   Water = 3,
   /** Walkable crossing over the river. */
   Bridge = 4,
+  /** Frozen pond (Town 4): walkable, but slippery (data/balance ICE). */
+  Ice = 5,
 }
 
 /** What a block of a building is; the renderer picks the pieces. */
@@ -52,7 +54,7 @@ export type Side = 'top' | 'right' | 'bottom' | 'left';
 export const SIDES: readonly Side[] = ['top', 'right', 'bottom', 'left'];
 
 /** Look of a town: picks ground colour, props and lighting in the renderer. */
-export type Theme = 'meadow' | 'graveyard';
+export type Theme = 'meadow' | 'graveyard' | 'frost';
 
 export interface TownMap {
   /** Visual theme; missing means 'meadow'. */
@@ -74,7 +76,10 @@ export interface MapOptions {
   aspect?: number;
   /** A river through the town with bridges (Town 2). */
   river?: boolean;
-  /** Visual theme (Town 3 is a graveyard: many more gravestones, which are the rock decor). */
+  /**
+   * Visual theme. Town 3 is a graveyard (many more gravestones, which are the rock decor);
+   * Town 4 is frost (more boulders, and frozen ponds of slippery ice).
+   */
   theme?: Theme;
 }
 
@@ -177,7 +182,7 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
   };
 
   // Graveyards have far more gravestones (rocks); the RNG draws are unchanged, only the threshold moves.
-  const rockChance = MAP.rockChance * (opts.theme === 'graveyard' ? 3 : 1);
+  const rockChance = MAP.rockChance * (opts.theme === 'graveyard' ? 3 : opts.theme === 'frost' ? 2 : 1);
   const reach = Math.ceil(m / 4) + 1;
   let plazaPlaced = false;
   let id = 0;
@@ -220,7 +225,42 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
   }
 
   removeUnreachable(map);
+  if (opts.theme === 'frost') freezePonds(map, seed);
   return map;
+}
+
+/** True where the ground is slippery ice. */
+export function isIce(map: TownMap, i: number, j: number): boolean {
+  return inBounds(map, i, j) && map.ground[j * map.size + i] === Ground.Ice;
+}
+
+/**
+ * Frost theme: turns round blobs of open ground (grass and road, never blocked cells) into ice.
+ * Uses its own RNG after everything else, so buildings and decor match the same seed's meadow.
+ * Keeps clear of the crossroads, where the knight starts.
+ */
+function freezePonds(map: TownMap, seed: number) {
+  const rng = new Rng(seed * 31 + 7);
+  const n = map.size;
+  const c = map.centre;
+  const open: [number, number][] = [];
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      if (isWalkable(map, i, j) && Math.hypot(i - c, j - c) > 5) open.push([i, j]);
+    }
+  }
+  for (let p = 0; p < ICE.ponds && open.length; p++) {
+    const [pi, pj] = rng.pick(open);
+    const r = rng.range(ICE.pondRadius[0], ICE.pondRadius[1]);
+    const reach = Math.ceil(r + 1);
+    for (let j = pj - reach; j <= pj + reach; j++) {
+      for (let i = pi - reach; i <= pi + reach; i++) {
+        if (!isWalkable(map, i, j) || Math.hypot(i - c, j - c) <= 3) continue;
+        // A ragged edge: each cell's own threshold wobbles a little.
+        if (Math.hypot(i - pi, j - pj) <= r + rng.range(-0.4, 0.4)) map.ground[j * n + i] = Ground.Ice;
+      }
+    }
+  }
 }
 
 /**

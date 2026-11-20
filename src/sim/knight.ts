@@ -1,6 +1,6 @@
 // The knight: input handling, weapons, dodge and the rally call.
 
-import { DT, KNIGHT } from '../data/balance';
+import { DT, ICE, KNIGHT } from '../data/balance';
 import { RALLY } from '../data/rookies';
 import type { Mods } from '../data/upgrades';
 import type { WeaponDef } from '../data/weapons';
@@ -8,7 +8,7 @@ import { areaHits, swingHits } from './combat';
 import { screenDirToGround } from './iso';
 import type { Unit } from './model';
 import { throwAxe } from './projectiles';
-import { nearestMonster } from './queries';
+import { nearestMonster, onIce } from './queries';
 import type { InputState } from './types';
 import { norm, setState, tickTimers, unitBase } from './units';
 import type { World } from './world';
@@ -53,7 +53,7 @@ export function updateKnight(w: World, u: Unit, input: InputState | undefined) {
     updateSpin(w, u, inp.attack, wd);
   } else {
     if (inp.attack && u.attackCooldown <= 0 && u.state !== 'attack') {
-      const target = nearestMonster(w, u.x, u.y, wd.acquireRange * km.rangeMul);
+      const target = nearestMonster(w, u.x, u.y, wd.acquireRange * km.rangeMul, true);
       if (target) u.facing = norm({ x: target.x - u.x, y: target.y - u.y });
       else if (moveLen > 0.1) u.facing = norm(move);
       setState(u, 'attack');
@@ -72,7 +72,18 @@ export function updateKnight(w: World, u: Unit, input: InputState | undefined) {
 
   const speed = u.speed * (u.state === 'attack' ? wd.moveFactor : 1);
   u.moving = moveLen > 0.05;
-  if (u.moving) {
+  if (u.moving && onIce(w, u)) {
+    // Ice: steering builds up a glide (u.vx, u.vy, integrated and slowly damped in physics).
+    u.vx += move.x * speed * ICE.accel * DT;
+    u.vy += move.y * speed * ICE.accel * DT;
+    const v = Math.hypot(u.vx, u.vy);
+    const cap = speed * ICE.maxMul;
+    if (v > cap) {
+      u.vx *= cap / v;
+      u.vy *= cap / v;
+    }
+    if (u.state !== 'attack') u.facing = norm(move);
+  } else if (u.moving) {
     u.x += move.x * speed * DT;
     u.y += move.y * speed * DT;
     if (u.state !== 'attack') u.facing = norm(move);

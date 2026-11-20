@@ -130,7 +130,7 @@ describe('characterModelPaths', () => {
   });
 
   it('has a model for every monster sheet', () => {
-    for (const [kind, def] of Object.entries(MONSTERS)) expect(CHARACTER_MODELS[def.sheet], kind).toBeDefined();
+    for (const [kind, def] of Object.entries(MONSTERS)) if (!def.inert) expect(CHARACTER_MODELS[def.sheet], kind).toBeDefined();
   });
 
   it('only lists models that exist on disk', () => {

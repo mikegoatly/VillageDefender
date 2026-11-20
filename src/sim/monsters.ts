@@ -3,7 +3,7 @@
 import { DT } from '../data/balance';
 import { MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
 import { tickBossTimers, updateBoss } from './boss';
-import { damageBuilding, damageUnit, hurtFriendliesInRadius, hurtFriendly, stunFriendliesInRadius } from './combat';
+import { areaHits, damageBuilding, damageUnit, hurtFriendliesInRadius, hurtFriendly, stunFriendliesInRadius } from './combat';
 import type { FlowField } from './flowField';
 import { isWalkable } from './map';
 import type { Unit } from './model';
@@ -21,6 +21,8 @@ export function updateMonster(w: World, m: Unit) {
   m.moving = false;
 
   if (def.raise) raiseDead(w, m, def);
+  if (def.heals) healAround(w, m, def);
+  if (def.plants) m.abilityIn = Math.max(0, m.abilityIn - DT);
   if (m.boss) tickBossTimers(w, m, m.boss);
   if (def.explodes && m.abilityIn > 0) {
     burnFuse(w, m, def);
@@ -41,6 +43,13 @@ export function updateMonster(w: World, m: Unit) {
     return;
   }
   if (def.wail && wail(w, m, def)) return;
+  if (def.freezes && freeze(w, m, def)) return;
+  if (def.plants && m.burstTime > 0) {
+    // Running from the keg it just lit.
+    m.burstTime = Math.max(0, m.burstTime - DT);
+    steer(w, m, null, m.x - m.aimX, m.y - m.aimY);
+    return;
+  }
   if (def.flee && fleeKnight(w, m, def)) return;
   if (def.ranged && rangedAttack(w, m, def)) return;
 
@@ -103,6 +112,10 @@ export function updateMonster(w: World, m: Unit) {
 
   // Building attack: any standing building cell within reach?
   const b = adjacentBuilding(w, m, def.attackReach);
+  if (b && def.plants && m.abilityIn <= 0) {
+    plantKeg(w, m, def, b);
+    return;
+  }
   if (b && def.explodes) {
     m.abilityIn = def.explodes.fuse;
     m.facing = norm({ x: b.dx, y: b.dy });
@@ -298,6 +311,68 @@ function wail(w: World, m: Unit, def: MonsterDef): boolean {
   return true;
 }
 
+/** Kobold miner: sets a lit keg down where it stands (beside a building), then runs from it. */
+function plantKeg(w: World, m: Unit, def: MonsterDef, b: { dx: number; dy: number }) {
+  const p = def.plants!;
+  const keg = addMonster(w, m.x + b.dx * 0.2, m.y + b.dy * 0.2, p.kind);
+  if (m.raisedBy !== undefined) keg.raisedBy = m.raisedBy;
+  m.abilityIn = p.every;
+  m.burstTime = p.runFor;
+  m.aimX = keg.x;
+  m.aimY = keg.y;
+  setState(m, 'idle');
+  w.events.push({ type: 'kegPlanted', unit: keg.id, by: m.id, x: keg.x, y: keg.y });
+  const fuse = MONSTERS[p.kind].explodes;
+  if (fuse) w.events.push({ type: 'fuseLit', unit: keg.id, x: keg.x, y: keg.y, radius: fuse.radius, time: fuse.fuse });
+}
+
+/** Frost shaman: every so often, heals each wounded monster around it (not props). */
+function healAround(w: World, m: Unit, def: MonsterDef) {
+  const h = def.heals!;
+  m.healIn -= DT;
+  if (m.healIn > 0) return;
+  m.healIn = h.every;
+  const healed: number[] = [];
+  for (const o of w.monsters) {
+    if (o.state === 'dead' || o.hp >= o.maxHp || MONSTERS[o.kind as MonsterKind].inert) continue;
+    if (Math.hypot(o.x - m.x, o.y - m.y) > h.radius) continue;
+    o.hp = Math.min(o.maxHp, o.hp + h.amount);
+    healed.push(o.id);
+  }
+  if (healed.length) w.events.push({ type: 'monstersHealed', unit: m.id, x: m.x, y: m.y, radius: h.radius, healed });
+}
+
+/**
+ * Frost shaman: picks a rookie (else the knight) in range, marks a circle under it, and when the
+ * telegraph ends freezes everyone still inside (damage and a long stun). True while winding up.
+ */
+function freeze(w: World, m: Unit, def: MonsterDef): boolean {
+  const f = def.freezes!;
+  if (m.windup > 0) {
+    m.windup -= DT;
+    setState(m, 'idle', true);
+    if (m.windup <= 0) {
+      m.windup = 0;
+      w.events.push({ type: 'freeze', unit: m.id, x: m.aimX, y: m.aimY, radius: f.radius });
+      stunFriendliesInRadius(w, m.aimX, m.aimY, f.radius, f.damage, f.stun);
+    }
+    return true;
+  }
+  m.abilityIn = Math.max(0, m.abilityIn - DT);
+  if (m.abilityIn > 0) return false;
+  const inRange = (u: Unit | null) => (u && Math.hypot(u.x - m.x, u.y - m.y) <= f.range ? u : null);
+  const target = inRange(nearestOf(w.rookies, m.x, m.y)) ?? inRange(nearestOf(w.players, m.x, m.y));
+  if (!target) return false;
+  m.windup = f.telegraph;
+  m.abilityIn = f.every;
+  m.aimX = target.x;
+  m.aimY = target.y;
+  m.facing = norm({ x: target.x - m.x, y: target.y - m.y });
+  setState(m, 'idle', true);
+  w.events.push({ type: 'freezeWarn', unit: m.id, x: m.aimX, y: m.aimY, radius: f.radius, time: f.telegraph });
+  return true;
+}
+
 /** Gravedigger: tunnels straight to the nearest building, then surfaces for good beside it. */
 function tunnel(w: World, m: Unit, def: MonsterDef) {
   const cell = nearestStandingCell(w, m.x, m.y);
@@ -331,6 +406,8 @@ function burnFuse(w: World, m: Unit, def: MonsterDef) {
   m.hp = 0;
   setState(m, 'dead');
   w.events.push({ type: 'death', unit: m.id });
+  // A planted keg also blows up the monsters around it, credited to whoever kicked it last.
+  if (ex.monsterDamage) areaHits(w, m.targetId, m.x, m.y, ex.radius, ex.monsterDamage, ex.deathKnockback);
 }
 
 /** Moves along a flow field (or straight along (dx, dy) when field is null or exhausted). */

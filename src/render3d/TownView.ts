@@ -58,6 +58,13 @@ const GRAVEYARD_SCATTER: [string, number, number][] = [
   ['graveyard/gravestone-broken', 0.3, 0.8], ['graveyard/grave', 0.25, 0.8], ['graveyard/gravestone-debris', 0.25, 0.9],
   ['graveyard/candle-multiple', 0.1, 1.0], ['graveyard/fire-basket', 0.1, 0.9],
 ];
+const SNOW = 0xe9f0f6;
+/** Frozen ponds: a glossy pale-blue sheet just above the snow. */
+const ICE = { color: 0xbfe2f5, roughness: 0.12, metalness: 0.15, y: 0.004 };
+const SNOW_SCATTER: [string, number, number][] = [
+  ['holiday/snow-pile', 0.5, 0.8], ['holiday/snow-flat', 0.4, 0.9],
+  ['holiday/lantern', 0.05, 0.8], ['holiday/sled', 0.05, 0.8],
+];
 const SCATTER_CHANCE = 0.16;
 
 interface BuildingView {
@@ -327,6 +334,7 @@ export class TownView {
     const water: THREE.Matrix4[] = [];
     const roads: THREE.Matrix4[] = [];
     const bridges: THREE.Matrix4[] = [];
+    const ice: THREE.Matrix4[] = [];
     const scatter = new Map<string, THREE.Matrix4[]>();
     for (let j = 0; j < map.size; j++) {
       for (let i = 0; i < map.size; i++) {
@@ -338,7 +346,8 @@ export class TownView {
           continue;
         }
         grass.push([i, j]);
-        if (g === Ground.Road) roads.push(new THREE.Matrix4().makeTranslation(i, 0, j));
+        if (g === Ground.Ice) ice.push(new THREE.Matrix4().makeTranslation(i, ICE.y, j));
+        else if (g === Ground.Road) roads.push(new THREE.Matrix4().makeTranslation(i, 0, j));
         else if (map.blocked[j * map.size + i] === 0) this.scatterOn(i, j, scatter);
       }
     }
@@ -353,7 +362,8 @@ export class TownView {
     grass.forEach(([i, j], n) => {
       ground.setMatrixAt(n, m.makeTranslation(i, 0, j));
       const shade = 0.9 + 0.12 * smoothNoise(i / 4, j / 4) + 0.03 * hash01(i, j, 7);
-      ground.setColorAt(n, c.setHex(this.map.theme === 'graveyard' ? GRAVEYARD_GRASS : GRASS).multiplyScalar(shade));
+      const base = this.map.theme === 'graveyard' ? GRAVEYARD_GRASS : this.map.theme === 'frost' ? SNOW : GRASS;
+      ground.setColorAt(n, c.setHex(base).multiplyScalar(this.map.theme === 'frost' ? 0.97 + (shade - 0.9) * 0.3 : shade));
     });
     ground.count = grass.length;
     this.instanced.push(ground);
@@ -369,6 +379,16 @@ export class TownView {
       this.instanced.push(w);
       this.root.add(w);
     }
+    if (ice.length) {
+      const sheet = new THREE.InstancedMesh(
+        this.own(new THREE.PlaneGeometry(1.01, 1.01).rotateX(-Math.PI / 2)),
+        this.own(new THREE.MeshStandardMaterial({ color: ICE.color, roughness: ICE.roughness, metalness: ICE.metalness })), ice.length,
+      );
+      ice.forEach((t, k) => sheet.setMatrixAt(k, t));
+      sheet.receiveShadow = true;
+      this.instanced.push(sheet);
+      this.root.add(sheet);
+    }
     this.addInstanced('fantasy-town/road', roads);
     this.addInstanced('mini-forest/bridge', bridges, true);
     for (const [model, ts] of scatter) this.addInstanced(model, ts);
@@ -378,7 +398,7 @@ export class TownView {
   private scatterOn(i: number, j: number, out: Map<string, THREE.Matrix4[]>) {
     if (hash01(i, j, 11) >= SCATTER_CHANCE) return;
     let pick = hash01(i, j, 12);
-    const table = this.map.theme === 'graveyard' ? GRAVEYARD_SCATTER : SCATTER;
+    const table = this.map.theme === 'graveyard' ? GRAVEYARD_SCATTER : this.map.theme === 'frost' ? SNOW_SCATTER : SCATTER;
     const entry = table.find(([, w]) => (pick -= w) < 0) ?? table[0];
     const [model, , scale] = entry;
     const t = new THREE.Matrix4().compose(

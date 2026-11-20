@@ -61,6 +61,24 @@ export const TOWN3_WAVES: WaveDef[] = [
   { monsters: { gravekeeper: 1, zombie: 6, boneKnight: 3, banshee: 2, gravedigger: 3, skeletonArcher: 2 }, sides: 3 },
 ];
 
+/**
+ * Town 4 (Frostpeak Mine): ice golems that shatter into smaller pieces (1), kobold miners planting
+ * powder kegs (3), shieldbearers whose ward halves damage around them (4) and frost shamans that
+ * heal the pack and freeze rookies (5). The Frost Giant stomps in with wave 10.
+ */
+export const TOWN4_WAVES: WaveDef[] = [
+  { monsters: { zombie: 8, orc: 3, iceGolem: 1 }, sides: 1 },
+  { monsters: { zombie: 8, orc: 3, iceGolem: 2, skeleton: 2 }, sides: 2 },
+  { monsters: { zombie: 8, orc: 4, kobold: 2, iceGolem: 1 }, sides: 2 },
+  { monsters: { zombie: 9, orc: 4, shieldbearer: 1, kobold: 2, skeletonArcher: 2 }, sides: 2 },
+  { monsters: { zombie: 9, orc: 5, frostShaman: 1, shieldbearer: 1, iceGolem: 2 }, sides: 3 },
+  { monsters: { zombie: 10, orc: 5, kobold: 3, shieldbearer: 2, vampire: 2 }, sides: 3 },
+  { monsters: { zombie: 10, frostShaman: 1, iceGolem: 3, boneKnight: 2, banshee: 2 }, sides: 3 },
+  { monsters: { zombie: 10, orc: 6, kobold: 3, shieldbearer: 2, frostShaman: 1, brute: 1, gravedigger: 2 }, sides: 3 },
+  { monsters: { zombie: 12, orc: 6, iceGolem: 3, kobold: 3, shieldbearer: 2, frostShaman: 2, brute: 1 }, sides: 3 },
+  { monsters: { frostGiant: 1, zombie: 6, shieldbearer: 2, kobold: 3, iceGolem: 2, frostShaman: 1 }, sides: 3 },
+];
+
 /** Flattens a wave into a spawn order that mixes kinds rather than sending them in blocks. */
 export function spawnOrder(w: WaveDef): MonsterKind[] {
   const left = { ...w.monsters } as Record<MonsterKind, number>;
