@@ -38,12 +38,18 @@ export const CHARACTER_MODELS: Record<string, string> = {
   warlord: 'mini-dungeon/character-orc',
   troll: 'graveyard/character-zombie',
   frostGiant: 'mini-dungeon/character-orc',
+  // Lanternwick's night monsters float, so they ride the ghost's rig (no legs; the moth's wings on its arms).
+  shade: 'graveyard/character-ghost',
+  gloomMoth: 'graveyard/character-ghost',
+  wisp: 'graveyard/character-ghost',
   // Town looks (data/towns.ts): bodies from render3d/bodies/, on the rig whose clips suit them.
   drowned: 'graveyard/character-zombie',
   frogfolk: 'mini-dungeon/character-orc',
   ghoul: 'mini-dungeon/character-orc',
   frostThrall: 'graveyard/character-zombie',
   yeti: 'mini-dungeon/character-orc',
+  scarecrow: 'graveyard/character-zombie',
+  werewolf: 'mini-dungeon/character-orc',
   // The villager who sets traps is the same recruit model, unarmed.
   villager: 'mini-characters/character-male-f',
 };
@@ -160,13 +166,30 @@ export function unitFx(u: Pick<Unit, 'id' | 'team' | 'kind' | 'state' | 'stateTi
   let flash = flashing ? 1 : 0;
   let alpha = 1;
   let sink = u.burrowed ? BURROW_SINK : 0;
-  if (u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].phasing) {
+  // Translucent phasers (ghosts, banshees) flicker; solid fliers that phase over things (moths, wisps) don't.
+  const def = u.team === 'enemy' ? MONSTERS[u.kind as MonsterKind] : undefined;
+  if (def?.phasing && def.alpha < 1) {
     alpha = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(clock * 2.2 + u.id * 1.7));
   }
   if (u.state === 'dead') sink = Math.min(1, Math.max(0, u.stateTime - CORPSE_SINK.after) / CORPSE_SINK.time) * CORPSE_SINK.depth;
   else if (u.invuln > 0 && u.team === 'player' && u.state !== 'dodge' && !flashing) flash = Math.sin(clock * 30) > 0 ? 0.35 : 0;
-  else if (!flashing && u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].explodes) flash = -sapperPulse(u.abilityIn, clock, u.id);
+  else if (!flashing && def?.explodes) flash = -sapperPulse(u.abilityIn, clock, u.id);
   return { flash, alpha, sink };
+}
+
+/** A shade at full dark is unseen; while it strikes, a faint shimmer of it shows (peak opacity). */
+export const SHADE_SHIMMER = 0.22;
+
+/**
+ * Opacity factor for a monster drawn unseen in the dark (MonsterDef.shade): fades out with its
+ * darkness (0 in light, 1 out of it), every piece and glow with it, except for a brief shimmer while
+ * it attacks (rising and falling over the swing).
+ */
+export function shadeAlpha(dark: number, state: Unit['state'], stateTime: number): number {
+  const seen = 1 - Math.min(1, Math.max(0, dark));
+  if (state !== 'attack') return seen;
+  const shimmer = SHADE_SHIMMER * Math.sin(Math.min(1, stateTime / 0.6) * Math.PI);
+  return Math.max(seen, shimmer);
 }
 
 /** Red pulse strength (0..1) of a sapper's keg: slow and faint on approach, fast and strong once the fuse is lit. */
@@ -195,6 +218,8 @@ export interface UnitLook {
   attackClip?: string;
   /** Body-kit pieces hung on the rig beside its own meshes (the knight's night lantern). */
   pieces?: readonly BodyPiece[];
+  /** Unseen out of the light (shades): fades out with its darkness (shadeAlpha) and casts no shadow. */
+  unseen?: boolean;
 }
 
 /**
@@ -222,7 +247,10 @@ export function lookFor(
     const sheet = swap ?? def.sheet;
     const tint = swap ? 0xffffff : def.tint;
     const pallor = swap ? 0 : def.pallor ?? 0;
-    return { key: `${sheet}:${def.alpha}:${pallor}`, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint, alpha: def.alpha, pallor, scale: def.scale };
+    return {
+      key: `${sheet}:${def.alpha}:${pallor}`, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint, alpha: def.alpha, pallor, scale: def.scale,
+      unseen: !!def.shade,
+    };
   }
   if (u.kind === 'knight') return knightLook(weapon, gear, lantern);
   return rookieLook(u.kind as RookieKind, u.rank, army);

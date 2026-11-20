@@ -42,6 +42,7 @@ import { FROST_GIANT, GRAVEKEEPER, TROLL, WARLORD } from './bodies/bosses';
 import { FROST_SHAMAN, NECROMANCER } from './bodies/casters';
 import { FROST_THRALL, YETI } from './bodies/frostpeak';
 import { GHOUL } from './bodies/graveyard';
+import { GLOOM_MOTH, SCARECROW, SHADE, WEREWOLF, WISP } from './bodies/lanternwick';
 import { FROST_KOBOLD, goblinBody, POWDER_GOBLIN, SHIELDBEARER } from './bodies/monsters';
 import { DROWNED, FROGFOLK } from './bodies/riverside';
 
@@ -67,6 +68,12 @@ export const BODIES: Record<string, BodySpec> = {
   ghoul: GHOUL,
   frostThrall: FROST_THRALL,
   yeti: YETI,
+  scarecrow: SCARECROW,
+  werewolf: WEREWOLF,
+  // Lanternwick's night monsters (ghost rig: they float): each reads in the dark by what glows.
+  shade: SHADE,
+  gloomMoth: GLOOM_MOTH,
+  wisp: WISP,
   // Town bosses: more detail than the horde, as only one is on screen.
   warlord: WARLORD,
   troll: TROLL,

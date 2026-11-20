@@ -80,21 +80,23 @@ export const TOWN4_WAVES: WaveDef[] = [
 ];
 
 /**
- * Town 5 (Lanternwick): PLACEHOLDER, replaced in phase 3 by the night monsters. For now a mix of
- * existing monsters on the usual ten-wave curve, with the Gravekeeper standing in for the
- * Pumpkin King (phase 4) in wave 10.
+ * Town 5 (Lanternwick): scarecrows and werewolves (the town's looks for zombies and orcs) with the
+ * night monsters brought in one at a time as the dark comes on: will-o'-wisps luring rookies out at
+ * dusk (2), gloom moths putting out the lamps as real darkness starts (3), shades stalking the knight
+ * unseen (4). Wave 10's boss is the Gravekeeper standing in until the Pumpkin King (phase 4) replaces him.
  */
 export const TOWN5_WAVES: WaveDef[] = [
-  { monsters: { zombie: 8, orc: 3, ghost: 2 }, sides: 1 },
-  { monsters: { zombie: 8, orc: 4, skeleton: 3, ghost: 2 }, sides: 2 },
-  { monsters: { zombie: 9, orc: 4, vampire: 2, banshee: 1 }, sides: 2 },
-  { monsters: { zombie: 9, orc: 5, ghost: 3, gravedigger: 2, skeletonArcher: 2 }, sides: 2 },
-  { monsters: { zombie: 10, orc: 5, vampire: 2, banshee: 2, necromancer: 1 }, sides: 3 },
-  { monsters: { zombie: 10, orc: 6, ghost: 3, boneKnight: 2, sapper: 2 }, sides: 3 },
-  { monsters: { zombie: 10, orc: 6, vampire: 3, banshee: 2, skeletonArcher: 3, brute: 1 }, sides: 3 },
-  { monsters: { zombie: 11, orc: 6, ghost: 4, gravedigger: 3, necromancer: 1, brute: 1 }, sides: 3 },
-  { monsters: { zombie: 12, orc: 7, vampire: 3, banshee: 3, boneKnight: 3, brute: 1 }, sides: 3 },
-  { monsters: { gravekeeper: 1, zombie: 6, ghost: 3, vampire: 2, banshee: 2 }, sides: 3 },
+  { monsters: { zombie: 8, orc: 4, skeleton: 2 }, sides: 1 },
+  { monsters: { zombie: 9, orc: 5, wisp: 3, ghost: 2 }, sides: 2 },
+  { monsters: { zombie: 10, orc: 5, gloomMoth: 5, wisp: 2, skeleton: 3 }, sides: 2 },
+  { monsters: { zombie: 10, orc: 6, shade: 3, gloomMoth: 4, vampire: 1, brute: 1 }, sides: 2 },
+  { monsters: { zombie: 11, orc: 7, shade: 3, wisp: 3, ghost: 3, brute: 1 }, sides: 3 },
+  { monsters: { zombie: 12, orc: 7, gloomMoth: 6, shade: 3, vampire: 2, skeletonArcher: 3, brute: 1 }, sides: 3 },
+  { monsters: { zombie: 12, orc: 8, wisp: 4, shade: 4, banshee: 2, brute: 2 }, sides: 3 },
+  { monsters: { zombie: 13, orc: 9, gloomMoth: 6, shade: 4, vampire: 2, ghost: 3, brute: 1 }, sides: 3 },
+  { monsters: { zombie: 14, orc: 9, shade: 5, gloomMoth: 6, wisp: 4, brute: 2, vampire: 2 }, sides: 3 },
+  // Stand-in boss: phase 4 replaces the Gravekeeper with the Pumpkin King.
+  { monsters: { gravekeeper: 1, zombie: 8, orc: 6, shade: 4, gloomMoth: 5, wisp: 3, vampire: 2 }, sides: 3 },
 ];
 
 /** Flattens a wave into a spawn order that mixes kinds rather than sending them in blocks. */

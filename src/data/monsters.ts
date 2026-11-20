@@ -1,10 +1,13 @@
 // Monster archetypes. Target preference matters more than stats (plan §3.3).
 
+import { NIGHT } from './night';
+
 export type MonsterKind =
   | 'zombie' | 'orc' | 'brute' | 'skeleton' | 'ghost' | 'vampire'
   | 'imp' | 'necromancer' | 'skeletonArcher' | 'sapper'
   | 'boneKnight' | 'banshee' | 'gravedigger'
   | 'kobold' | 'powderKeg' | 'shieldbearer' | 'frostShaman' | 'iceGolem' | 'iceShard' | 'iceling'
+  | 'shade' | 'gloomMoth' | 'wisp'
   | 'warlord' | 'troll' | 'gravekeeper' | 'frostGiant';
 
 /** Boss ability sets (sim/boss.ts). */
@@ -15,8 +18,10 @@ export type BossKind = 'warlord' | 'troll' | 'gravekeeper' | 'frostGiant';
  * - buildings: ignores knight and rookies and goes for the nearest standing building
  * - knight: always hunts the knight (stalker)
  * - rookies: hunts rookies; falls back to the knight, then buildings, when there are none
+ * - lamps: flies to the nearest lit lamp post and puts it out; with none lit, hunts the knight (gloom moth)
+ * - lure: hangs about near the rookies and drifts off into the dark when one comes for it (wisp)
  */
-export type TargetPreference = 'nearest' | 'buildings' | 'knight' | 'rookies';
+export type TargetPreference = 'nearest' | 'buildings' | 'knight' | 'rookies' | 'lamps' | 'lure';
 
 export interface MonsterDef {
   /** Baked sprite sheet. */
@@ -51,7 +56,7 @@ export interface MonsterDef {
   phasing?: boolean;
   /** Crosses river water (troll). */
   wades?: boolean;
-  /** Flies: traps never touch it (decision 52). No monster flies yet. */
+  /** Flies: traps never touch it (decision 52). Gloom moths and wisps. */
   flying?: boolean;
   /** Boss ability set; bosses get a health bar and arrival banner. */
   boss?: BossKind;
@@ -118,6 +123,19 @@ export interface MonsterDef {
    * nearest building, and surfaces for good within `surfaceRange` cells of it.
    */
   burrows?: { surfaceRange: number; speedMul: number };
+  /**
+   * Night towns (shade): takes `darkDamage` (0–1) of every hit while it stands out of the light
+   * (sim/light.ts isLit), so it has to be drawn into the light to be killed. Drawn unseen in the dark.
+   */
+  shade?: { darkDamage: number };
+  /** Night towns (wisp): a light source itself, lighting this radius (cells) round it while it lives. */
+  light?: number;
+  /**
+   * Wisp: rookies within `radius` drop what they are doing to chase it. It hovers `hover` cells off
+   * the nearest rookie (else the knight) and, when one comes within `flee`, drifts away from it and
+   * out towards the map edge, sprinting `speedMul` × for `duration` s every `cooldown` s.
+   */
+  lure?: { radius: number; hover: number; flee: number; speedMul: number; duration: number; cooldown: number };
   /** XP gem value dropped on death. */
   xp: number;
   /** Coins on death. */
@@ -279,6 +297,32 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     radius: 0.17, hp: 14, speed: 2.0, speedJitter: 0.2,
     damage: 4, buildingDamage: 2, attackWindup: 0.35, attackCooldown: 0.9, attackReach: 0.18,
     knockbackResist: 0, corpseTime: 0.8, xp: 1, coins: 0,
+  },
+  shade: {
+    // Town 5: a wisp of dark that hunts the knight. Unseen in the dark (only a shimmer as it strikes),
+    // and only half there out of the light: lure it into lamplight to finish it.
+    sheet: 'shade', scale: 1, tint: 0xffffff, alpha: 0.9, target: 'knight', aggroRange: 0,
+    radius: 0.21, hp: 32, speed: 2.15, speedJitter: 0.15,
+    damage: 8, buildingDamage: 1, attackWindup: 0.35, attackCooldown: 1.0, attackReach: 0.2,
+    knockbackResist: 0.2, corpseTime: 1.0, xp: 3, coins: 2,
+    shade: { darkDamage: 0.5 },
+  },
+  gloomMoth: {
+    // Town 5: a big moth that flies over everything to the nearest lit lamp post and beats it out.
+    // Fragile: one knight blow. With every lamp out, it comes for the knight's lantern.
+    sheet: 'gloomMoth', scale: 1, tint: 0xffffff, alpha: 1, target: 'lamps', aggroRange: 0,
+    radius: 0.22, hp: 14, speed: 1.75, speedJitter: 0.15,
+    damage: 3, buildingDamage: 5, attackWindup: 0.3, attackCooldown: 0.9, attackReach: 0.25,
+    knockbackResist: 0, corpseTime: 0.8, phasing: true, flying: true, xp: 2, coins: 2,
+  },
+  wisp: {
+    // Town 5: a floating light that lures rookies out of town into the dark. Harmless; bursts in one hit.
+    sheet: 'wisp', scale: 1, tint: 0xffffff, alpha: 1, target: 'lure', aggroRange: 0,
+    radius: 0.16, hp: 1, speed: 1.6, speedJitter: 0.1,
+    damage: 0, buildingDamage: 0, attackWindup: 0, attackCooldown: 0, attackReach: 0,
+    knockbackResist: 0, corpseTime: 0.4, phasing: true, flying: true, xp: 2, coins: 1,
+    light: NIGHT.radius.wisp,
+    lure: { radius: 4.5, hover: 3, flee: 2.2, speedMul: 1.7, duration: 1.4, cooldown: 2.4 },
   },
   warlord: {
     // Town 1 boss (decision 41). Abilities live in BOSS below.

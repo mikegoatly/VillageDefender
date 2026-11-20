@@ -3,6 +3,7 @@
 import { KNIGHT } from '../data/balance';
 import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ARMY } from '../data/rookies';
+import { isLit } from './light';
 import type { BuildingState, Unit } from './model';
 import { friendlyById } from './queries';
 import { addMonster } from './waves';
@@ -15,7 +16,8 @@ const ARMOR_FRONT_COS = 0.17;
 
 /**
  * Damages a monster; `by` is the attacking unit id (-1 for buildings/thorns). Plated monsters
- * (bone knights) take reduced damage from a friendly standing in front of them, unless `ignoreArmor`.
+ * (bone knights) take reduced damage from a friendly standing in front of them, unless `ignoreArmor`;
+ * shades take less out of the light.
  */
 export function damageUnit(w: World, u: Unit, amount: number, by: number, ignoreArmor = false) {
   const own = u.team === 'enemy' ? MONSTERS[u.kind as MonsterKind] : undefined;
@@ -25,6 +27,8 @@ export function damageUnit(w: World, u: Unit, amount: number, by: number, ignore
     return;
   }
   if (own && wardedBy(w, u)) amount *= 1 - MONSTERS[wardedBy(w, u)!.kind as MonsterKind].ward!.reduction;
+  // Shades are only half there out of the light (night towns, from wave 3).
+  if (own?.shade && !isLit(w, u.x, u.y)) amount *= own.shade.darkDamage;
   const armor = own && !ignoreArmor ? own.armor : undefined;
   if (armor) {
     const attacker = friendlyById(w, by);

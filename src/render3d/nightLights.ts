@@ -26,6 +26,8 @@ export const NIGHT_LIGHT: Record<LightKind, { y: number; color: number }> = {
   lantern: { y: 1.2, color: 0xffd6a6 },
   window: { y: 1.0, color: 0xffb066 },
   lamp: { y: 1.25, color: 0xffd08a },
+  // A will-o'-wisp: a cold green-blue glow at the height it floats.
+  wisp: { y: 0.6, color: 0x9affd8 },
 };
 
 /** Real point lights in the pool (constant, so shaders never recompile). Slot 0 is the knight's lantern. */

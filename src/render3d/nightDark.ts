@@ -9,13 +9,14 @@
 // The light map is a texture, one texel per cell, built from the sim's lit grid (sim/light.ts) and
 // softened by a 3×3 blur, which keeps the 0.5 contour on the sim's cell edges; bilinear sampling
 // smooths it further. The knight's lantern moves every frame, so it is a circle in the shader with a
-// soft edge centred on the sim's radius. The patch is installed once, before any material compiles,
+// soft edge centred on the sim's radius; so is each will-o'-wisp (up to MAX_GLOWS, a uniform array). The patch is installed once, before any material compiles,
 // and is inert (one uniform test) until a night town turns it on.
 
 import * as THREE from 'three';
 import type { Lightable } from '../sim/light';
 import { NIGHT } from '../data/night';
-import type { World } from '../sim/world';
+import type { Unit, World } from '../sim/world';
+import { MONSTERS, type MonsterKind } from '../data/monsters';
 
 /** How dark it gets outside the light at full night (a faint moon), and the lantern's soft edge (cells, each side). */
 export const REAL_DARK = { floor: 0.1, lanternFeather: 0.5 };
@@ -29,6 +30,9 @@ function blankTexture(): THREE.DataTexture {
   return blank;
 }
 
+/** Will-o'-wisps lighting the ground in the shader at once (nearest the knight first; the rest are still lit in the sim). */
+export const MAX_GLOWS = 8;
+
 /** Shared uniform objects: every patched material holds these same objects, so one write updates all. */
 export const NIGHT_UNIFORMS = {
   vdLightMap: { value: blankTexture() as THREE.Texture },
@@ -37,6 +41,8 @@ export const NIGHT_UNIFORMS = {
   vdLantern: { value: new THREE.Vector4(0, 0, 0, 1) },
   /** Strength 0..1 (0 = off: other towns, dusk), and the floor at full strength. */
   vdNight: { value: new THREE.Vector2(0, REAL_DARK.floor) },
+  /** Moving lights besides the lantern (wisps): x, z, radius (0 = unused slot). */
+  vdGlows: { value: Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4(0, 0, 0, 0)) },
 };
 
 const FRAGMENT_PARS = /* glsl */ `
@@ -44,11 +50,18 @@ uniform sampler2D vdLightMap;
 uniform mat4 vdViewInverse;
 uniform vec4 vdLantern;
 uniform vec2 vdNight;
+uniform vec4 vdGlows[${MAX_GLOWS}];
+float vdCircle(vec2 w, vec2 c, float r) {
+  return 1.0 - smoothstep(r - ${REAL_DARK.lanternFeather.toFixed(2)}, r + ${REAL_DARK.lanternFeather.toFixed(2)}, distance(w, c));
+}
 float vdDarkness(vec3 viewPos) {
   if (vdNight.x <= 0.0) return 1.0;
   vec2 w = (vdViewInverse * vec4(viewPos, 1.0)).xz;
   float lit = texture2D(vdLightMap, (w + 0.5) / vdLantern.w).r;
-  if (vdLantern.z > 0.0) lit = max(lit, 1.0 - smoothstep(vdLantern.z - ${REAL_DARK.lanternFeather.toFixed(2)}, vdLantern.z + ${REAL_DARK.lanternFeather.toFixed(2)}, distance(w, vdLantern.xy)));
+  if (vdLantern.z > 0.0) lit = max(lit, vdCircle(w, vdLantern.xy, vdLantern.z));
+  for (int i = 0; i < ${MAX_GLOWS}; i++) {
+    if (vdGlows[i].z > 0.0) lit = max(lit, vdCircle(w, vdGlows[i].xy, vdGlows[i].z));
+  }
   return mix(1.0, mix(vdNight.y, 1.0, lit), vdNight.x);
 }
 `;
@@ -160,14 +173,30 @@ export class LightMap {
     const on = k && k.state !== 'dead';
     u.vdLantern.value.set(on ? k.x : 0, on ? k.y : 0, on ? NIGHT.radius.lantern : 0, this.size);
     u.vdNight.value.set(strength, REAL_DARK.floor);
+    setGlows(u.vdGlows.value, world.glows, on ? k : null);
   }
 
   /** Turns the darkness off again (the town is left; materials are shared across sessions). */
   dispose() {
     NIGHT_UNIFORMS.vdNight.value.set(0, REAL_DARK.floor);
+    for (const g of NIGHT_UNIFORMS.vdGlows.value) g.set(0, 0, 0, 0);
     NIGHT_UNIFORMS.vdLightMap.value = blankTexture();
     this.texture.dispose();
   }
+}
+
+/**
+ * Fills the glow slots with the living wisps (nearest `near` first when there are more than slots),
+ * the rest cleared. Exported for tests.
+ */
+export function setGlows(slots: THREE.Vector4[], glows: readonly Unit[], near: { x: number; y: number } | null) {
+  let list = glows.filter((m) => m.state !== 'dead');
+  if (list.length > slots.length && near) list = list.sort((a, b) => Math.hypot(a.x - near.x, a.y - near.y) - Math.hypot(b.x - near.x, b.y - near.y));
+  slots.forEach((s, i) => {
+    const m = list[i];
+    if (m) s.set(m.x, m.y, MONSTERS[m.kind as MonsterKind].light ?? 0, 0);
+    else s.set(0, 0, 0, 0);
+  });
 }
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {

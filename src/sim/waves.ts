@@ -75,5 +75,7 @@ export function addMonster(w: World, x: number, y: number, kind: MonsterKind = '
     w.events.push({ type: 'bossSpawn', unit: m.id });
   }
   w.monsters.push(m);
+  // Light sources count from the moment they appear (the list is otherwise rebuilt each tick).
+  if (def.light) w.glows.push(m);
   return m;
 }

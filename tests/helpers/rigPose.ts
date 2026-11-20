@@ -65,7 +65,8 @@ export function aPosedRig(model: string) {
      */
     play(clipName: string, step: number, visit: (t: number, place: (p: BodyPiece, size?: THREE.Vector3) => THREE.Matrix4) => void) {
       for (const b of ['root', 'torso', 'head', 'arm-left', 'arm-right', 'leg-left', 'leg-right'] as BoneName[]) {
-        if (!restInv.has(b)) restInv.set(b, bone(b).matrixWorld.clone().invert());
+        // Not every rig has every bone (the ghost has no head or legs).
+        if (!restInv.has(b) && root.getObjectByName(b)) restInv.set(b, bone(b).matrixWorld.clone().invert());
       }
       const clip = this.clip(clipName);
       const mixer = new THREE.AnimationMixer(root);

@@ -2,8 +2,9 @@
 // posts can be lit with oil while planning and get knocked over by big monsters. Everywhere else
 // (and at dusk, before NIGHT.darkFrom) everything counts as lit, so other towns are untouched.
 //
-// Sources: the knight's lantern (checked exactly, every call), each standing building's window
-// light and each lit lamp post (stamped into a per-cell grid, rebuilt only when one changes).
+// Sources: the knight's lantern and each living will-o'-wisp (moving: checked exactly, every call),
+// each standing building's window light and each lit lamp post (stamped into a per-cell grid, rebuilt
+// only when one changes).
 // render3d/nightLights.ts draws the same list, so what looks lit is what is lit.
 
 import { MONSTERS, type MonsterKind } from '../data/monsters';
@@ -11,7 +12,7 @@ import { NIGHT, nightLevel } from '../data/night';
 import type { Lamp, Unit } from './model';
 import type { World } from './world';
 
-export type LightKind = 'lantern' | 'window' | 'lamp';
+export type LightKind = 'lantern' | 'window' | 'lamp' | 'wisp';
 
 export interface LightSpot {
   /** Stable id while the source exists. */
@@ -25,7 +26,7 @@ export interface LightSpot {
 }
 
 /** The world state that light depends on. */
-export type Lightable = Pick<World, 'players' | 'buildings' | 'lamps' | 'map'>;
+export type Lightable = Pick<World, 'players' | 'buildings' | 'lamps' | 'map' | 'glows'>;
 
 /** True in night towns. */
 export function isNight(w: Pick<World, 'map'>): boolean {
@@ -53,13 +54,21 @@ export function windowSpot(cells: readonly (readonly [number, number])[]): { x: 
   return { x: maxI + NIGHT.windowOut, y: maxJ + NIGHT.windowOut };
 }
 
-/** Every light source right now: the knight's lantern first (while he lives), windows, lit lamps. */
+/** Every light source right now: the knight's lantern first (while he lives), wisps, windows, lit lamps. */
 export function lightSpots(w: Lightable): LightSpot[] {
   const out: LightSpot[] = [];
   const k = w.players[0];
   if (k && k.state !== 'dead') out.push({ key: 'lantern', kind: 'lantern', x: k.x, y: k.y, radius: NIGHT.radius.lantern });
+  for (const m of w.glows) {
+    if (m.state !== 'dead') out.push({ key: `m${m.id}`, kind: 'wisp', x: m.x, y: m.y, radius: glowRadius(m) });
+  }
   staticSpots(w, out);
   return out;
+}
+
+/** Light radius of a glowing monster (wisp). */
+function glowRadius(m: Unit): number {
+  return MONSTERS[m.kind as MonsterKind].light ?? 0;
 }
 
 /** Windows of standing buildings and lit, standing lamp posts. */
@@ -130,6 +139,7 @@ export function isLit(w: World, x: number, y: number): boolean {
 export function litBySources(w: World, x: number, y: number): boolean {
   const k = w.players[0];
   if (k && k.state !== 'dead' && Math.hypot(k.x - x, k.y - y) <= NIGHT.radius.lantern) return true;
+  for (const m of w.glows) if (m.state !== 'dead' && Math.hypot(m.x - x, m.y - y) <= glowRadius(m)) return true;
   const i = Math.round(x);
   const j = Math.round(y);
   const n = w.map.size;
@@ -176,6 +186,36 @@ export function breakLamp(w: World, l: Lamp) {
   l.lit = false;
   w.light.markDirty();
   w.events.push({ type: 'lampBroken', lamp: l.id, x: l.x, y: l.y });
+}
+
+/**
+ * A gloom moth's blow on a lit lamp post: drains its oil, and at 0 the lamp goes out for the rest of
+ * the run (still standing: `snuffed`). Dark or broken posts take nothing.
+ */
+export function damageLamp(w: World, l: Lamp, amount: number) {
+  if (!lampShines(l)) return;
+  l.hp = Math.max(0, l.hp - amount);
+  w.events.push({ type: 'lampHit', lamp: l.id, x: l.x, y: l.y });
+  if (l.hp > 0) return;
+  l.lit = false;
+  l.snuffed = true;
+  w.light.markDirty();
+  w.events.push({ type: 'lampSnuffed', lamp: l.id, x: l.x, y: l.y });
+}
+
+/** The nearest lit, standing lamp post, or null. */
+export function nearestLitLamp(w: Pick<World, 'lamps'>, x: number, y: number): Lamp | null {
+  let best: Lamp | null = null;
+  let bestD = Infinity;
+  for (const l of w.lamps) {
+    if (!lampShines(l)) continue;
+    const d = Math.hypot(l.x - x, l.y - y);
+    if (d < bestD) {
+      bestD = d;
+      best = l;
+    }
+  }
+  return best;
 }
 
 /** True for monsters that knock lamp posts over by walking through them. */

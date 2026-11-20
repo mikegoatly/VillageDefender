@@ -37,6 +37,8 @@ export interface Unit {
   hitPending: boolean;
   /** Building being attacked in the current attack, or -1 when attacking a unit. */
   attackBuilding: number;
+  /** Lamp post being put out in the current attack (gloom moth), or -1. */
+  attackLamp: number;
   /** Seconds of invulnerability left (dodge, after being hurt). */
   invuln: number;
   dodgeCooldown: number;
@@ -132,6 +134,8 @@ export interface Lamp {
   lit: boolean;
   /** Inside the town, lit from the start; posts out on the approaches start dark and take lamp oil. */
   startsLit: boolean;
+  /** Put out by gloom moths (hp 0 but still standing, unlike one knocked over). */
+  snuffed?: boolean;
 }
 
 /** A set trap (decision 52): hurts monsters in its radius until its damage budget is spent. */
@@ -217,6 +221,8 @@ export type SimEvent =
   | { type: 'freeze'; unit: number; x: number; y: number; radius: number }
   | { type: 'iceStomp'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'lampBroken'; lamp: number; x: number; y: number }
+  | { type: 'lampHit'; lamp: number; x: number; y: number }
+  | { type: 'lampSnuffed'; lamp: number; x: number; y: number }
   | { type: 'levelEnd'; won: boolean; stars: number; reason: 'knight' | 'town' | null };
 
 export interface WorldOptions {

@@ -179,7 +179,7 @@ export class DebugOverlay3D {
         this.seg(i - 0.3, j + 0.3, i + 0.3, j - 0.3, c);
       }
     }
-    for (const s of lightSpots(world)) this.circle(s.x, s.y, s.radius, s.kind === 'lantern' ? 0xffffff : s.kind === 'lamp' ? 0xffa040 : 0xff7040);
+    for (const s of lightSpots(world)) this.circle(s.x, s.y, s.radius, s.kind === 'lantern' ? 0xffffff : s.kind === 'lamp' ? 0xffa040 : s.kind === 'wisp' ? 0x7affd0 : 0xff7040);
     for (const l of world.lamps) if (!(l.lit && l.hp > 0)) this.cellOutline(l.x, l.y, l.hp > 0 ? 0x6080c0 : 0x803030);
   }
 

@@ -5,6 +5,7 @@ import { MONSTERS, type MonsterDef, type MonsterKind } from '../data/monsters';
 import { tickBossTimers, updateBoss } from './boss';
 import { areaHits, damageBuilding, damageUnit, hurtFriendliesInRadius, hurtFriendly, stunFriendliesInRadius } from './combat';
 import type { FlowField } from './flowField';
+import { damageLamp, nearestLitLamp } from './light';
 import { isWalkable } from './map';
 import type { Unit } from './model';
 import { adjacentBuilding, friendlyById, nearestBuildingCell, nearestFriendly, nearestOf, nearestStandingCell } from './queries';
@@ -52,12 +53,18 @@ export function updateMonster(w: World, m: Unit) {
   }
   if (def.flee && fleeKnight(w, m, def)) return;
   if (def.ranged && rangedAttack(w, m, def)) return;
+  if (def.target === 'lamps' && huntLamp(w, m, def)) return;
+  if (def.lure) {
+    lure(w, m, def);
+    return;
+  }
 
   // Choose a target by archetype (plan section 3.3).
   const hasBuildings = w.hasStandingBuilding();
   let friend: Unit | null;
   let chase: boolean;
-  if (def.target === 'knight') {
+  if (def.target === 'knight' || def.target === 'lamps') {
+    // Gloom moths with no lit lamp left go for the knight's lantern.
     friend = nearestOf(w.players, m.x, m.y);
     chase = !!friend;
   } else if (def.target === 'rookies') {
@@ -151,6 +158,7 @@ function startAttack(m: Unit, def: MonsterDef, dir: Vec2, building: number, targ
   m.hitPending = true;
   m.attackCooldown = def.attackCooldown;
   m.attackBuilding = building;
+  m.attackLamp = -1;
   m.targetId = target;
   m.facing = norm(dir);
 }
@@ -160,6 +168,11 @@ function continueAttack(w: World, m: Unit, def: MonsterDef) {
     if (m.hitPending && m.stateTime >= def.attackWindup) {
       m.hitPending = false;
       loose(w, m, def);
+    }
+  } else if (m.attackLamp >= 0) {
+    if (m.hitPending && m.stateTime >= def.attackWindup) {
+      m.hitPending = false;
+      damageLamp(w, w.lamps[m.attackLamp], def.buildingDamage);
     }
   } else if (m.attackBuilding >= 0) {
     const b = w.buildings[m.attackBuilding];
@@ -237,6 +250,62 @@ function loose(w: World, m: Unit, def: MonsterDef) {
   });
   w.events.push({ type: 'shot', projectile: id, from: m.id });
 }
+
+/** How far a lamp post's body reaches from its cell centre (a gloom moth beats against it from there). */
+const LAMP_POST_RADIUS = 0.12;
+
+/**
+ * Gloom moth: flies straight (over everything) to the nearest lit lamp post and beats at it until it
+ * goes out. False when no lamp is lit (it then hunts the knight's lantern).
+ */
+function huntLamp(w: World, m: Unit, def: MonsterDef): boolean {
+  const l = nearestLitLamp(w, m.x, m.y);
+  if (!l) return false;
+  const dx = l.x - m.x;
+  const dy = l.y - m.y;
+  if (Math.hypot(dx, dy) <= m.radius + LAMP_POST_RADIUS + def.attackReach) {
+    if (m.attackCooldown <= 0) {
+      startAttack(m, def, { x: dx, y: dy }, -1, -1);
+      m.attackLamp = l.id;
+    } else setState(m, 'idle', true);
+    return true;
+  }
+  steer(w, m, null, dx, dy);
+  return true;
+}
+
+/**
+ * Will-o'-wisp: hovers a little way off the nearest rookie (else the knight) to draw it out, and when
+ * anyone comes within `flee` drifts off away from them and out towards the map edge, in sprints.
+ */
+function lure(w: World, m: Unit, def: MonsterDef) {
+  const lu = def.lure!;
+  const bait = nearestOf(w.rookies, m.x, m.y) ?? nearestOf(w.players, m.x, m.y);
+  const chaser = nearestFriendly(w, m.x, m.y);
+  if (!bait || !chaser) {
+    setState(m, 'idle', true);
+    return;
+  }
+  const cd = Math.hypot(chaser.x - m.x, chaser.y - m.y);
+  tickBurst(m, { range: lu.flee, duration: lu.duration }, cd, lu.duration + lu.cooldown);
+  if (cd <= lu.flee) {
+    const away = norm({ x: m.x - chaser.x, y: m.y - chaser.y });
+    const c = w.map.centre;
+    const out = norm({ x: m.x - c, y: m.y - c });
+    steer(w, m, null, away.x + out.x * LURE_OUTWARD, away.y + out.y * LURE_OUTWARD, m.burstTime > 0 ? lu.speedMul : 1);
+    return;
+  }
+  const dx = bait.x - m.x;
+  const dy = bait.y - m.y;
+  const d = Math.hypot(dx, dy);
+  if (d > lu.hover + LURE_SLACK) steer(w, m, null, dx, dy);
+  else setState(m, 'idle', true);
+}
+
+/** How strongly a fleeing wisp also heads out from the town centre (vs straight away from its chaser). */
+const LURE_OUTWARD = 0.7;
+/** A wisp settles anywhere within this of its hover distance. */
+const LURE_SLACK = 0.4;
 
 /**
  * Necromancer: when a knight closes in, sprints straight away from him for a while, then has to

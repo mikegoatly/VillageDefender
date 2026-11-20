@@ -27,7 +27,7 @@ export function unitBase(id: number, x: number, y: number) {
   return {
     id, x, y, vx: 0, vy: 0,
     facing: { x: 0.7071, y: 0.7071 }, state: 'idle' as UnitState, stateTime: 0,
-    attackCooldown: 0, hitPending: false, attackBuilding: -1,
+    attackCooldown: 0, hitPending: false, attackBuilding: -1, attackLamp: -1,
     invuln: 0, dodgeCooldown: 0, dodgeHeld: false, moving: false,
     rank: 0, unitKills: 0, targetId: -1, retargetIn: 0, postX: x, postY: y, burstTime: 0, burstCooldown: 0,
     abilityIn: 0, stun: 0, windup: 0, aimX: 0, aimY: 0, healIn: 0, burrowed: false, slowIn: 0, slowBy: 0,

@@ -57,6 +57,7 @@ export const TOWNS: TownDef[] = [
     id: 'lanternwick', name: 'Lanternwick',
     blurb: 'A forest village that lives by its lanterns. Night falls wave by wave, and things come out of the dark. The Pumpkin King rises under the harvest moon.',
     planningPoints: 3, waves: TOWN5_WAVES, map: { theme: 'night' }, unlockStars: 1, bossName: 'Pumpkin King', lampOil: 3,
+    looks: { zombie: 'scarecrow', orc: 'werewolf' },
   },
 ];
 

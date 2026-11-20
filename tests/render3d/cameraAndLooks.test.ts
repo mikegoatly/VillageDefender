@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MONSTERS, type MonsterKind } from '../../src/data/monsters';
 import { fitView, frustumFor, projectGround } from '../../src/render3d/camera';
-import { animFor, CHARACTER_MODELS, characterModelPaths, clipNames, CORPSE_SINK, isThrust, lookFor, unitFx, VILLAGER_LOOK, WADE, wadeDepth } from '../../src/render3d/characters';
+import { animFor, CHARACTER_MODELS, characterModelPaths, clipNames, CORPSE_SINK, isThrust, lookFor, SHADE_SHIMMER, shadeAlpha, unitFx, VILLAGER_LOOK, WADE, wadeDepth } from '../../src/render3d/characters';
 import { mapFromAscii } from '../helpers/mapBuilder';
 import { generateTown } from '../../src/sim/map';
 import { aWorld } from '../helpers/worldBuilder';
@@ -165,6 +165,11 @@ describe('unitFx', () => {
     expect(unitFx(monsters[1], false, 1).alpha).toBe(1);
   });
 
+  it('solid fliers that phase over things (gloom moths, wisps) do not flicker', () => {
+    const { monsters } = aWorld().withMonster('gloomMoth', 3, 3).withMonster('wisp', 4, 4).build();
+    for (const m of monsters) for (const t of [0, 0.5, 1, 1.5]) expect(unitFx(m, false, t).alpha).toBe(1);
+  });
+
   it('blinks a hurt knight, but not while dodging', () => {
     const { knight } = aWorld().build();
     knight.invuln = 1;
@@ -222,5 +227,25 @@ describe('trap villager look', () => {
     expect(animFor({ state: 'idle', moving: true })).toBe('walk');
     expect(clipNames('villager').work).toBe('interact-right');
     expect(clipNames('recruitSwordsman').work).toBeUndefined();
+  });
+});
+
+describe('shades', () => {
+  it('are drawn unseen out of the light (and cast no shadow), fully seen in it', () => {
+    const { monsters: [shade, zombie] } = aWorld().withMonster('shade', 3, 3).withMonster('zombie', 4, 4).build();
+    expect(lookFor(shade, 'sword').unseen).toBe(true);
+    expect(lookFor(zombie, 'sword').unseen).toBeFalsy();
+    expect(shadeAlpha(0, 'walk', 0)).toBe(1);
+    expect(shadeAlpha(1, 'walk', 0)).toBe(0);
+    expect(shadeAlpha(0.5, 'idle', 0)).toBeCloseTo(0.5);
+  });
+
+  it('shimmer faintly while they strike in the dark', () => {
+    const swing = [0, 0.15, 0.3, 0.45, 0.6].map((t) => shadeAlpha(1, 'attack', t));
+    expect(swing[0]).toBe(0);
+    expect(Math.max(...swing)).toBeCloseTo(SHADE_SHIMMER, 5);
+    expect(Math.max(...swing)).toBeLessThan(0.3);
+    // In the light the swing is fully seen.
+    expect(shadeAlpha(0, 'attack', 0.3)).toBe(1);
   });
 });

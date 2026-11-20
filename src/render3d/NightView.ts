@@ -24,6 +24,7 @@ const LIGHTS: Record<LightKind, { intensity: number; decay: number }> = {
   lantern: { intensity: 5, decay: 1.4 },
   window: { intensity: 2.6, decay: 1.5 },
   lamp: { intensity: 4, decay: 1.5 },
+  wisp: { intensity: 2.2, decay: 1.6 },
 };
 const DUSK_LIGHT = 0.55;
 /** A real light reaches this × the sim's lit radius, so it is still clearly bright at the lit edge. */

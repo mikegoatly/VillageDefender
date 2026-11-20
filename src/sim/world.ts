@@ -106,6 +106,8 @@ export class World implements UpgradeHost {
   readonly frostUntil: Float32Array;
   /** Living shieldbearers (monsters with a ward), rebuilt with the enemy hash. @internal */
   readonly wards: Unit[] = [];
+  /** Living monsters that are light sources (wisps), rebuilt with the enemy hash and added on spawn. @internal */
+  readonly glows: Unit[] = [];
   /** Living monsters only, rebuilt at the start of each tick (targeting and hits). @internal */
   readonly enemyHash = new SpatialHash<Unit>(1);
   /** Every living unit, rebuilt before separation (physics only). @internal */

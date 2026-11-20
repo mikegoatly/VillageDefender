@@ -15,7 +15,7 @@ import { isDark, isLit } from '../sim/light';
 import { unitBase } from '../sim/units';
 import type { TrapRunner, Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
-import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFor, unitFx, VILLAGER_LOOK, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
+import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFor, shadeAlpha, unitFx, VILLAGER_LOOK, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
 import { BODIES, dressBody, hangPieces } from './bodies';
 import { findClip } from './clips';
 import { ECHO_ALPHA } from './motionFx';
@@ -257,7 +257,10 @@ export class UnitBatches {
     const clip = batch.clips.get(a.anim!) ?? batch.clips.get('idle')!;
     const frame = frameIndex(clip, a.t);
     const np = batch.parts.length;
-    const { flash, alpha, sink } = unitFx(u, !at && this.flashes.has(u.id), this.clock);
+    const fx = unitFx(u, !at && this.flashes.has(u.id), this.clock);
+    const { flash, sink } = fx;
+    // Shades vanish out of the light, glowing eyes and all (only a shimmer as they strike).
+    const alpha = look.unseen ? fx.alpha * shadeAlpha(a.dark, u.state, u.stateTime) : fx.alpha;
     // z: the monster's darkness; friendlies (and the knight's dash echoes) are exempt from the night.
     batch.fx.setXYZ(n, at ? 0 : flash, at ? at.alpha : alpha, u.team === 'player' ? FX_FRIENDLY : a.dark);
     this.unitM.compose(
@@ -307,7 +310,7 @@ export class UnitBatches {
     fx.setUsage(THREE.DynamicDrawUsage);
     const meshes = parts.map((p) => {
       const im = new THREE.InstancedMesh(this.own(withFxAttribute(p.geometry, fx)), p.material, BATCH_CAPACITY);
-      im.castShadow = !isEyes(im);
+      im.castShadow = !isEyes(im) && !look.unseen;
       im.frustumCulled = false;
       im.count = 0;
       im.setColorAt(0, this.col.setHex(0xffffff));

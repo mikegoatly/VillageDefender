@@ -1,6 +1,7 @@
 // Rookies: recruitment, stats, pathing and their fight-or-follow AI.
 
 import { DT, KNIGHT } from '../data/balance';
+import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { ARMY, RALLY, ROOKIES, type RookieKind } from '../data/rookies';
 import { swingHits } from './combat';
 import { isWalkable } from './map';
@@ -201,8 +202,14 @@ function nearestMonsterWhere(w: World, r: Unit, range: number, test: (m: Unit) =
   return best;
 }
 
+/** True when a living wisp is close enough to `r` to lure it. */
+function luredBy(r: Unit, m: Unit): boolean {
+  const lure = MONSTERS[m.kind as MonsterKind].lure;
+  return !!lure && m.state !== 'dead' && Math.hypot(m.x - r.x, m.y - r.y) <= lure.radius;
+}
+
 /**
- * Monsters hitting the rookie first, then building attackers within defendRange (nearest to the rookie),
+ * Monsters hitting the rookie first, then any wisp luring it, then building attackers within defendRange (nearest to the rookie),
  * else nearest monster in huntRange. Archers only pick monsters standing in light (night towns).
  */
 function pickRookieTarget(w: World, r: Unit): Unit | null {
@@ -211,6 +218,9 @@ function pickRookieTarget(w: World, r: Unit): Unit | null {
   // Fight back first: whoever is hitting this rookie right now.
   const attacker = nearestMonsterWhere(w, r, Infinity, (m) => m.state === 'attack' && m.attackBuilding < 0 && m.targetId === r.id && seen(m));
   if (attacker) return attacker;
+  // A will-o'-wisp close by draws them after it (night towns), whatever else is about.
+  const wisp = w.glows.length ? nearestMonsterWhere(w, r, Infinity, (m) => luredBy(r, m)) : null;
+  if (wisp) return wisp;
   // Building attackers idle between swings; they stay targets until they walk off or the building falls.
   const wrecker = nearestMonsterWhere(
     w,

@@ -136,11 +136,14 @@ export function nearestBuildingCell(w: World, m: Unit): [number, number] | null 
 export function rebuildEnemyHash(w: World) {
   w.enemyHash.clear();
   w.wards.length = 0;
+  w.glows.length = 0;
   // Burrowed gravediggers are left out, so no weapon, arrow or auto-aim can find them.
   for (const m of w.monsters) {
     if (m.state === 'dead' || m.burrowed) continue;
     w.enemyHash.insert(m);
-    if (MONSTERS[m.kind as MonsterKind].ward) w.wards.push(m);
+    const def = MONSTERS[m.kind as MonsterKind];
+    if (def.ward) w.wards.push(m);
+    if (def.light) w.glows.push(m);
   }
 }
 

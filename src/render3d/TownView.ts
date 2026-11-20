@@ -465,11 +465,11 @@ export class TownView {
     }
   }
 
-  /** Tips knocked-over lamp posts onto their side (once each). */
-  syncLamps(lamps: readonly Pick<Lamp, 'x' | 'y' | 'hp'>[]) {
+  /** Tips knocked-over lamp posts onto their side (once each); posts the moths put out stay standing. */
+  syncLamps(lamps: readonly Pick<Lamp, 'x' | 'y' | 'hp' | 'snuffed'>[]) {
     for (const l of lamps) {
       const key = `${l.x},${l.y}`;
-      if (l.hp > 0 || this.fallenLamps.has(key)) continue;
+      if (l.hp > 0 || l.snuffed || this.fallenLamps.has(key)) continue;
       this.fallenLamps.add(key);
       const o = this.lampPosts.get(key);
       if (!o) continue;

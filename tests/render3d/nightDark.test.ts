@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { NIGHT } from '../../src/data/night';
-import { applyNightDark, lanternLight, LightMap, lightMapValues, NIGHT_UNIFORMS } from '../../src/render3d/nightDark';
+import { applyNightDark, lanternLight, LightMap, lightMapValues, MAX_GLOWS, NIGHT_UNIFORMS, setGlows } from '../../src/render3d/nightDark';
 import { isLit } from '../../src/sim/light';
 import { fieldRows } from '../helpers/mapBuilder';
 import { aWorld } from '../helpers/worldBuilder';
@@ -102,5 +102,34 @@ describe('applyNightDark', () => {
     const unit = shader('#include <common>\nvoid main() {\n#include <lights_fragment_end>\n}');
     applyNightDark(unit, 'vUnitFx.z < -0.5');
     expect(unit.fragmentShader).toContain('(vUnitFx.z < -0.5) ? 1.0 : vdDarkness(geometryPosition)');
+  });
+});
+
+describe("will-o'-wisps in the light map", () => {
+  it('each living wisp lights a soft circle of its sim radius in the shader; dead ones and spare slots are off', () => {
+    const { world, monsters } = aWorld().withMap(fieldRows(N)).noRookies().atNight(5).withKnightAt(N - 1, N - 1)
+      .withMonster('wisp', 5, 5).withMonster('wisp', 8, 9).withMonster('zombie', 3, 3).build();
+    monsters[1].state = 'dead';
+    const slots = Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4(9, 9, 9, 9));
+    setGlows(slots, world.glows, world.players[0]);
+    expect(slots[0].toArray()).toEqual([5, 5, NIGHT.radius.wisp, 0]);
+    for (const s of slots.slice(1)) expect(s.z).toBe(0);
+    expect(isLit(world, 5 + NIGHT.radius.wisp - 0.2, 5)).toBe(true);
+  });
+
+  it('with more wisps than slots, the ones nearest the knight get them', () => {
+    const b = aWorld().withMap(fieldRows(N)).noRookies().atNight(5).withKnightAt(0, 0);
+    for (let k = 0; k < MAX_GLOWS + 2; k++) b.withMonster('wisp', N - 1 - k, N - 1 - k);
+    const { world } = b.build();
+    const slots = Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4());
+    setGlows(slots, world.glows, world.players[0]);
+    expect(Math.max(...slots.map((s) => s.x))).toBe(N - 1 - 2);
+  });
+
+  it('the shader checks the glow slots', () => {
+    const sh = { uniforms: {}, vertexShader: '', fragmentShader: '#include <common>\n#include <lights_fragment_end>' } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    applyNightDark(sh);
+    expect(sh.fragmentShader).toContain(`uniform vec4 vdGlows[${MAX_GLOWS}]`);
+    expect(Object.keys(sh.uniforms)).toContain('vdGlows');
   });
 });

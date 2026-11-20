@@ -277,6 +277,15 @@ export class ThreeRenderer implements Renderer {
         this.particles.burst(e.x, 0.9, e.y, 10, 0xffd08a, 0.25, 1.8, 1);
         this.particles.burst(e.x, 0.1, e.y, 6, this.dustColor, 0.3, 1.2, 0.8);
         return;
+      case 'lampHit':
+        // A gloom moth beating at the glass: a puff of pale wing dust.
+        this.particles.burst(e.x, 1.1, e.y, 4, 0xd8d0f0, 0.2, 0.8, 0.6);
+        return;
+      case 'lampSnuffed':
+        // Put out: a last flicker and a curl of smoke from the head (the post stays up).
+        this.particles.burst(e.x, 1.2, e.y, 8, 0xffd08a, 0.15, 1.2, 0.5);
+        this.particles.burst(e.x, 1.3, e.y, 6, 0x6a6a78, 0.25, 0.6, 1.2);
+        return;
       case 'buildingDestroyed':
         // TownView swaps in the ruin and its dust when it sees the building's state.
         this.stage.shake(220, 0.006);
