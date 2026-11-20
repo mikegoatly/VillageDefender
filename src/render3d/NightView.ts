@@ -5,6 +5,8 @@
 
 import * as THREE from 'three';
 import type { World } from '../sim/world';
+import { NIGHT } from '../data/night';
+import { LightMap } from './nightDark';
 import { LAMP } from './buildings';
 import { CAMERA_DIR } from './camera';
 import {
@@ -24,11 +26,16 @@ const LIGHTS: Record<LightKind, { intensity: number; decay: number }> = {
   lamp: { intensity: 4, decay: 1.5 },
 };
 const DUSK_LIGHT = 0.55;
+/** A real light reaches this × the sim's lit radius, so it is still clearly bright at the lit edge. */
+const LIGHT_REACH = 1.35;
 /**
- * Ground glow under every window and lamp (additive, unlit): `size` × the source's radius across,
- * weaker at dusk, and mostly handed over to the real light where one is lit (`real` of it fades).
+ * Ground glow under every window and lamp (additive, unlit): `size` × the source's (sim) radius across,
+ * so the glow's visible edge sits about where the light stops counting; weaker at dusk, and mostly
+ * handed over to the real light where one is lit (`real` of it fades).
  */
-const POOL = { size: 0.9, y: 0.025, dusk: 0.3, night: 0.75, real: 0.6 };
+const POOL = { size: 2.5, y: 0.025, dusk: 0.22, night: 0.5, real: 0.6 };
+/** Planning: a ring on the ground at each dark post's light radius (gold once oil lights it, white when selected). */
+const RING = { y: 0.04, width: 0.08, dark: 0x8fa6d8, lit: 0xffc860, selected: 0xffffff, opacity: 0.85 };
 /** Lamp heads: a small glowing core and a camera-facing halo. */
 const LAMP_GLOW = { color: 0xffe0a0, core: 0.085, halo: 0.75, haloColor: 0xffc070, haloStrength: 0.55 };
 const POOL_CAPACITY = 256;
@@ -56,6 +63,12 @@ export class NightView {
   private nextStrike: number;
   private thunderDue = false;
   private held = false;
+  private planning = false;
+  private selectedLamp = -1;
+  private lampKey = '';
+  private readonly face: THREE.Quaternion;
+  private readonly rings: THREE.InstancedMesh;
+  private readonly lightMap: LightMap;
   private readonly m = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
   private readonly v = new THREE.Vector3();
@@ -81,8 +94,8 @@ export class NightView {
     this.pools.renderOrder = 1;
     this.pools.count = 0;
 
-    // Lamp heads are static: placed once.
-    const lamps = world.map.decor.filter((d) => d.kind === 'lamp');
+    // Lamp heads: one per post, hidden while the post is dark or knocked over (syncLamps).
+    const lamps = world.lamps;
     const n = Math.max(1, lamps.length);
     this.heads = new THREE.InstancedMesh(
       this.own(new THREE.SphereGeometry(LAMP_GLOW.core, 8, 6)), this.own(new THREE.MeshBasicMaterial({ color: LAMP_GLOW.color, fog: false })), n,
@@ -90,18 +103,33 @@ export class NightView {
     // Halos face the (fixed) camera.
     const face = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), CAMERA_DIR.clone().normalize());
     this.halos = new THREE.InstancedMesh(this.own(new THREE.PlaneGeometry(1, 1)), additive(), n);
+    this.face = face;
     const haloColor = new THREE.Color(LAMP_GLOW.haloColor).multiplyScalar(LAMP_GLOW.haloStrength);
-    lamps.forEach((d, k) => {
-      const y = LAMP.head;
-      this.heads.setMatrixAt(k, this.m.makeTranslation(d.i, y, d.j));
-      this.halos.setMatrixAt(k, this.m.compose(this.v.set(d.i, y, d.j), face, this.s.setScalar(LAMP_GLOW.halo)));
-      this.halos.setColorAt(k, haloColor);
-    });
+    lamps.forEach((_, k) => this.halos.setColorAt(k, haloColor));
     this.heads.count = lamps.length;
     this.halos.count = lamps.length;
     this.halos.renderOrder = 1;
-    for (const im of [this.heads, this.halos]) im.frustumCulled = false;
-    this.root.add(this.pools, this.heads, this.halos);
+    this.rings = new THREE.InstancedMesh(
+      this.own(new THREE.RingGeometry(1 - RING.width, 1, 64).rotateX(-Math.PI / 2)),
+      this.own(new THREE.MeshBasicMaterial({ transparent: true, opacity: RING.opacity, depthWrite: false, fog: false })),
+      n,
+    );
+    this.rings.renderOrder = 2;
+    this.rings.count = 0;
+    for (const im of [this.heads, this.halos, this.rings]) im.frustumCulled = false;
+    this.root.add(this.pools, this.heads, this.halos, this.rings);
+    this.syncLamps(world);
+    this.lightMap = new LightMap(world.map.size);
+  }
+
+  /** Planning: show the light radius of each post that starts dark (oil can light it). */
+  setPlanning(on: boolean) {
+    this.planning = on;
+  }
+
+  /** Planning: highlight one lamp post's ring (-1 for none). */
+  highlightLamp(id: number) {
+    this.selectedLamp = id;
   }
 
   sync(world: World, dt: number) {
@@ -126,11 +154,14 @@ export class NightView {
       const spec = LIGHTS[s.kind];
       light.position.set(s.x, s.y, s.z);
       light.color.setHex(s.color);
-      light.distance = s.radius;
+      light.distance = s.radius * LIGHT_REACH;
       light.decay = spec.decay;
       light.intensity = spec.intensity * slot.weight * dusk;
     });
     this.syncPools(sources);
+    this.syncLamps(world);
+    // Real darkness comes in with the sim's darkness rules (wave 3), eased with the shown night level.
+    this.lightMap.update(world, this.stage.camera, darknessStrength(this.level));
   }
 
   /** Debug/screenshots: hold the lightning at full flash (true) or let it go (false). */
@@ -140,7 +171,8 @@ export class NightView {
 
   dispose() {
     this.root.removeFromParent();
-    for (const im of [this.pools, this.heads, this.halos]) im.dispose();
+    for (const im of [this.pools, this.heads, this.halos, this.rings]) im.dispose();
+    this.lightMap.dispose();
     for (const o of this.owned) o.dispose();
   }
 
@@ -157,6 +189,31 @@ export class NightView {
       this.opts.onThunder?.();
     }
     return lightningFlash(this.clock - this.struckAt);
+  }
+
+  /** Lamp heads glow only on lit, standing posts; planning rings on the posts that start dark. */
+  private syncLamps(world: World) {
+    const lamps = world.lamps;
+    const key = `${this.planning}:${this.selectedLamp}:${lamps.map((l) => (l.hp > 0 ? (l.lit ? 1 : 0) : 2)).join('')}`;
+    if (key === this.lampKey) return;
+    this.lampKey = key;
+    let rings = 0;
+    lamps.forEach((l, k) => {
+      const on = l.lit && l.hp > 0;
+      const y = LAMP.head;
+      this.heads.setMatrixAt(k, this.m.compose(this.v.set(l.x, y, l.y), this.q.identity(), this.s.setScalar(on ? 1 : 0)));
+      this.halos.setMatrixAt(k, this.m.compose(this.v.set(l.x, y, l.y), this.face, this.s.setScalar(on ? LAMP_GLOW.halo : 0)));
+      if (!this.planning || l.startsLit) return;
+      const r = NIGHT.radius.lamp;
+      this.rings.setMatrixAt(rings, this.m.compose(this.v.set(l.x, RING.y, l.y), this.q.identity(), this.s.set(r, 1, r)));
+      this.rings.setColorAt(rings, this.c.setHex(l.id === this.selectedLamp ? RING.selected : l.lit ? RING.lit : RING.dark));
+      rings++;
+    });
+    this.rings.count = rings;
+    for (const im of [this.heads, this.halos, this.rings]) {
+      im.instanceMatrix.needsUpdate = true;
+      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    }
   }
 
   /** A warm pool on the ground under every window and lamp, weaker where a real light already shines. */
@@ -179,6 +236,15 @@ export class NightView {
     this.owned.push(o);
     return o;
   }
+}
+
+/**
+ * How far real darkness has come in at a shown night level: none at dusk (wave 2: level 1/3), all of
+ * it by the level of wave 3, when the sim's darkness rules start (NIGHT.darkFrom).
+ */
+export function darknessStrength(level: number): number {
+  const from = NIGHT.darkFrom - 1 / 6;
+  return Math.min(1, Math.max(0, (level - from) / (2 / 3 - from)));
 }
 
 function randomBetween(lo: number, hi: number): number {

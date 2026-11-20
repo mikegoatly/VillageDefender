@@ -48,6 +48,8 @@ export interface Decor {
   j: number;
   kind: DecorKind;
   blocks: boolean;
+  /** Lamps only: lit from the start (inside the town); posts out on the approaches start dark. */
+  lit?: boolean;
 }
 
 export type Side = 'top' | 'right' | 'bottom' | 'left';
@@ -229,7 +231,7 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
   if (opts.theme === 'night') denserForest(map, seed, (i, j) => inTown(i, j) || edgeSet.has(j * size + i));
   removeUnreachable(map);
   if (opts.theme === 'frost') freezePonds(map, seed);
-  if (opts.theme === 'night') placeLamps(map, seed);
+  if (opts.theme === 'night') placeLamps(map, seed, inTown);
   return map;
 }
 
@@ -259,8 +261,9 @@ function denserForest(map: TownMap, seed: number, skip: (i: number, j: number) =
 /**
  * Night theme: lamp posts beside the two roads, at the lane mouths between building slots, alternating
  * sides (the other side when one is taken). They don't block, so pathing is unchanged. Own RNG, last.
+ * Posts inside the town start lit; the ones out on the approaches start dark (lamp oil lights them).
  */
-function placeLamps(map: TownMap, seed: number) {
+function placeLamps(map: TownMap, seed: number, inTown: (i: number, j: number) => boolean) {
   const rng = new Rng(seed * 53 + 11);
   const { size, centre: c } = map;
   const free = (i: number, j: number) =>
@@ -278,7 +281,7 @@ function placeLamps(map: TownMap, seed: number) {
         const i = ri + si * s;
         const j = rj + sj * s;
         if (!free(i, j)) continue;
-        map.decor.push({ i, j, kind: 'lamp', blocks: false });
+        map.decor.push({ i, j, kind: 'lamp', blocks: false, lit: inTown(i, j) });
         break;
       }
       side = -side;

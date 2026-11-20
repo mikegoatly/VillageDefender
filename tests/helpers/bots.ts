@@ -204,6 +204,14 @@ export const defenderPlan: PlanPolicy = (world) => {
   (['barracks', 'chapel'] as const).forEach((role, k) => { if (nearest[k]) world.setRole(nearest[k].id, role); });
 };
 
+/** Night towns: defenderPlan, then all the lamp oil on the dark posts nearest the crossroads. */
+export const nightPlan: PlanPolicy = (world) => {
+  defenderPlan(world);
+  const c = world.map.centre;
+  const dark = world.lamps.filter((l) => !l.startsLit).sort((a, b) => Math.hypot(a.x - c, a.y - c) - Math.hypot(b.x - c, b.y - c));
+  for (const l of dark) if (world.lampOilLeft > 0) world.setLamp(l.id, true);
+};
+
 export interface PlayResult {
   seed: number;
   bot: string;
@@ -231,7 +239,7 @@ export interface PlayResult {
 /** Plays a full level of `town` (default town 1) with a bot until it ends or maxSeconds elapses. */
 export function playLevel(seed: number, name: string, bot: Bot, maxSeconds = 300, choose: Chooser = idleChooser, plan?: PlanPolicy, weapon: WeaponKind = 'sword', town: TownDef = TOWNS[0]): PlayResult {
   // Planned runs use a fresh profile's roles and the town's points; unplanned runs skip planning entirely.
-  const townOpts = { townId: town.id, waves: town.waves, mapOptions: town.map };
+  const townOpts = { townId: town.id, waves: town.waves, mapOptions: town.map, lampOil: town.lampOil };
   const world = new World(plan
     ? { seed, planning: true, planningPoints: town.planningPoints, allowedRoles: STARTING_ROLES, weapon, ...townOpts }
     : { seed, weapon, ...townOpts });

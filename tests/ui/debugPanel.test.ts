@@ -21,7 +21,8 @@ function aFakeWorld() {
     debugInfo: () => ({ nextWaveAt: 6, nextWave: 1 }),
     debugSpawn: vi.fn(), debugGiveUpgrade: vi.fn(() => true), debugGiveXp: vi.fn(),
     debugHealKnight: vi.fn(), debugKillAll: vi.fn(), debugJumpToWave: vi.fn(), debugEnd: vi.fn(),
-    debugAddRookie: vi.fn(), debugSetBuildingHp: vi.fn(),
+    debugAddRookie: vi.fn(), debugSetBuildingHp: vi.fn(), debugSetLamp: vi.fn(),
+    lamps: [{ id: 0, x: 3, y: 4, hp: 30, maxHp: 30, lit: false, startsLit: false }, { id: 1, x: 7, y: 4, hp: 30, maxHp: 30, lit: true, startsLit: true }],
   };
 }
 
@@ -43,7 +44,7 @@ function aHost(world = aFakeWorld(), profile = aFakeProfile()) {
     speed: 1,
     paused: false,
     stepTicks: vi.fn(),
-    overlays: { flowKnight: false, flowBuildings: false, hitboxes: false, ranges: false, labels: false } as Record<OverlayName, boolean>,
+    overlays: { flowKnight: false, flowBuildings: false, hitboxes: false, ranges: false, labels: false, light: false } as Record<OverlayName, boolean>,
     lastClickGround: () => null,
   };
   return host;
@@ -107,6 +108,18 @@ describe('DebugPanel', () => {
     controller('target').setValue('left');
     press('Spawn');
     expect(host.fake.debugSpawn).toHaveBeenCalledWith('orc', 12, 'left');
+  });
+
+  it('Night: Light / put out toggles the chosen lamp post, and the light overlay can be toggled', () => {
+    controller('lamp post').setValue(1);
+    press('Light / put out');
+    expect(host.fake.debugSetLamp).toHaveBeenCalledWith(1, false);
+    controller('lamp post').setValue(0);
+    press('Light / put out');
+    expect(host.fake.debugSetLamp).toHaveBeenLastCalledWith(0, true);
+    expect(host.overlays.light).toBe(false);
+    press('Toggle lit-cells overlay');
+    expect(host.overlays.light).toBe(true);
   });
 
   it('Spawn kind dropdown lists every monster kind', () => {

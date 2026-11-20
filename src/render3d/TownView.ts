@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { BUILDING } from '../data/balance';
 import { ROLES, type RoleKind } from '../data/roles';
 import { Ground, type Building, type TownMap } from '../sim/map';
-import type { BuildingState } from '../sim/world';
+import type { BuildingState, Lamp } from '../sim/world';
 import { markOccluder, type ModelLibrary } from './assets';
 import {
   auraCells, buildingPieces, decorPiece, footprintOutline, hash01, ROCK, SLIT, smokeSources, TAR, wallLevels,
@@ -103,6 +103,9 @@ interface BuildingView {
   cz: number;
 }
 
+/** How far a knocked-over lamp post tips (radians): nearly flat on the ground. */
+const LAMP_FALL = 1.45;
+
 export class TownView {
   readonly root = new THREE.Group();
   private readonly views: BuildingView[];
@@ -132,6 +135,10 @@ export class TownView {
     this.own(new THREE.CircleGeometry(GENERATED.tar.radius, 12).rotateX(-Math.PI / 2).translate(0, GENERATED.tar.y, 0)),
     this.own(new THREE.MeshStandardMaterial({ color: GENERATED.tar.color, roughness: 0.2 })),
   ];
+
+  /** Night only: lamp posts by "i,j", so a knocked-over one can be tipped onto its side. */
+  private readonly lampPosts = new Map<string, THREE.Object3D>();
+  private readonly fallenLamps = new Set<string>();
 
   /** Night only: the lit-window material (shared by every building's merged panes). */
   private readonly windowMat: THREE.MeshBasicMaterial | null;
@@ -454,6 +461,20 @@ export class TownView {
       const o = p.model === ROCK ? new THREE.Mesh(rockGeo, rockMat) : this.library.clone(p.model);
       o.castShadow = true;
       this.root.add(this.place(o, p));
+      if (d.kind === 'lamp') this.lampPosts.set(`${d.i},${d.j}`, o);
+    }
+  }
+
+  /** Tips knocked-over lamp posts onto their side (once each). */
+  syncLamps(lamps: readonly Pick<Lamp, 'x' | 'y' | 'hp'>[]) {
+    for (const l of lamps) {
+      const key = `${l.x},${l.y}`;
+      if (l.hp > 0 || this.fallenLamps.has(key)) continue;
+      this.fallenLamps.add(key);
+      const o = this.lampPosts.get(key);
+      if (!o) continue;
+      o.rotateX(LAMP_FALL);
+      o.position.y += 0.08;
     }
   }
 

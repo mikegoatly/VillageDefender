@@ -19,6 +19,11 @@ export interface TownDef {
   /** Name shown on the boss bar. */
   bossName: string;
   /**
+   * Night towns: lamp posts out on the approaches start dark; in planning each unit of oil lights one
+   * (like planning points turn houses into role buildings). 0 for towns without lamps.
+   */
+  lampOil: number;
+  /**
    * Draws a monster kind with another body in this town (render3d/bodies.ts), so the everyday horde
    * changes from town to town. Looks only: the kind, its stats and its kill count are unchanged.
    */
@@ -28,30 +33,30 @@ export interface TownDef {
 export const TOWNS: TownDef[] = [
   {
     id: 'village', name: 'Medieval Village', blurb: 'A quiet crossroads village. The Orc Warlord is coming.',
-    planningPoints: 2, waves: TOWN1_WAVES, map: {}, unlockStars: 0, bossName: 'Orc Warlord',
+    planningPoints: 2, waves: TOWN1_WAVES, map: {}, unlockStars: 0, bossName: 'Orc Warlord', lampOil: 0,
   },
   {
     id: 'riverside', name: 'Riverside Market',
     blurb: 'A river splits the town, but imps swim it and archers shoot over it. The River Troll wades in last.',
-    planningPoints: 3, waves: TOWN2_WAVES, map: { river: true }, unlockStars: 1, bossName: 'River Troll',
+    planningPoints: 3, waves: TOWN2_WAVES, map: { river: true }, unlockStars: 1, bossName: 'River Troll', lampOil: 0,
     looks: { zombie: 'drowned', orc: 'frogfolk' },
   },
   {
     id: 'graveyard', name: 'Haunted Hollow',
     blurb: 'Bone knights shrug off blows, banshees wail, and gravediggers tunnel under your defences. The Gravekeeper rises last.',
-    planningPoints: 3, waves: TOWN3_WAVES, map: { theme: 'graveyard' }, unlockStars: 1, bossName: 'Gravekeeper',
+    planningPoints: 3, waves: TOWN3_WAVES, map: { theme: 'graveyard' }, unlockStars: 1, bossName: 'Gravekeeper', lampOil: 0,
     looks: { orc: 'ghoul' },
   },
   {
     id: 'frostpeak', name: 'Frostpeak Mine',
     blurb: 'Frozen ponds send you skating, dwarves plant powder kegs, and shieldbearers ward the horde. The Frost Giant comes down the mountain last.',
-    planningPoints: 3, waves: TOWN4_WAVES, map: { theme: 'frost' }, unlockStars: 1, bossName: 'Frost Giant',
+    planningPoints: 3, waves: TOWN4_WAVES, map: { theme: 'frost' }, unlockStars: 1, bossName: 'Frost Giant', lampOil: 0,
     looks: { zombie: 'frostThrall', orc: 'yeti' },
   },
   {
     id: 'lanternwick', name: 'Lanternwick',
     blurb: 'A forest village that lives by its lanterns. Night falls wave by wave, and things come out of the dark. The Pumpkin King rises under the harvest moon.',
-    planningPoints: 3, waves: TOWN5_WAVES, map: { theme: 'night' }, unlockStars: 1, bossName: 'Pumpkin King',
+    planningPoints: 3, waves: TOWN5_WAVES, map: { theme: 'night' }, unlockStars: 1, bossName: 'Pumpkin King', lampOil: 3,
   },
 ];
 

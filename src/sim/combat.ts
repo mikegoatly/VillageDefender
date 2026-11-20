@@ -102,6 +102,7 @@ export function damageBuilding(w: World, b: BuildingState, amount: number, by: P
     b.ruined = true;
     w.buildingFlowDirty = true;
     w.wadeFlowDirty = true;
+    w.light.markDirty();
     w.events.push({ type: 'buildingDestroyed', building: b.id });
   }
 }

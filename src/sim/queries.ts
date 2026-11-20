@@ -1,19 +1,24 @@
 // Read-only lookups over the world: nearest units, buildings and cells, and the enemy spatial hash.
 
 import { MONSTERS, type MonsterKind } from '../data/monsters';
+import { canShootAt, isDark } from './light';
 import { Ground, inBounds } from './map';
 import type { Unit } from './model';
 import { clamp } from './units';
 import type { World } from './world';
 
-/** Nearest living monster within range; props (planted kegs) count only when `withProps` (the knight's aim, to kick them). */
-export function nearestMonster(w: World, x: number, y: number, range: number, withProps = false): Unit | null {
+/**
+ * Nearest living monster within range; props (planted kegs) count only when `withProps` (the knight's
+ * aim, to kick them); `test`, when given, must also pass (ranged shots: only monsters in light).
+ */
+export function nearestMonster(w: World, x: number, y: number, range: number, withProps = false, test?: (m: Unit) => boolean): Unit | null {
   let best: Unit | null = null;
   if (w.enemyHash.size === 0) return null;
   let bestD = range;
   w.enemyHash.query(x, y, range, (m) => {
     if (m.state === 'dead' || m.team !== 'enemy') return;
     if (!withProps && isProp(m)) return;
+    if (test && !test(m)) return;
     const d = Math.hypot(m.x - x, m.y - y) - m.radius;
     if (d < bestD) {
       bestD = d;
@@ -21,6 +26,14 @@ export function nearestMonster(w: World, x: number, y: number, range: number, wi
     }
   });
   return best;
+}
+
+/**
+ * Target for a friendly ranged attack (archers, watchtowers, arrow slits): the nearest monster in
+ * range that stands in light. In lit towns this is exactly nearestMonster.
+ */
+export function nearestShootable(w: World, x: number, y: number, range: number): Unit | null {
+  return isDark(w) ? nearestMonster(w, x, y, range, false, (m) => canShootAt(w, m)) : nearestMonster(w, x, y, range);
 }
 
 /** Nearest living knight or rookie. */

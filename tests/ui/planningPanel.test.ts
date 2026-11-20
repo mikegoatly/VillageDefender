@@ -62,7 +62,7 @@ describe('PlanningPanel', () => {
     vi.stubGlobal('cancelAnimationFrame', (id: number) => { rafQueue.delete(id); });
     pad = null;
     Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad] });
-    cb = { onAssign: vi.fn(), onSelectNext: vi.fn(), onSelectDir: vi.fn(), onStart: vi.fn(), onWeapon: vi.fn() };
+    cb = { onAssign: vi.fn(), onSelectNext: vi.fn(), onSelectDir: vi.fn(), onStart: vi.fn(), onWeapon: vi.fn(), onLamp: vi.fn() };
     panel = new PlanningPanel(root, cb);
   });
   afterEach(() => {
@@ -445,6 +445,63 @@ describe('PlanningPanel', () => {
       panel.show({ ...wview(), selected: selected() });
       expect(wpns()).toHaveLength(4);
       expect(opts()).toHaveLength(5);
+    });
+  });
+
+  describe('lamp oil (night towns)', () => {
+    const lamp = (lit = false, canLight = true) => ({ id: 7, label: 'Lamp post', lit, canLight });
+    const oilView = (o: Partial<PlanningView> = {}) => aView({ oil: { left: 2, total: 3 }, ...o });
+    const tap = (buttons: Record<number, boolean>) => {
+      setPad(buttons);
+      step();
+      setPad({});
+      step();
+    };
+
+    it('shows the oil left in the banner and says lamps can be lit', () => {
+      panel.show(oilView());
+      expect(text('.oil')).toBe('●●○ 2/3 oil');
+      expect(root.querySelectorAll('.oil .drop.on')).toHaveLength(2);
+      expect(text('.hint')).toBe('Tap a house or a lamp post');
+    });
+
+    it('a selected dark post offers Leave dark / Light it; clicking lights it', () => {
+      panel.show(oilView({ lamp: lamp() }));
+      expect(text('.card .head')).toBe('Lamp post');
+      expect(optByName('Light it').querySelector('.ds')!.textContent).toBe('1 oil');
+      expect(optByName('Leave dark').querySelector('.ds')!.textContent).toBe('');
+      expect(opts().map((b) => b.querySelector('.nm')!.textContent)).toEqual(['Leave dark', 'Light it']);
+      expect(optByName('Leave dark').classList.contains('cur')).toBe(true);
+      optByName('Light it').click();
+      expect(cb.onLamp).toHaveBeenCalledWith(7, true);
+      expect(cb.onAssign).not.toHaveBeenCalled();
+    });
+
+    it('Light it is disabled with no oil left, unless the post is already lit', () => {
+      panel.show(oilView({ lamp: lamp(false, false) }));
+      expect(optByName('Light it').disabled).toBe(true);
+      expect(optByName('Light it').querySelector('.note')!.textContent).toBe('No oil');
+      panel.show(oilView({ lamp: lamp(true, false) }));
+      expect(optByName('Light it').disabled).toBe(false);
+      expect(optByName('Light it').classList.contains('cur')).toBe(true);
+    });
+
+    it('keys: 1 lights the post, 0 leaves it dark', () => {
+      panel.show(oilView({ lamp: lamp() }));
+      ready();
+      press('1');
+      expect(cb.onLamp).toHaveBeenLastCalledWith(7, true);
+      press('0');
+      expect(cb.onLamp).toHaveBeenLastCalledWith(7, false);
+    });
+
+    it('gamepad: A opens the card, right moves to Light it, A lights it', () => {
+      showReady(oilView({ lamp: lamp() }));
+      tap({ 0: true });
+      expect(optByName('Leave dark').classList.contains('focus')).toBe(true);
+      tap({ 15: true });
+      tap({ 0: true });
+      expect(cb.onLamp).toHaveBeenCalledWith(7, true);
     });
   });
 

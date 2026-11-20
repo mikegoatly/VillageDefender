@@ -55,7 +55,7 @@ const debugState = {
   panel: null as DebugPanel | null,
   speed: null as number | null,
   paused: false,
-  overlays: { flowKnight: false, flowBuildings: false, hitboxes: false, ranges: false, labels: false } as Record<OverlayName, boolean>,
+  overlays: { flowKnight: false, flowBuildings: false, hitboxes: false, ranges: false, labels: false, light: false } as Record<OverlayName, boolean>,
   lastClick: null as { x: number; y: number } | null,
 };
 /** The live controller; the debug panel outlives sessions and always talks to this one. */
@@ -105,6 +105,8 @@ export class GameController {
   private override: InputState | null = null;
   /** House selected while planning (-1 none). */
   private selected = -1;
+  /** Dark lamp post selected while planning (night towns; -1 none). Never set together with `selected`. */
+  private selectedLamp = -1;
   private endExtras: HudWorld['endExtras'];
   /** Seconds left of hit-stop: the sim freezes briefly on big impacts. */
   private hitStop = 0;
@@ -295,15 +297,18 @@ export class GameController {
     if (this.world.phase !== 'planning') return;
     this.planning = new PlanningPanel(this.uiRoot, {
       onAssign: (id, role) => this.assignRole(id, role),
-      onSelectNext: (d) => this.selectBuilding(this.cycleBuilding(d)),
-      onSelectDir: (d) => this.selectBuilding(this.buildingInDirection(dirVec(d))),
+      onSelectNext: (d) => this.selectPick(this.cyclePick(d)),
+      onSelectDir: (d) => this.selectPick(this.pickInDirection(dirVec(d))),
       onStart: () => this.startTown(),
       onWeapon: (kind) => this.chooseWeapon(kind as WeaponKind),
+      onLamp: (id, lit) => this.lightLamp(id, lit),
     });
     this.renderer.setPlanning(true);
     document.body.classList.add('vd-planning');
     this.renderer.onGroundPointerDown((g) => {
       if (this.world.phase !== 'planning') return;
+      const lamp = this.lampAt(g);
+      if (lamp >= 0) return this.selectLamp(lamp);
       // Buildings are tall: also try the cells just below the click (roofs sit above their footprint).
       for (const [di, dj] of [[0, 0], [1, 1], [2, 2], [1, 0], [0, 1]]) {
         const b = this.world.buildingAt(Math.round(g.x) + di, Math.round(g.y) + dj);
@@ -314,8 +319,26 @@ export class GameController {
     this.selectBuilding(-1);
   }
 
-  /** The building on screen in direction `dir` from the selected one (nearest the centre if none). */
-  private buildingInDirection(dir: Vec2): number {
+  /**
+   * Lamp posts the player may light while planning (night towns with oil): the ones that start dark.
+   * Picks (selection, cycling, D-pad) number houses by id and these posts as LAMP_PICK + lamp id.
+   */
+  private oilLamps() {
+    return this.world.lampOil > 0 ? this.world.lamps.filter((l) => !l.startsLit) : [];
+  }
+
+  /** The current selection as a pick id (-1 none). */
+  private get pick(): number {
+    return this.selectedLamp >= 0 ? LAMP_PICK + this.selectedLamp : this.selected;
+  }
+
+  private selectPick(pick: number) {
+    if (pick >= LAMP_PICK) this.selectLamp(pick - LAMP_PICK);
+    else this.selectBuilding(pick);
+  }
+
+  /** The house or dark lamp post on screen in direction `dir` from the selection (nearest the centre if none). */
+  private pickInDirection(dir: Vec2): number {
     const w = this.world;
     const items = w.buildings.map((b) => {
       const cells = w.map.buildings[b.id].cells;
@@ -324,19 +347,53 @@ export class GameController {
       for (const [i, j] of cells) { x += i; y += j; }
       return { id: b.id, pos: this.renderer.screenOf({ x: x / cells.length, y: y / cells.length }) };
     });
+    for (const l of this.oilLamps()) items.push({ id: LAMP_PICK + l.id, pos: this.renderer.screenOf({ x: l.x, y: l.y }) });
     const centre = this.renderer.screenOf({ x: w.map.centre, y: w.map.centre });
-    return pickInDirection(items, this.selected, dir, centre);
+    return pickInDirection(items, this.pick, dir, centre);
   }
 
-  private cycleBuilding(d: 1 | -1): number {
-    const n = this.world.buildings.length;
+  /** Next / previous pick: every house, then every dark lamp post. */
+  private cyclePick(d: 1 | -1): number {
+    const picks = [...this.world.buildings.map((b) => b.id), ...this.oilLamps().map((l) => LAMP_PICK + l.id)];
+    const n = picks.length;
     if (!n) return -1;
-    return this.selected < 0 ? (d > 0 ? 0 : n - 1) : (this.selected + d + n) % n;
+    const k = picks.indexOf(this.pick);
+    return k < 0 ? picks[d > 0 ? 0 : n - 1] : picks[(k + d + n) % n];
+  }
+
+  /** A dark lamp post under a map press (its head stands above the ground, so a little below counts too), or -1. */
+  private lampAt(g: Vec2): number {
+    let best = -1;
+    let bestD = LAMP_PICK_RADIUS;
+    for (const l of this.oilLamps()) {
+      for (const [dx, dy] of [[0, 0], [0.5, 0.5], [1, 1]]) {
+        const d = Math.hypot(g.x + dx - l.x, g.y + dy - l.y);
+        if (d < bestD) { bestD = d; best = l.id; }
+      }
+    }
+    return best;
   }
 
   selectBuilding(id: number) {
     this.selected = id;
+    this.selectedLamp = -1;
     this.renderer.highlightBuilding(id);
+    this.renderer.highlightLamp(-1);
+    this.refreshPlanning();
+  }
+
+  /** Night towns, planning: selects a dark lamp post (-1 none). */
+  selectLamp(id: number) {
+    this.selectedLamp = id;
+    this.selected = -1;
+    this.renderer.highlightBuilding(-1);
+    this.renderer.highlightLamp(id);
+    this.refreshPlanning();
+  }
+
+  /** Night towns, planning: lights a dark lamp post with oil, or puts it out again (oil back). */
+  lightLamp(id: number, lit: boolean) {
+    this.world.setLamp(id, lit);
     this.refreshPlanning();
   }
 
@@ -362,7 +419,9 @@ export class GameController {
     document.body.classList.remove('vd-planning');
     this.renderer.setPlanning(false);
     this.renderer.highlightBuilding(-1);
+    this.renderer.highlightLamp(-1);
     this.selected = -1;
+    this.selectedLamp = -1;
   }
 
   private refreshPlanning() {
@@ -388,6 +447,11 @@ export class GameController {
       })),
       selectedWeapon: w.weapon,
     };
+    if (w.lampOil > 0) {
+      view.oil = { left: w.lampOilLeft, total: w.lampOil };
+      const l = this.selectedLamp >= 0 ? w.lamps[this.selectedLamp] : null;
+      view.lamp = l ? { id: l.id, label: 'Lamp post', lit: l.lit, canLight: w.lampOilLeft > 0 } : null;
+    }
     this.planning.show(view);
   }
 
@@ -458,6 +522,11 @@ export class GameController {
     };
   }
 }
+
+/** Lamp posts are picked as this + their id (houses keep their own ids). */
+const LAMP_PICK = 100000;
+/** A map press this close to a dark lamp post (cells) selects it. */
+const LAMP_PICK_RADIUS = 0.75;
 
 /** Unlock hint for a locked weapon, from the achievement that rewards it. */
 function weaponHint(k: WeaponKind): string | undefined {

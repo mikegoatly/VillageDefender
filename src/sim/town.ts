@@ -5,7 +5,7 @@ import { ROLES, ROLE_EFFECTS } from '../data/roles';
 import { TOWN_ARROWS } from '../data/rookies';
 import type { BuildingState, Unit } from './model';
 import { shoot } from './projectiles';
-import { nearestMonster } from './queries';
+import { nearestShootable } from './queries';
 import { applyRookieStats } from './rookieStats';
 import { centreOf } from './units';
 import type { World } from './world';
@@ -21,7 +21,7 @@ export function updateTown(w: World) {
     b.shotIn -= DT;
     if (b.shotIn > 0) continue;
     const [ci, cj] = centreOf(b.cells);
-    const target = nearestMonster(w, ci, cj, TOWN_ARROWS.range);
+    const target = nearestShootable(w, ci, cj, TOWN_ARROWS.range);
     if (!target) continue;
     shoot(w, ci, cj, target, TOWN_ARROWS.damage, TOWN_ARROWS.speed, -1);
     b.shotIn = Math.max(1.2, TOWN_ARROWS.interval - 0.8 * (t.arrowSlits - 1));
@@ -39,7 +39,7 @@ function updateRole(w: World, b: BuildingState) {
   } else if (b.role === 'watchtower') {
     b.towerShotIn -= DT;
     if (b.towerShotIn > 0) return;
-    const target = nearestMonster(w, cx, cy, def.radius);
+    const target = nearestShootable(w, cx, cy, def.radius);
     if (!target) return;
     const wd = ROLE_EFFECTS.watchtower;
     shoot(w, cx, cy, target, wd.damage, wd.speed, -1);
@@ -47,7 +47,8 @@ function updateRole(w: World, b: BuildingState) {
   }
 }
 
-/** Heals living units of a list that stand within adius of a point. */
+/** Heals living units of a list that stand within 
+adius of a point. */
 function healWithin(list: Unit[], cx: number, cy: number, radius: number, heal: number) {
   for (const u of list) {
     if (u.state === 'dead' || Math.hypot(u.x - cx, u.y - cy) > radius) continue;

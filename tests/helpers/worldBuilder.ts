@@ -31,6 +31,7 @@ export class WorldBuilder {
   private upgradeSpecs: Record<string, number> = {};
   private plan: Record<number, RoleKind> | undefined;
   private keepPlanning = false;
+  private nightWave: number | undefined;
 
   /** Knight's basic attack (default sword). */
   withWeapon(kind: WeaponKind) { this.opts.weapon = kind; return this; }
@@ -73,9 +74,18 @@ export class WorldBuilder {
     return this;
   }
 
+  /**
+   * Night town (Lanternwick's rules): the map gets the night theme and the world is put at `wave`
+   * (default 3, the first wave where darkness counts; 1–2 are dusk, all lit).
+   */
+  atNight(wave = 3) { this.nightWave = wave; return this; }
+  /** Lamp oil for planning (night towns). */
+  withLampOil(n: number) { this.opts.lampOil = n; return this; }
+
   build(): BuiltWorld {
     // Without an explicit map and not a default-options world, use an open field.
     const map = this.mapVal ?? (this.opts.noWaves ? openField() : undefined);
+    if (this.nightWave !== undefined && map) map.theme = 'night';
     const world = new World({ ...this.opts, map });
     const knight = world.players[0];
     if (this.knightPos) [knight.x, knight.y] = this.knightPos;
@@ -91,6 +101,7 @@ export class WorldBuilder {
       }
     }
     if (this.opts.planning && !this.keepPlanning) world.start();
+    if (this.nightWave !== undefined) world.wave = this.nightWave;
     return { world, knight, zombies, monsters, rookies };
   }
 }

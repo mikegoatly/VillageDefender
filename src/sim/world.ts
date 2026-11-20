@@ -11,10 +11,11 @@ import type { PowerKind, UpgradeHost } from '../data/upgrades';
 import { TOWN1_WAVES, type WaveDef } from '../data/waves';
 import { rankedWeapon, type WeaponDef, type WeaponKind } from '../data/weapons';
 import type { RunResult } from '../data/achievements';
-import { debugAddRookie, debugEnd, debugGiveUpgrade, debugGiveXp, debugHealKnight, debugSetWeapon, debugInfo, debugJumpToWave, debugKillAll, debugSetBuildingHp, debugSpawn } from './debug';
+import { debugAddRookie, debugEnd, debugGiveUpgrade, debugGiveXp, debugHealKnight, debugSetLamp, debugSetWeapon, debugInfo, debugJumpToWave, debugKillAll, debugSetBuildingHp, debugSpawn } from './debug';
 import { FlowField } from './flowField';
 import { updateGems } from './gems';
 import { makeKnight, updateKnight, updateRally } from './knight';
+import { LightGrid, makeLamps, oilUsed, setLampLit, updateLamps } from './light';
 import { generateTown, isWadeable, type Side, type TownMap } from './map';
 import { reapMonsters, updateFlowFields, updateMonster } from './monsters';
 import { Pather } from './pather';
@@ -32,8 +33,8 @@ import type { InputState } from './types';
 import { centreOf } from './units';
 import { addMonster, pickSides, updateWaves } from './waves';
 
-export type { BuildingState, Gem, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, UnitKind, UnitState, WorldOptions } from './model';
-import type { BuildingState, Gem, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, WorldOptions } from './model';
+export type { BuildingState, Gem, Lamp, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, UnitKind, UnitState, WorldOptions } from './model';
+import type { BuildingState, Gem, Lamp, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, WorldOptions } from './model';
 
 export class World implements UpgradeHost {
   readonly map: TownMap;
@@ -65,6 +66,12 @@ export class World implements UpgradeHost {
   /** @internal */ trapHeld = false;
   /** Powers unlocked for this run. */
   readonly powers: PowerKind[];
+  /** Night towns: lamp posts (from the map's lamp decor; empty elsewhere). */
+  readonly lamps: Lamp[];
+  /** Night towns: lamp posts that may be lit with oil while planning. */
+  readonly lampOil: number;
+  /** Night towns: cells lit by windows and lamps (sim/light.ts). @internal */
+  readonly light: LightGrid;
   /** 'planning' until start(); the sim only advances while 'running'. */
   phase: 'planning' | 'running';
   readonly planningPoints: number;
@@ -139,6 +146,9 @@ export class World implements UpgradeHost {
     this.weaponRanks = { ...(opts.weaponRanks ?? {}) };
 
     this.frostUntil = new Float32Array(this.map.size * this.map.size);
+    this.lamps = makeLamps(this);
+    this.lampOil = opts.lampOil ?? 0;
+    this.light = new LightGrid(this.map.size);
     this.cellBuilding = new Int32Array(this.map.size * this.map.size).fill(-1);
     this.buildings = this.map.buildings.map((b) => {
       // One wall block per storey per cell, plus one roof per cell. Every building counts the same
@@ -227,6 +237,23 @@ export class World implements UpgradeHost {
     const refund = b.role ? ROLES[b.role].cost : 0;
     if (this.planningPointsLeft + refund < ROLES[role].cost) return false;
     b.role = role;
+    return true;
+  }
+
+  /** Lamp oil not yet spent. */
+  get lampOilLeft(): number {
+    return this.lampOil - oilUsed(this);
+  }
+
+  /**
+   * Lights (or puts out again) a lamp post that starts dark, during planning. Returns false if not
+   * allowed (wrong phase, a post that is lit anyway, or no oil left).
+   */
+  setLamp(lampId: number, lit: boolean): boolean {
+    const l = this.lamps[lampId];
+    if (this.phase !== 'planning' || !l || l.startsLit) return false;
+    if (lit && !l.lit && this.lampOilLeft <= 0) return false;
+    setLampLit(this, l, lit);
     return true;
   }
 
@@ -341,6 +368,7 @@ export class World implements UpgradeHost {
     for (const u of this.players) integrate(this, u);
     for (const r of this.rookies) integrate(this, r);
     for (const m of this.monsters) integrate(this, m);
+    updateLamps(this);
     updateGems(this);
 
     // Remove corpses once their death animation has played.
@@ -403,6 +431,9 @@ export class World implements UpgradeHost {
   debugSetBuildingHp(id: number, fraction: number) { return debugSetBuildingHp(this, id, fraction); }
 
   debugEnd(won: boolean) { return debugEnd(this, won); }
+
+  /** Lights or puts out a lamp post at any time (a knocked-over one is stood back up). */
+  debugSetLamp(id: number, lit: boolean) { return debugSetLamp(this, id, lit); }
 
   /** Read-only views of internal state for debug overlays. */
   debugInfo() { return debugInfo(this); }

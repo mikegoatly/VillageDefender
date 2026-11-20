@@ -71,7 +71,7 @@ export function createSession(data: SessionData, profile: Profile, search: strin
   const world = new World({
     seed: params.seed, god: params.god, startWave: params.wave,
     planning: params.plan || inMenu, planningPoints: town.planningPoints + boosts.planningPoints,
-    allowedRoles: profile.data.roles, townId: town.id, waves: town.waves,
+    allowedRoles: profile.data.roles, townId: town.id, waves: town.waves, lampOil: town.lampOil,
     mapOptions: town.map, cards: profile.data.cards, powers: profile.data.powers, boosts, weaponRanks: profile.weaponRanks(),
     weapon: profile.data.weapons.includes(profile.data.weapon) ? profile.data.weapon : 'sword',
   });

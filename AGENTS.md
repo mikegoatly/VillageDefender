@@ -27,7 +27,7 @@
   Rendering: `&stress=<monsters>` (spawn at once, implies god/plan=0, shows perf), `&perf=1`, `&lightning=0` and `&lights=<n>` (night towns),
   `&shadows=0`, `&sil=0` (no occlusion silhouettes), `&dpr=<max pixel ratio>`.
 - Live build: https://mikegoatly.github.io/VillageDefender/ (every push to `main` deploys).
-- Debug mode: dev builds or `?debug=1`; toggle with backtick/F2/🐞. World debug API: `debugSpawn`, `debugGiveXp`, `debugGiveUpgrade`, `debugAddRookie`, `debugJumpToWave`, `debugKillAll`, `debugSetBuildingHp`, `debugEnd`, `debugInfo`; overlays via `window.__vd.overlays`; `window.__vd.startTown()` / `window.__vd.profile()`. Balance retunes: edit live in the panel, Copy balance JSON, then bake the numbers into src/data/*.
+- Debug mode: dev builds or `?debug=1`; toggle with backtick/F2/🐞. World debug API: `debugSpawn`, `debugGiveXp`, `debugGiveUpgrade`, `debugAddRookie`, `debugJumpToWave`, `debugKillAll`, `debugSetBuildingHp`, `debugSetLamp`, `debugEnd`, `debugInfo` (night towns: `light` = lit coverage, lamps, oil); overlays via `window.__vd.overlays` (`light` = lit cells); `window.__vd.startTown()` / `window.__vd.profile()`. Balance retunes: edit live in the panel, Copy balance JSON, then bake the numbers into src/data/*.
 - Tests: `npm test` (fast unit project); `npm run test:golden` for the slow golden sim fingerprints (run after sim changes); `npm run test:all` for both; bot balance table: `npx vitest run tests/sim/bots.test.ts --disableConsoleIntercept`.
   Test helpers (builders, ASCII maps, bots) live in tests/helpers — reuse them.
 - Rendering is three.js with the Kenney GLB models in `public/assets/models` (src/render3d;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defenderBot, defenderChooser, defenderPlan, fighterBot, fighterChooser, idleBot, idleChooser, playLevel, type Bot, type PlanPolicy, type PlayResult } from '../helpers/bots';
+import { defenderBot, defenderChooser, defenderPlan, nightPlan, fighterBot, fighterChooser, idleBot, idleChooser, playLevel, type Bot, type PlanPolicy, type PlayResult } from '../helpers/bots';
 import { TOWN1_WAVES } from '../../src/data/waves';
 import { TOWN_BY_ID } from '../../src/data/towns';
 import { WEAPON_ORDER } from '../../src/data/weapons';
@@ -94,5 +94,24 @@ describe(`bot play-tests (town 2, ${riverside.waves.length} waves + boss)`, () =
 
   it('wins are only counted with the boss dead', () => {
     for (const rs of Object.values(town2Results)) for (const r of rs) if (r.status === 'won') expect(r.bossKilled).toBe(true);
+  });
+});
+
+// Town 5 (Lanternwick, night), planned defender per weapon (all lamp oil on the dark posts nearest the
+// crossroads): how much the dark rules cost.
+const lanternwick = TOWN_BY_ID.lanternwick;
+const town5Results = Object.fromEntries(WEAPON_ORDER.map((w) => [
+  w, SEEDS.map((s) => playLevel(s, `town5-${w}`, defenderBot(), MAX_SECONDS, defenderChooser, nightPlan, w, lanternwick)),
+])) as Record<(typeof WEAPON_ORDER)[number], PlayResult[]>;
+
+describe(`bot play-tests (town 5, ${lanternwick.waves.length} waves + boss)`, () => {
+  it('prints the defender-by-weapon table', () => {
+    const avgs = Object.entries(town5Results).map(([w, rs]) =>
+      `${w.padEnd(6)}  wins ${rs.filter((r) => r.status === 'won').length}/${rs.length}  avg stars ${avg(rs.map((r) => r.stars)).toFixed(2)}  avg wave ${avg(rs.map((r) => r.wave)).toFixed(1)}  avg kills ${avg(rs.map((r) => r.kills)).toFixed(1)}  avg standing ${avg(rs.map((r) => r.standing)).toFixed(1)}/${rs[0].total}  boss killed ${rs.filter((r) => r.bossKilled).length}/${rs.length}`);
+    console.log(['', 'Town 5', ...avgs].join('\n'));
+  });
+
+  it('wins are only counted with the boss dead', () => {
+    for (const rs of Object.values(town5Results)) for (const r of rs) if (r.status === 'won') expect(r.bossKilled).toBe(true);
   });
 });

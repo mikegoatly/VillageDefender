@@ -25,6 +25,8 @@ export interface Renderer {
   setPlanning(on: boolean): void;
   /** Highlights a building (-1 for none). */
   highlightBuilding(id: number): void;
+  /** Night towns, planning: highlights a lamp post and its light ring (-1 for none). */
+  highlightLamp(id: number): void;
   /** Shows a role on a building (null clears it). */
   setRole(id: number, role: RoleKind | null): void;
   /** The knight's weapon changed during planning; redraw him with it. */

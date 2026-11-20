@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   approach, LIGHT_POOL, LIGHTNING, lightningFlash, lightSources, LightSlots, nightLevel, pickLights, type LightSource,
 } from '../../src/render3d/nightLights';
+import { NIGHT } from '../../src/data/night';
 import { mapFromAscii } from '../helpers/mapBuilder';
 import { aWorld } from '../helpers/worldBuilder';
 
@@ -21,7 +22,7 @@ const FIELD = [
 /** A world on FIELD with lamp posts at `lamps`, the knight at (x, y). */
 function litWorld(x = 7, y = 4, lamps: [number, number][] = []) {
   const map = mapFromAscii(FIELD);
-  for (const [i, j] of lamps) map.decor.push({ i, j, kind: 'lamp', blocks: false });
+  for (const [i, j] of lamps) map.decor.push({ i, j, kind: 'lamp', blocks: false, lit: true });
   return aWorld().withTownMap(map).noRookies().withKnightAt(x, y).build();
 }
 
@@ -40,19 +41,27 @@ describe('nightLevel', () => {
 });
 
 describe('lightSources', () => {
-  it("lists the knight's lantern first, then every standing building's windows and every lamp post", () => {
+  it("lists the knight's lantern first, then every standing building's windows and every lit lamp post", () => {
     const { world, knight } = litWorld(7, 4, [[5, 5], [12, 7]]);
     const s = lightSources(world);
     expect(s[0]).toMatchObject({ kind: 'lantern', x: knight.x, z: knight.y });
     expect(s.filter((l) => l.kind === 'window')).toHaveLength(3);
     expect(s.filter((l) => l.kind === 'lamp').map((l) => [l.x, l.z])).toEqual([[5, 5], [12, 7]]);
-    // The lantern reaches furthest.
+    // The lantern reaches furthest, and every reach is the sim's lit radius.
     for (const l of s.slice(1)) expect(l.radius).toBeLessThan(s[0].radius);
+    for (const l of s) expect(l.radius).toBe(NIGHT.radius[l.kind]);
+  });
+
+  it('a dark or knocked-over lamp post gives no light', () => {
+    const { world } = litWorld(7, 4, [[5, 5], [12, 7]]);
+    world.lamps[0].lit = false;
+    world.lamps[1].hp = 0;
+    expect(lightSources(world).some((l) => l.kind === 'lamp')).toBe(false);
   });
 
   it('a ruined building gives no light, and a fallen knight carries no lantern', () => {
     const { world, knight } = litWorld();
-    world.buildings[1].ruined = true;
+    world.debugSetBuildingHp(1, 0);
     knight.state = 'dead';
     const s = lightSources(world);
     expect(s.some((l) => l.kind === 'lantern')).toBe(false);

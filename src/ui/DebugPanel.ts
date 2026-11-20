@@ -12,7 +12,8 @@ import { XP_CURVE } from '../sim/progression';
 import type { World } from '../sim/world';
 import type { Profile } from '../meta/profile';
 
-export type OverlayName = 'flowKnight' | 'flowBuildings' | 'hitboxes' | 'ranges' | 'labels';
+/** `light`: night towns' lit cells (any source, ignoring the dusk grace) and each light's reach. */
+export type OverlayName = 'flowKnight' | 'flowBuildings' | 'hitboxes' | 'ranges' | 'labels' | 'light';
 
 export interface DebugHost {
   /** Current world (changes on restart: always call, never cache). */
@@ -76,7 +77,7 @@ function step(v: number): number {
   return Math.abs(v) <= 1 ? 0.01 : Math.abs(v) < 20 ? 0.05 : 1;
 }
 
-const OVERLAY_NAMES: OverlayName[] = ['flowKnight', 'flowBuildings', 'hitboxes', 'ranges', 'labels'];
+const OVERLAY_NAMES: OverlayName[] = ['flowKnight', 'flowBuildings', 'hitboxes', 'ranges', 'labels', 'light'];
 const SPAWN_TARGETS = ['top', 'right', 'bottom', 'left', 'at last click', 'at knight'] as const;
 
 const STYLE = `
@@ -101,13 +102,14 @@ export class DebugPanel {
   private fpsAt = 0;
 
   private readonly stats = {
-    time: '', wave: '', nextWave: '', monsters: '', rookies: '', kills: '', knight: '', buildings: '', fps: '', seed: '',
+    time: '', wave: '', nextWave: '', monsters: '', rookies: '', kills: '', knight: '', buildings: '', light: '', fps: '', seed: '',
   };
   private readonly profileStats = { coins: '', roles: '', weapons: '', achievements: '' };
   private readonly profileControllers: Controller[] = [];
   private readonly statControllers: Controller[] = [];
   private buildingController!: Controller;
   private buildingHpController!: Controller;
+  private lampController!: Controller;
   private takenController!: Controller;
   private readonly p = {
     seedInput: 1,
@@ -124,6 +126,7 @@ export class DebugPanel {
     taken: '',
     building: 0,
     buildingHp: 1,
+    lamp: 0,
   };
 
   constructor(private readonly host: DebugHost) {
@@ -153,6 +156,7 @@ export class DebugPanel {
     this.buildKnight();
     this.buildArmy();
     this.buildBuildings();
+    this.buildNight();
     this.buildOverlays();
     this.buildProfile();
     this.buildBalance();
@@ -308,6 +312,21 @@ export class DebugPanel {
     f.add({ go: () => { for (const b of this.w.buildings) this.w.debugSetBuildingHp(b.id, 1); } }, 'go').name('Repair all');
   }
 
+  /** Night towns: light or put out a lamp post (the 'light' overlay shows what is lit). */
+  private buildNight() {
+    const f = this.gui.addFolder('Night');
+    this.lampController = f.add(this.p, 'lamp', {}).name('lamp post');
+    f.add({ go: () => this.toggleLamp() }, 'go').name('Light / put out');
+    f.add({ go: () => { for (const l of this.w.lamps) this.w.debugSetLamp(l.id, true); } }, 'go').name('Light all');
+    f.add({ go: () => { this.host.overlays.light = !this.host.overlays.light; this.gui.controllersRecursive().forEach((c) => c.updateDisplay()); } }, 'go').name('Toggle lit-cells overlay');
+  }
+
+  private toggleLamp() {
+    const l = this.w.lamps[Number(this.p.lamp)];
+    if (l) this.w.debugSetLamp(l.id, !(l.lit && l.hp > 0));
+    this.refreshStats();
+  }
+
   private buildOverlays() {
     const f = this.gui.addFolder('Overlays');
     for (const name of OVERLAY_NAMES) f.add(this.host.overlays, name);
@@ -392,6 +411,11 @@ export class DebugPanel {
     this.buildingController = this.buildingController.options(opts);
     this.p.building = w.buildings[0]?.id ?? 0;
     this.buildingController.updateDisplay();
+    const lamps: Record<string, number> = {};
+    for (const l of w.lamps) lamps[`#${l.id} (${l.x}, ${l.y})${l.startsLit ? ' town' : ''}`] = l.id;
+    this.lampController = this.lampController.options(lamps);
+    this.p.lamp = w.lamps[0]?.id ?? 0;
+    this.lampController.updateDisplay();
     if (!initial) this.p.jumpWave = Math.min(this.p.jumpWave, w.totalWaves);
     this.gui.controllersRecursive().forEach((c) => {
       if (c.property === 'jumpWave') c.max(Math.max(1, w.totalWaves));
@@ -415,6 +439,8 @@ export class DebugPanel {
     s.kills = String(w.kills);
     s.knight = `Lv ${w.progression.level}  ${w.progression.xp}/${w.progression.xpToNext} xp  ${k ? `${Math.ceil(k.hp)}/${k.maxHp} hp` : ''}`;
     s.buildings = `${w.standingBuildings()}/${w.buildings.length}`;
+    const light = info.light;
+    s.light = light ? `${Math.round((100 * light.lit) / Math.max(1, light.walkable))}% lit · lamps ${light.lamps.lit}/${light.lamps.total} (${light.lamps.broken} broken) · oil ${light.oilLeft}` : '-';
     s.fps = String(this.fps);
     s.seed = String(this.host.seed());
     const taken = Object.entries(w.progression.levels).filter(([, n]) => n > 0);

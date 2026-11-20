@@ -5,6 +5,8 @@ import { PAUSE_INPUT_GUARD_MS } from '../../src/ui/PauseMenu';
 import { emptyInput } from '../../src/sim/types';
 import { aGame, type BuiltGame } from '../helpers/game';
 import { aWorld } from '../helpers/worldBuilder';
+import { TOWN_BY_ID } from '../../src/data/towns';
+import { World } from '../../src/sim/world';
 
 describe('hitStopFor', () => {
   it('freezes briefly on a heavy hit to a living monster, not on a light one', () => {
@@ -104,6 +106,53 @@ describe('GameController', () => {
       game = aGame(aWorld().withSeed(3).noWaves(false).inPlanning(0).build().world);
       game.controller.assignRole(0, 'barracks');
       expect(game.renderer.setRole).not.toHaveBeenCalled();
+    });
+
+    describe('lamp oil (night towns)', () => {
+      const lanternwick = TOWN_BY_ID.lanternwick;
+      const nightGame = () => aGame(new World({ seed: 1, mapOptions: lanternwick.map, waves: lanternwick.waves, lampOil: lanternwick.lampOil, planning: true, planningPoints: 3 }));
+      const optByName = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('.vd-plan .opt')].find((b) => b.querySelector('.nm')!.textContent === name)!;
+
+      it('a click on a dark lamp post selects it, and Light it spends oil on it', () => {
+        game = nightGame();
+        const post = game.world.lamps.find((l) => !l.startsLit)!;
+        game.renderer.click(post.x, post.y);
+        expect(game.renderer.highlightLamp).toHaveBeenLastCalledWith(post.id);
+        expect(game.renderer.highlightBuilding).toHaveBeenLastCalledWith(-1);
+        expect(document.querySelector('.vd-plan .card .head')!.textContent).toBe('Lamp post');
+        expect(document.querySelector('.vd-plan .oil')!.textContent).toContain('3/3 oil');
+
+        optByName('Light it').click();
+        expect(post.lit).toBe(true);
+        expect(game.world.lampOilLeft).toBe(2);
+        expect(document.querySelector('.vd-plan .oil')!.textContent).toContain('2/3 oil');
+      });
+
+      it('posts lit from the start are not selectable, and a house click moves the selection off the post', () => {
+        game = nightGame();
+        const townPost = game.world.lamps.find((l) => l.startsLit)!;
+        game.renderer.click(townPost.x, townPost.y);
+        expect(game.renderer.highlightLamp).not.toHaveBeenCalledWith(townPost.id);
+
+        const post = game.world.lamps.find((l) => !l.startsLit)!;
+        game.renderer.click(post.x, post.y);
+        const [i, j] = game.world.buildings[0].cells[0];
+        game.renderer.click(i, j);
+        expect(game.renderer.highlightLamp).toHaveBeenLastCalledWith(-1);
+        expect(game.renderer.highlightBuilding).toHaveBeenLastCalledWith(0);
+      });
+
+      it('the selection is cleared when the town starts', () => {
+        game = nightGame();
+        game.controller.selectLamp(game.world.lamps.find((l) => !l.startsLit)!.id);
+        game.controller.startTown();
+        expect(game.renderer.highlightLamp).toHaveBeenLastCalledWith(-1);
+      });
+
+      it('towns without oil show no oil and keep their posts unselectable', () => {
+        game = aGame(aWorld().withSeed(3).noWaves(false).inPlanning().build().world);
+        expect(document.querySelector('.vd-plan .oil')).toBeNull();
+      });
     });
 
     it('ignores a weapon the profile has not unlocked', () => {

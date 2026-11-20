@@ -1,4 +1,5 @@
-// Planning-phase overlay: before a town starts, the player turns houses into role buildings.
+// Planning-phase overlay: before a town starts, the player turns houses into role buildings (and, in
+// night towns, spends lamp oil lighting dark lamp posts out on the approaches).
 // DOM only; the scene handles map clicks, highlighting and roofs. Mouse/touch via buttons,
 // keyboard and gamepad like LevelUpPanel (300 ms guard after the panel appears).
 
@@ -39,6 +40,10 @@ export interface PlanningView {
   /** Optional basic-attack picker. */
   weapons?: PlanningWeaponOption[];
   selectedWeapon?: string;
+  /** Night towns: lamp oil left / in all (absent elsewhere). */
+  oil?: { left: number; total: number };
+  /** Selected dark lamp post (night towns), or null/absent; never set together with `selected`. */
+  lamp?: { id: number; label: string; lit: boolean; canLight: boolean } | null;
 }
 
 export interface PlanningCallbacks {
@@ -50,6 +55,8 @@ export interface PlanningCallbacks {
   onStart(): void;
   /** Weapon picked (click, W / Shift+W, or gamepad X). */
   onWeapon?(kind: string): void;
+  /** Night towns: light (true, costs one oil) or leave dark (false) a lamp post. */
+  onLamp?(lampId: number, lit: boolean): void;
 }
 
 const STYLE = `
@@ -63,6 +70,8 @@ const STYLE = `
 .vd-plan .banner .title { font-weight: 800; font-size: 16px; }
 .vd-plan .pips { letter-spacing: 2px; }
 .vd-plan .pip.on { color: #c47a00; }
+.vd-plan .oil { letter-spacing: 1px; white-space: nowrap; }
+.vd-plan .oil .drop.on { color: #e08a00; }
 .vd-plan .assigned { font-weight: 500; font-size: 13px; opacity: 0.85; }
 .vd-plan .card.pad-active { border-color: #c47a00; box-shadow: 0 0 0 3px #ffd75e; }
 .vd-plan .hint { background: #3b2418cc; color: #f3e3d0; padding: 4px 12px; border-radius: 6px; font-weight: 500; white-space: nowrap; }
@@ -110,9 +119,11 @@ const STYLE = `
 `;
 
 interface Opt {
-  role: RoleKind | null;
+  /** Role kind, 'plain', or 'dark' / 'light' for a lamp post. */
+  key: string;
   enabled: boolean;
   el: HTMLButtonElement;
+  act: () => void;
 }
 
 function now(): number {
@@ -164,7 +175,8 @@ export class PlanningPanel {
     const prev = this.view;
     this.view = view;
     this.viewKey = key;
-    const sameTarget = prev?.selected?.id === view.selected?.id && prev?.selected?.role === view.selected?.role;
+    const sameTarget = prev?.selected?.id === view.selected?.id && prev?.selected?.role === view.selected?.role
+      && prev?.lamp?.id === view.lamp?.id && prev?.lamp?.lit === view.lamp?.lit;
     this.build(!sameTarget);
   }
 
@@ -199,19 +211,21 @@ export class PlanningPanel {
     banner.querySelector('.assigned')!.textContent = v.assigned;
     banner.querySelector('.start')!.addEventListener('click', () => this.cb.onStart());
     banner.querySelector('.start')!.prepend(glyph('start', true));
+    if (v.oil) banner.querySelector('.pts')!.after(this.buildOil(v.oil));
     if (v.weapons && v.weapons.length > 0) banner.appendChild(this.buildWeapons(v.weapons, v.selectedWeapon));
     const top = document.createElement('div');
     top.className = 'top';
     top.appendChild(banner);
     this.el.appendChild(top);
 
-    if (!v.selected) this.padMode = 'map';
+    if (!v.selected && !v.lamp) this.padMode = 'map';
     top.appendChild(this.padPrompts(v));
+    if (v.lamp) return this.buildLampCard(v.lamp, resetFocus);
     if (!v.selected) {
       // Sits in the same column as the banner, so it always flows below the whole banner (weapon row included).
       const hint = document.createElement('div');
       hint.className = 'hint kb-only';
-      hint.textContent = 'Tap a house to give it a role';
+      hint.textContent = v.oil ? 'Tap a house or a lamp post' : 'Tap a house to give it a role';
       top.appendChild(hint);
       return;
     }
@@ -227,24 +241,62 @@ export class PlanningPanel {
     row.className = 'opts';
     card.append(head, row);
 
-    const plain = this.makeOpt(row, null, true, sel.role === null, '', 'Plain house', '', '');
-    this.opts.push({ role: null, enabled: true, el: plain });
+    const plain = this.makeOpt(row, true, sel.role === null, '', 'Plain house', '', '');
+    this.opts.push({ key: 'plain', enabled: true, el: plain, act: () => this.assign(null) });
     plain.addEventListener('click', () => this.assign(null));
     v.roles.forEach((r, i) => {
       const affordable = r.cost <= v.pointsLeft + refund || sel.role === r.kind;
       const enabled = !r.locked && affordable;
       const note = r.locked ? `🔒 ${r.lockHint ?? 'Locked'}` : !affordable ? 'Not enough points' : '';
-      const btn = this.makeOpt(row, r.kind, enabled, sel.role === r.kind, `${i + 1}. ${r.icon}`,
+      const btn = this.makeOpt(row, enabled, sel.role === r.kind, `${i + 1}. ${r.icon}`,
         r.name, `${r.cost} pt${r.cost === 1 ? '' : 's'} · ${r.description}`, note);
       btn.addEventListener('click', () => this.assign(r.kind));
-      this.opts.push({ role: r.kind, enabled, el: btn });
+      this.opts.push({ key: r.kind, enabled, el: btn, act: () => this.assign(r.kind) });
     });
     this.el.appendChild(card);
 
-    if (resetFocus || this.focus >= this.opts.length) {
-      this.focus = Math.max(0, this.opts.findIndex((o) => o.role === sel.role));
-    }
+    if (resetFocus || this.focus >= this.opts.length) this.focus = this.currentOpt();
     this.applyFocus();
+  }
+
+  /** Oil pips in the banner (night towns), like the points: one per lamp post that can still be lit. */
+  private buildOil(oil: { left: number; total: number }): HTMLElement {
+    const el = document.createElement('span');
+    el.className = 'oil';
+    el.title = 'Lamp oil';
+    el.innerHTML = Array.from({ length: oil.total }, (_, i) => (i < oil.left ? '<span class="drop on">●</span>' : '<span class="drop">○</span>')).join('');
+    el.append(` ${oil.left}/${oil.total} oil`);
+    return el;
+  }
+
+  /** The selected dark lamp post: leave it dark, or light it for one oil. */
+  private buildLampCard(lamp: NonNullable<PlanningView['lamp']>, resetFocus: boolean): void {
+    const card = document.createElement('div');
+    card.className = `card${this.padMode === 'card' ? ' pad-active' : ''}`;
+    const head = document.createElement('div');
+    head.className = 'head';
+    head.textContent = lamp.label;
+    const row = document.createElement('div');
+    row.className = 'opts';
+    card.append(head, row);
+    const choose = (lit: boolean) => () => this.lightLamp(lamp.id, lit);
+    const dark = this.makeOpt(row, true, !lamp.lit, '0. 🌑', 'Leave dark', '', '');
+    dark.addEventListener('click', choose(false));
+    this.opts.push({ key: 'dark', enabled: true, el: dark, act: choose(false) });
+    const canLight = lamp.lit || lamp.canLight;
+    const light = this.makeOpt(row, canLight, lamp.lit, '1. 🏮', 'Light it', '1 oil', canLight ? '' : 'No oil');
+    light.addEventListener('click', choose(true));
+    this.opts.push({ key: 'light', enabled: canLight, el: light, act: choose(true) });
+    this.el.appendChild(card);
+    if (resetFocus || this.focus >= this.opts.length) this.focus = this.currentOpt();
+    this.applyFocus();
+  }
+
+  /** Index of the option matching the selection's current state. */
+  private currentOpt(): number {
+    const v = this.view;
+    const key = v?.lamp ? (v.lamp.lit ? 'light' : 'dark') : (v?.selected?.role ?? 'plain');
+    return Math.max(0, this.opts.findIndex((o) => o.key === key));
   }
 
   private buildWeapons(weapons: PlanningWeaponOption[], selectedKind: string | undefined): HTMLElement {
@@ -289,7 +341,7 @@ export class PlanningPanel {
     if (next.kind !== v.selectedWeapon) this.cb.onWeapon?.(next.kind);
   }
 
-  private makeOpt(row: HTMLElement, _role: RoleKind | null, enabled: boolean, current: boolean,
+  private makeOpt(row: HTMLElement, enabled: boolean, current: boolean,
     icon: string, name: string, desc: string, note: string): HTMLButtonElement {
     const b = document.createElement('button');
     b.type = 'button';
@@ -310,10 +362,11 @@ export class PlanningPanel {
 
   private padPrompts(v: PlanningView): HTMLElement {
     if (this.padMode === 'card') {
-      return promptBar([[['dpad', 'stick'], 'Role'], ['a', 'Assign'], ['b', 'Back'], ['start', 'Start']]);
+      return promptBar([[['dpad', 'stick'], v.lamp ? 'Choose' : 'Role'], ['a', v.lamp ? 'OK' : 'Assign'], ['b', 'Back'], ['start', 'Start']]);
     }
-    const items: Parameters<typeof promptBar>[0] = [[['dpad', 'stick'], v.selected ? 'Move' : 'Choose a house']];
+    const items: Parameters<typeof promptBar>[0] = [[['dpad', 'stick'], v.selected || v.lamp ? 'Move' : v.oil ? 'Choose' : 'Choose a house']];
     if (v.selected) items.push(['a', 'Set role']);
+    else if (v.lamp) items.push(['a', 'Light']);
     if (v.weapons?.some((w) => !w.locked)) items.push(['x', 'Weapon']);
     items.push(['start', 'Start']);
     return promptBar(items);
@@ -333,8 +386,13 @@ export class PlanningPanel {
     this.cb.onAssign(sel.id, role);
   }
 
+  private lightLamp(id: number, lit: boolean): void {
+    if (!this._visible || this.view?.lamp?.id !== id) return;
+    this.cb.onLamp?.(id, lit);
+  }
+
   private assignOpt(o: Opt | undefined): void {
-    if (o?.enabled) this.assign(o.role);
+    if (o?.enabled) o.act();
   }
 
   private guardOpen(): boolean {
@@ -360,7 +418,7 @@ export class PlanningPanel {
     else if (k === 'ArrowRight' || k === 'Tab') this.cb.onSelectNext(1);
     else if (k === 'Enter') this.cb.onStart();
     else if (k === '0' || k === 'Backspace') this.assignOpt(this.opts[0]);
-    else this.assignOpt(this.opts[Number(k)]); // opts[0] is "Plain house", so 1..4 line up with roles
+    else this.assignOpt(this.opts[Number(k)]); // opts[0] is "Plain house" (or "Leave dark"), so 1..4 line up with roles (1 = "Light it")
   };
 
   // ------------------------------------------------------------ gamepad
@@ -392,7 +450,7 @@ export class PlanningPanel {
       this.cb.onSelectNext(p.has('lb') ? -1 : 1);
       return;
     }
-    if (this.padMode === 'card' && this.view?.selected) {
+    if (this.padMode === 'card' && (this.view?.selected || this.view?.lamp)) {
       if (f.dir === 'left' || f.dir === 'right') {
         this.focus = Math.min(this.opts.length - 1, Math.max(0, this.focus + (f.dir === 'left' ? -1 : 1)));
         this.applyFocus();
@@ -409,8 +467,8 @@ export class PlanningPanel {
       if (this.cb.onSelectDir) this.cb.onSelectDir(f.dir);
       else if (f.dir === 'left' || f.dir === 'right') this.cb.onSelectNext(f.dir === 'left' ? -1 : 1);
     }
-    if (p.has('a') && this.view?.selected) {
-      this.focus = Math.max(0, this.opts.findIndex((o) => o.role === this.view!.selected!.role));
+    if (p.has('a') && (this.view?.selected || this.view?.lamp)) {
+      this.focus = this.currentOpt();
       this.setPadMode('card');
     }
   }

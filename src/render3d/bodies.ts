@@ -148,14 +148,15 @@ export function dressBody(model: THREE.Object3D, spec: BodySpec): { dispose(): v
  * Hangs body pieces on a rig's bones (model space at the rest pose), one merged mesh per bone, beside
  * whatever the rig already has (the knight's night lantern). Returns what the caller must dispose.
  */
-export function hangPieces(model: THREE.Object3D, pieces: readonly BodyPiece[]): { dispose(): void }[] {
+export function hangPieces(model: THREE.Object3D, pieces: readonly BodyPiece[], glowMaterial?: THREE.Material): { dispose(): void }[] {
   model.updateMatrixWorld(true);
   const rootInv = model.matrixWorld.clone().invert();
 
   // Facets come from the geometry (flat pieces have per-face normals), so rounded boxes can stay smooth.
   const lit = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
-  const glow = new THREE.MeshBasicMaterial({ vertexColors: true });
-  const owned: { dispose(): void }[] = [lit, glow];
+  // `glowMaterial`: the caller's own for the glowing pieces (night eyes: fade with the dark).
+  const glow = glowMaterial ?? new THREE.MeshBasicMaterial({ vertexColors: true });
+  const owned: { dispose(): void }[] = glowMaterial ? [lit] : [lit, glow];
   const all = expandPieces(pieces);
   for (const bone of BONES) {
     const onBone = all.filter((p) => p.bone === bone);

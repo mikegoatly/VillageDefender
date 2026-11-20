@@ -7,6 +7,7 @@ import { MAX_WEAPON_RANK, type WeaponKind } from '../data/weapons';
 import { damageBuilding, damageUnit } from './combat';
 import { grantXp } from './gems';
 import type { Side } from './map';
+import { litCoverage, setLampLit } from './light';
 import { collideCells } from './physics';
 import { applyMods } from './town';
 import { addMonster, pickSides, spawnMonster } from './waves';
@@ -71,6 +72,15 @@ export function debugSetBuildingHp(w: World, id: number, fraction: number) {
   b.hp = b.maxHp * Math.min(1, fraction);
 }
 
+/** Lights or puts out a lamp post at any time; a knocked-over post is stood back up first. */
+export function debugSetLamp(w: World, id: number, lit: boolean) {
+  const l = w.lamps[id];
+  if (!l) return;
+  if (l.hp <= 0) l.hp = l.maxHp;
+  setLampLit(w, l, lit);
+  w.light.markDirty();
+}
+
 export function debugEnd(w: World, won: boolean) {
   if (w.status !== 'playing') return;
   if (won) {
@@ -91,5 +101,11 @@ export function debugInfo(w: World) {
     queued: w.spawnQueue.length,
     nextRookieAt: w.nextRookieAt(),
     recruitIn: w.recruitIn,
+    /** Night towns: lit cells (any source, ignoring dusk grace) out of walkable ones, and lamp posts. */
+    light: w.lamps.length || w.map.theme === 'night' ? {
+      ...litCoverage(w),
+      lamps: { lit: w.lamps.filter((l) => l.lit && l.hp > 0).length, broken: w.lamps.filter((l) => l.hp <= 0).length, total: w.lamps.length },
+      oilLeft: w.lampOilLeft,
+    } : null,
   };
 }

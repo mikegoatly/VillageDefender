@@ -4,6 +4,7 @@
 // Extra params: &stress=<monsters> (spawns them at once, implies god=1&plan=0, shows perf)
 //               &perf=1 (perf overlay) &shadows=0 &sil=0 (no occlusion silhouettes) &dpr=<max ratio>
 //               &lightning=0 (no lightning strikes in night towns) &lights=<n> (night point-light pool, default 8)
+//               &dark=1 (every monster drawn as if out of the light) &eyes=1 (night eyes shown in the light too)
 
 import { SIDES } from '../sim/map';
 import type { MonsterKind } from '../data/monsters';
@@ -23,6 +24,8 @@ export async function startThreeGame(root: HTMLElement) {
   const silhouettes = q.get('sil') !== '0';
   const lightning = q.get('lightning') !== '0';
   const lights = q.has('lights') ? Number(q.get('lights')) : undefined;
+  const forceDark = q.get('dark') === '1';
+  const eyesAlways = q.get('eyes') === '1';
   const stage = new Stage(root, { shadows: q.get('shadows') !== '0', maxPixelRatio: Number(q.get('dpr') ?? 2) });
   const library = new ModelLibrary();
   // Sounds load in the background while the models load; sessions share the decoded files.
@@ -44,7 +47,7 @@ export async function startThreeGame(root: HTMLElement) {
     const audio = new GameAudio(sound);
     // Thunder: the slam sound, quieter and an octave down.
     const onThunder = () => audio.play('bossSlam', { volume: 0.35, detune: -1200 });
-    renderer = new ThreeRenderer(stage, library, session.world, { silhouettes, lightning, onThunder, lights });
+    renderer = new ThreeRenderer(stage, library, session.world, { silhouettes, lightning, onThunder, lights, forceDark, eyesAlways });
     controller = new GameController({
       session, renderer, audio, profile: getProfile(), root,
       host: { restart: (d) => { pendingRestart = d; } },

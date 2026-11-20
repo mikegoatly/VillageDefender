@@ -1,10 +1,12 @@
-// Night towns (Lanternwick): where the light comes from, how dark it is, and which sources get one
-// of the renderer's few real lights. Pure (no three.js), so it is unit-tested and so the sim can
-// mirror lightSources() later as `isLit` (phase 2: light becomes a gameplay rule).
+// Night towns (Lanternwick): how the light looks (heights, colours), how dark it is, and which sources
+// get one of the renderer's few real lights. The sources themselves and their reach come from the sim
+// (sim/light.ts, data/night.ts), so what looks lit is what is lit. Pure (no three.js), unit-tested.
 
-import type { World } from '../sim/world';
+import { nightLevel } from '../data/night';
+import { lightSpots, type Lightable, type LightKind } from '../sim/light';
 
-export type LightKind = 'lantern' | 'window' | 'lamp';
+export { nightLevel };
+export type { LightKind };
 
 export interface LightSource {
   /** Stable id while the source exists (slots follow a source by key). */
@@ -14,20 +16,16 @@ export interface LightSource {
   x: number;
   y: number;
   z: number;
-  /** Reach of the light pool (world units). */
+  /** Reach of the light (world units): the sim's lit radius (NIGHT.radius). */
   radius: number;
   color: number;
 }
 
-/**
- * Light sources: the knight's lantern (largest, warm), every standing building's windows (one source
- * just outside its camera-facing corner, where the window light spills onto the street; none when
- * ruined), and the lamp posts along the roads.
- */
-export const NIGHT_LIGHT = {
-  lantern: { y: 1.2, radius: 6, color: 0xffd6a6 },
-  window: { y: 1.0, radius: 3.6, color: 0xffb066, out: 1 },
-  lamp: { y: 1.25, radius: 4, color: 0xffd08a },
+/** Height and colour of each kind of light; reach is the sim's (NIGHT.radius). */
+export const NIGHT_LIGHT: Record<LightKind, { y: number; color: number }> = {
+  lantern: { y: 1.2, color: 0xffd6a6 },
+  window: { y: 1.0, color: 0xffb066 },
+  lamp: { y: 1.25, color: 0xffd08a },
 };
 
 /** Real point lights in the pool (constant, so shaders never recompile). Slot 0 is the knight's lantern. */
@@ -37,40 +35,18 @@ export const LIGHT_FADE = 3;
 /** A source already holding a slot counts as this much nearer, so slots don't flicker between neighbours. */
 export const LIGHT_KEEP = 0.8;
 
-/** Darkness by wave: 0 = dusk (wave 1 and planning), 1 = full night (wave 4 on). */
-export function nightLevel(wave: number): number {
-  return Math.min(1, Math.max(0, (wave - 1) / 3));
-}
-
 /** Eases the shown night level towards `target` at `rate` per second (night falls, never snaps). */
 export function approach(current: number, target: number, rate: number, dt: number): number {
   const step = rate * dt;
   return Math.abs(target - current) <= step ? target : current + Math.sign(target - current) * step;
 }
 
-type Lightable = Pick<World, 'players' | 'buildings' | 'map'>;
-
-/** Every light source in the town right now. The knight's lantern (when he lives) is always first. */
+/**
+ * Every light source in the town right now, from the sim's list: the knight's lantern first (while he
+ * lives), every standing building's window light, every lit, standing lamp post.
+ */
 export function lightSources(world: Lightable): LightSource[] {
-  const out: LightSource[] = [];
-  const k = world.players[0];
-  if (k && k.state !== 'dead') {
-    const { y, radius, color } = NIGHT_LIGHT.lantern;
-    out.push({ key: 'lantern', kind: 'lantern', x: k.x, y, z: k.y, radius, color });
-  }
-  for (const b of world.buildings) {
-    if (b.ruined) continue;
-    const { y, radius, color, out: o } = NIGHT_LIGHT.window;
-    const maxI = Math.max(...b.cells.map(([i]) => i));
-    const maxJ = Math.max(...b.cells.map(([, j]) => j));
-    out.push({ key: `b${b.id}`, kind: 'window', x: maxI + o, y, z: maxJ + o, radius, color });
-  }
-  for (const d of world.map.decor) {
-    if (d.kind !== 'lamp') continue;
-    const { y, radius, color } = NIGHT_LIGHT.lamp;
-    out.push({ key: `l${d.i},${d.j}`, kind: 'lamp', x: d.i, y, z: d.j, radius, color });
-  }
-  return out;
+  return lightSpots(world).map((s) => ({ key: s.key, kind: s.kind, x: s.x, y: NIGHT_LIGHT[s.kind].y, z: s.y, radius: s.radius, color: NIGHT_LIGHT[s.kind].color }));
 }
 
 /**

@@ -19,6 +19,7 @@ export function fakeRenderer() {
     onGroundPointerDown: vi.fn<Renderer['onGroundPointerDown']>((h) => void handlers.push(h)),
     setPlanning: vi.fn<Renderer['setPlanning']>(),
     highlightBuilding: vi.fn<Renderer['highlightBuilding']>(),
+    highlightLamp: vi.fn<Renderer['highlightLamp']>(),
     setRole: vi.fn<Renderer['setRole']>(),
     knightWeaponChanged: vi.fn<Renderer['knightWeaponChanged']>(),
     updateDebugOverlay: vi.fn<Renderer['updateDebugOverlay']>(),

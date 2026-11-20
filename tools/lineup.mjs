@@ -4,6 +4,8 @@
 //   node tools/lineup.mjs shieldbearer swordsman orc
 //   node tools/lineup.mjs --town riverside zombie orc     (kinds as that town draws them: TownDef.looks)
 //   node tools/lineup.mjs --times 0,0.11,0.22,0.33,0.44,0.56 warlord   (also a walk/attack cycle sheet)
+//   node tools/lineup.mjs --town lanternwick --query "dark=1" zombie     (extra URL params: dark=1 draws
+//                                                                          monsters as out of the light, eyes=1 shows night eyes in the light)
 //
 // For each kind, one row: front, side, back (idle), mid-walk and mid-attack. Friendly kinds
 // (knight, swordsman, archer) work too, for comparison. Saves screenshots/lineup-<kind>.png
@@ -22,6 +24,8 @@ const BASE = process.env.VD_URL ?? 'http://localhost:5173/';
 const args = process.argv.slice(2);
 const townAt = args.indexOf('--town');
 const town = townAt >= 0 ? args.splice(townAt, 2)[1] : null;
+const queryAt = args.indexOf('--query');
+const query = queryAt >= 0 ? args.splice(queryAt, 2)[1].replace(/^[?&]/, '') : '';
 const timesAt = args.indexOf('--times');
 const times = timesAt >= 0 ? args.splice(timesAt, 2)[1].split(',').map(Number) : null;
 const kinds = args;
@@ -71,7 +75,7 @@ try {
     };
   });
   // Seed 1's town, paused (speed=0) so nothing moves on its own; the row stands on the open road.
-  await page.goto(`${BASE}?seed=1&plan=0&god=1&speed=0&dpr=3${town ? `&town=${town}` : ''}`);
+  await page.goto(`${BASE}?seed=1&plan=0&god=1&speed=0&dpr=3${town ? `&town=${town}` : ''}${query ? `&${query}` : ''}`);
   // The game starts on its first animation frame, so pump frames until the automation API is up.
   await page.waitForFunction(() => { window.__frames(1); return typeof window.__vd?.step === 'function'; }, null, { timeout: 30000, polling: 50 });
   await page.evaluate(() => { window.__vd.startTown?.(); window.__frames(2); });

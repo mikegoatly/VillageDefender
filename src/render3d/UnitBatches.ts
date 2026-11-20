@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MONSTERS, type MonsterKind } from '../data/monsters';
 import { TOWN_BY_ID } from '../data/towns';
+import { isDark, isLit } from '../sim/light';
 import { unitBase } from '../sim/units';
 import type { TrapRunner, Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
@@ -19,7 +20,9 @@ import { BODIES, dressBody, hangPieces } from './bodies';
 import { findClip } from './clips';
 import { ECHO_ALPHA } from './motionFx';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
-import { withFxAttribute, withUnitFx } from './unitFx';
+import { eyePieces } from './nightEyes';
+import { approach } from './nightLights';
+import { FX_FRIENDLY, withDarkSilhouette, withFxAttribute, withUnitFx } from './unitFx';
 import type { ArmyGear, KnightGear } from './upgradeFx';
 
 /** Character size relative to one ground cell (milestone 0 look test: ~1.5x reads well). */
@@ -37,7 +40,7 @@ const SILHOUETTE_ORDER: Record<Unit['team'], number> = { player: 2, enemy: 3 };
 
 interface Batch {
   parts: THREE.InstancedMesh[];
-  /** Per unit: flash towards white, opacity (shared by all of the batch's part geometries). */
+  /** Per unit: flash towards white, opacity, darkness (shared by all of the batch's part geometries). */
   fx: THREE.InstancedBufferAttribute;
   ghosts: THREE.InstancedMesh[];
   clips: Map<AnimName, PoseClip>;
@@ -60,10 +63,21 @@ interface UnitAnim {
   rot: number;
   /** Displayed river-wading depth; eases towards wadeDepth(). */
   wade: number;
+  /** Displayed darkness (night towns: a monster out of the light), 0..1; eases towards the sim's light. */
+  dark: number;
 }
+
+/** Seconds a monster takes to darken or come back to full colour at the edge of the light. */
+const DARK_FADE = 0.15;
 
 export interface UnitBatchOptions {
   silhouettes: boolean;
+  /** Night towns: plain monster models get glowing eyes on the head bone, shown while they are dark. */
+  nightEyes?: boolean;
+  /** Debug (`&dark=1`): every monster drawn as if out of the light (eye close-ups). */
+  forceDark?: boolean;
+  /** Debug (`&eyes=1`): night eyes shown even in the light (lining them up with the painted eyes). */
+  eyesAlways?: boolean;
 }
 
 export class UnitBatches {
@@ -75,6 +89,8 @@ export class UnitBatches {
   private readonly owned: { dispose(): void }[] = [];
   private readonly silhouettes: Record<Unit['team'], THREE.MeshBasicMaterial>;
   private readonly halos: THREE.InstancedMesh;
+  /** Night eyes' material (glow pieces whose alpha follows the unit's darkness). */
+  private readonly eyeMaterial: THREE.MeshBasicMaterial;
   /** Seconds of hit flash left, by unit id. */
   private readonly flashes = new Map<number, number>();
   private clock = 0;
@@ -93,7 +109,10 @@ export class UnitBatches {
       color, transparent: true, opacity: 0.55, depthFunc: THREE.GreaterDepth, depthWrite: false,
       stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc, stencilZPass: THREE.IncrementStencilOp,
     }));
-    this.silhouettes = { player: silhouette(SILHOUETTE_COLOR.player), enemy: silhouette(SILHOUETTE_COLOR.enemy) };
+    // Monsters out of the light (night) lose their silhouette: only their eyes give them away.
+    this.silhouettes = { player: silhouette(SILHOUETTE_COLOR.player), enemy: withDarkSilhouette(silhouette(SILHOUETTE_COLOR.enemy)) };
+    this.eyeMaterial = this.own(new THREE.MeshBasicMaterial({ vertexColors: true }));
+    this.eyeMaterial.userData.nightEyes = true;
 
     // Friendly halos (decision 8): one instanced ring, coloured per unit.
     this.halos = new THREE.InstancedMesh(
@@ -134,15 +153,20 @@ export class UnitBatches {
     const live = new Set<number>();
     const townLooks = TOWN_BY_ID[world.townId]?.looks;
     const lantern = world.map.theme === 'night';
+    const dark0 = isDark(world);
     for (const list of [world.players, world.rookies, world.monsters]) {
       for (const u of list) {
         // Props (planted kegs) are drawn by FrostView.
         if (u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].inert) continue;
         live.add(u.id);
         const look = lookFor(u, world.weapon, gear, army, townLooks, lantern);
+        const fresh = !this.anims.has(u.id);
         const rot = this.animate(u, dt);
         const a = this.anims.get(u.id)!;
         a.wade += (wadeDepth(world.map, u, look.scale) - a.wade) * Math.min(1, dt * WADE.rate);
+        // Night: monsters out of the light go dark (friendlies never do); eased, never popped.
+        const dark = u.team === 'enemy' && (this.opts.forceDark || (dark0 && !isLit(world, u.x, u.y))) ? 1 : 0;
+        a.dark = fresh ? dark : approach(a.dark, dark, 1 / DARK_FADE, dt);
         this.place(u, look, rot);
         if (u.kind === 'knight') for (const e of echoes) this.place(u, echoLook(look, ECHO_ALPHA), rot, e);
         if (u.team === 'player' && u.state !== 'dead') halos = this.halo(u, halos);
@@ -208,7 +232,7 @@ export class UnitBatches {
   private animate(u: Unit, dt: number): number {
     let a = this.anims.get(u.id);
     const want = Math.atan2(u.facing.x, u.facing.y);
-    if (!a) this.anims.set(u.id, (a = { anim: null, t: 0, lastStateTime: 0, rot: want, wade: 0 }));
+    if (!a) this.anims.set(u.id, (a = { anim: null, t: 0, lastStateTime: 0, rot: want, wade: 0, dark: 0 }));
     const anim = animFor(u);
     // A new swing restarts the attack even when the previous one has not been left.
     const restart = anim === 'attack' && u.stateTime < a.lastStateTime;
@@ -234,7 +258,8 @@ export class UnitBatches {
     const frame = frameIndex(clip, a.t);
     const np = batch.parts.length;
     const { flash, alpha, sink } = unitFx(u, !at && this.flashes.has(u.id), this.clock);
-    batch.fx.setXY(n, at ? 0 : flash, at ? at.alpha : alpha);
+    // z: the monster's darkness; friendlies (and the knight's dash echoes) are exempt from the night.
+    batch.fx.setXYZ(n, at ? 0 : flash, at ? at.alpha : alpha, u.team === 'player' ? FX_FRIENDLY : a.dark);
     this.unitM.compose(
       this.pos.set(at?.x ?? u.x, -sink - a.wade, at?.y ?? u.y),
       this.quat.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rot),
@@ -260,8 +285,14 @@ export class UnitBatches {
     const body = BODIES[look.sheet];
     if (body) this.owned.push(...dressBody(model, body));
     if (look.pieces) this.owned.push(...hangPieces(model, look.pieces));
+    // Night: plain models get glowing eyes on the head bone (designed bodies bring their own glow).
+    if (this.opts.nightEyes && team === 'enemy' && !body) {
+      const eyes = eyePieces(CHARACTER_MODELS[look.sheet]);
+      if (eyes.length) this.owned.push(...hangPieces(model, eyes, this.eyeMaterial));
+    }
     this.attach(model, look.attachments);
     const parts = collectParts(model, (m) => this.unitMaterial(m, look.alpha, look.pallor, look.gild ?? 0));
+    const isEyes = (im: THREE.InstancedMesh) => !!(im.material as THREE.Material).userData.nightEyes;
     for (const p of parts) if (p.owned) this.owned.push(p.geometry);
 
     const mixer = new THREE.AnimationMixer(model);
@@ -272,18 +303,18 @@ export class UnitBatches {
     }
     mixer.stopAllAction();
 
-    const fx = new THREE.InstancedBufferAttribute(new Float32Array(BATCH_CAPACITY * 2).fill(1), 2);
+    const fx = new THREE.InstancedBufferAttribute(new Float32Array(BATCH_CAPACITY * 3).fill(0), 3);
     fx.setUsage(THREE.DynamicDrawUsage);
     const meshes = parts.map((p) => {
       const im = new THREE.InstancedMesh(this.own(withFxAttribute(p.geometry, fx)), p.material, BATCH_CAPACITY);
-      im.castShadow = true;
+      im.castShadow = !isEyes(im);
       im.frustumCulled = false;
       im.count = 0;
       im.setColorAt(0, this.col.setHex(0xffffff));
       this.root.add(im);
       return im;
     });
-    const ghosts = !this.opts.silhouettes ? [] : meshes.map((im) => {
+    const ghosts = !this.opts.silhouettes ? [] : meshes.filter((im) => !isEyes(im)).map((im) => {
       const g = new THREE.InstancedMesh(im.geometry, this.silhouettes[team], BATCH_CAPACITY);
       g.instanceMatrix = im.instanceMatrix;
       g.frustumCulled = false;
@@ -326,10 +357,16 @@ export class UnitBatches {
     const key = `${src.uuid}:${alpha}:${pallor}:${gild}`;
     let m = this.materials.get(key);
     if (!m) {
-      const c = this.own(withUnitFx((src as THREE.MeshStandardMaterial).clone(), pallor, gild));
+      const eyes = !!src.userData.nightEyes;
+      const c = this.own(withUnitFx((src as THREE.MeshStandardMaterial).clone(), { pallor, gild, eyes, eyesAlways: this.opts.eyesAlways }));
       if (alpha < 1) {
         c.transparent = true;
         c.opacity = alpha;
+      }
+      if (eyes) {
+        // Fades in with the dark; drawn after the bodies, never hiding what is behind it.
+        c.transparent = true;
+        c.depthWrite = false;
       }
       c.stencilWrite = true;
       c.stencilRef = 0;

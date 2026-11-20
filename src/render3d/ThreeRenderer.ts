@@ -27,6 +27,7 @@ import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
 import { FrostView } from './FrostView';
+import { installNightDark } from './nightDark';
 import { NightView } from './NightView';
 import { TrapView } from './TrapView';
 import { CHAR_HEIGHT, CHAR_SCALE, HALO_ROOKIE, UnitBatches } from './UnitBatches';
@@ -66,6 +67,10 @@ export interface ThreeRendererOptions {
   onThunder?: () => void;
   /** Night towns: size of the real point-light pool (`&lights=<n>`; default 8). */
   lights?: number;
+  /** Debug (`&dark=1`): every monster drawn as if out of the light. */
+  forceDark?: boolean;
+  /** Debug (`&eyes=1`): night eyes shown in the light too. */
+  eyesAlways?: boolean;
 }
 
 /** Per-frame cost, for the perf overlay and tools/measure3d.mjs. */
@@ -110,13 +115,17 @@ export class ThreeRenderer implements Renderer {
   private lastPerf: RenderPerf = { renderMs: 0, calls: 0, triangles: 0, units: 0, particles: 0 };
 
   constructor(private readonly stage: Stage, library: ModelLibrary, world: World, opts: ThreeRendererOptions) {
+    // Real darkness (night towns) patches every lit material once, before anything compiles.
+    installNightDark();
     const theme = world.map.theme ?? 'meadow';
     stage.setTheme(theme);
     this.dustColor = DASH_DUST[theme];
     this.gear = knightGear(world);
     stage.setView(fitView(world.map));
     this.town = new TownView(library, world.map, this.particles);
-    this.units = new UnitBatches(library, { silhouettes: opts.silhouettes });
+    this.units = new UnitBatches(library, {
+      silhouettes: opts.silhouettes, nightEyes: theme === 'night', forceDark: opts.forceDark, eyesAlways: opts.eyesAlways,
+    });
     this.effects = new Effects(library);
     this.frost = new FrostView(library);
     this.knight = new KnightVisuals(this.particles, this.effects, this.dustColor);
@@ -143,6 +152,7 @@ export class ThreeRenderer implements Renderer {
     const gear = (this.gear = knightGear(world));
     this.units.sync(world, dt, gear, armyGear(world), this.knight.sync(world, dt, gear));
     this.town.sync(world.buildings, dt, townFort(world));
+    if (world.lamps.length) this.town.syncLamps(world.lamps);
     this.syncDust(world);
     this.townFx.sync(world, dt);
     this.particles.update(dt);
@@ -262,6 +272,11 @@ export class ThreeRenderer implements Renderer {
       case 'buildingHit':
         this.town.hit(e.building);
         return;
+      case 'lampBroken':
+        // TownView tips the post over when it sees the lamp's state; glass and sparks here.
+        this.particles.burst(e.x, 0.9, e.y, 10, 0xffd08a, 0.25, 1.8, 1);
+        this.particles.burst(e.x, 0.1, e.y, 6, this.dustColor, 0.3, 1.2, 0.8);
+        return;
       case 'buildingDestroyed':
         // TownView swaps in the ruin and its dust when it sees the building's state.
         this.stage.shake(220, 0.006);
@@ -315,10 +330,15 @@ export class ThreeRenderer implements Renderer {
 
   setPlanning(on: boolean) {
     this.town.setPlanning(on);
+    this.night?.setPlanning(on);
   }
 
   highlightBuilding(id: number) {
     this.town.highlight(id);
+  }
+
+  highlightLamp(id: number) {
+    this.night?.highlightLamp(id);
   }
 
   setRole(_id: number, _role: RoleKind | null) {

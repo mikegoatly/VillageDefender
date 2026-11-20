@@ -1,6 +1,7 @@
 // Builds small TownMaps from ASCII art for tests.
 // Row index = j, column = i. '.' grass, '#' blocked (no building), ' ' outside the map, '=' road, '~' river water (blocked except for waders), '*' ice,
-// digits '0'-'9' = a cell of building id N (blocked; ids must be contiguous from 0).
+// digits '0'-'9' = a cell of building id N (blocked; ids must be contiguous from 0),
+// 'L' / 'l' = a lamp post on grass that starts lit / dark (night towns; it never blocks).
 
 import type { Building, TownMap } from '../../src/sim/map';
 
@@ -17,6 +18,7 @@ export function mapFromAscii(rows: string[]): TownMap {
   const ground = new Uint8Array(size * size);
   const blocked = new Uint8Array(size * size);
   const cellsById = new Map<number, [number, number][]>();
+  const decor: TownMap['decor'] = [];
   rows.forEach((row, j) => {
     for (let i = 0; i < row.length; i++) {
       const ch = row[i];
@@ -25,6 +27,10 @@ export function mapFromAscii(rows: string[]): TownMap {
       else if (ch === '=') ground[idx] = ROAD;
       else if (ch === '~') { ground[idx] = WATER; blocked[idx] = 1; }
       else if (ch === '*') ground[idx] = ICE;
+      else if (ch === 'L' || ch === 'l') {
+        ground[idx] = GRASS;
+        decor.push({ i, j, kind: 'lamp', blocks: false, lit: ch === 'L' });
+      }
       else {
         ground[idx] = GRASS;
         if (ch === '#') blocked[idx] = 1;
@@ -64,7 +70,7 @@ export function mapFromAscii(rows: string[]): TownMap {
     return { id, kind: 'cottage' as const, cells, blocks };
   });
   return {
-    seed: 0, size, centre: Math.floor(size / 2), ground, blocked, buildings, decor: [],
+    seed: 0, size, centre: Math.floor(size / 2), ground, blocked, buildings, decor,
     edges,
   };
 }

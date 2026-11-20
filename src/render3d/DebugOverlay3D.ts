@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { KNIGHT } from '../data/balance';
 import { MONSTERS } from '../data/monsters';
 import { ROOKIES, TOWN_ARROWS } from '../data/rookies';
+import { isDark, lightSpots, litBySources } from '../sim/light';
 import { isWalkable } from '../sim/map';
 import type { Unit, World } from '../sim/world';
 import type { OverlayName } from '../ui/DebugPanel';
@@ -37,6 +38,7 @@ export class DebugOverlay3D {
     if (overlays.hitboxes) this.hitboxes(world);
     if (overlays.ranges) this.ranges(world);
     if (overlays.labels) this.unitLabels(world);
+    if (overlays.light) this.light(world);
     const g = this.lines.geometry;
     g.setDrawRange(0, this.n * 2);
     this.lines.visible = this.n > 0;
@@ -163,6 +165,22 @@ export class DebugOverlay3D {
         this.circle(cx, cz, TOWN_ARROWS.range, 0x66dd66);
       }
     }
+  }
+
+  /** Night towns: a filled-in cross on every lit walkable cell (any source; dusk grace ignored) and each light's reach. */
+  private light(world: World) {
+    const map = world.map;
+    const dark = isDark(world);
+    for (let j = 0; j < map.size; j++) {
+      for (let i = 0; i < map.size; i++) {
+        if (!isWalkable(map, i, j) || !litBySources(world, i, j)) continue;
+        const c = dark ? 0xffd75e : 0xc8b070;
+        this.seg(i - 0.3, j - 0.3, i + 0.3, j + 0.3, c);
+        this.seg(i - 0.3, j + 0.3, i + 0.3, j - 0.3, c);
+      }
+    }
+    for (const s of lightSpots(world)) this.circle(s.x, s.y, s.radius, s.kind === 'lantern' ? 0xffffff : s.kind === 'lamp' ? 0xffa040 : 0xff7040);
+    for (const l of world.lamps) if (!(l.lit && l.hp > 0)) this.cellOutline(l.x, l.y, l.hp > 0 ? 0x6080c0 : 0x803030);
   }
 
   private unitLabels(world: World) {

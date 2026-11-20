@@ -119,6 +119,21 @@ export interface Projectile {
   hitIds: number[];
 }
 
+/** A lamp post (night towns): lights the road while lit and standing; bosses and brutes knock it over. */
+export interface Lamp {
+  /** Index into world.lamps. */
+  id: number;
+  x: number;
+  y: number;
+  /** 0 = knocked over (broken, dark for good). */
+  hp: number;
+  maxHp: number;
+  /** Burning now. */
+  lit: boolean;
+  /** Inside the town, lit from the start; posts out on the approaches start dark and take lamp oil. */
+  startsLit: boolean;
+}
+
 /** A set trap (decision 52): hurts monsters in its radius until its damage budget is spent. */
 export interface Trap {
   id: number;
@@ -201,6 +216,7 @@ export type SimEvent =
   | { type: 'freezeWarn'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'freeze'; unit: number; x: number; y: number; radius: number }
   | { type: 'iceStomp'; unit: number; x: number; y: number; radius: number; time: number }
+  | { type: 'lampBroken'; lamp: number; x: number; y: number }
   | { type: 'levelEnd'; won: boolean; stars: number; reason: 'knight' | 'town' | null };
 
 export interface WorldOptions {
@@ -237,6 +253,8 @@ export interface WorldOptions {
   weapon?: WeaponKind;
   /** Powers unlocked for the run (decision 52); none by default. */
   powers?: PowerKind[];
+  /** Night towns: lamp posts that may be lit while planning (TownDef.lampOil); 0 by default. */
+  lampOil?: number;
 }
 
 export interface PendingWave {

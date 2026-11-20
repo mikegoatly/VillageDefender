@@ -7,7 +7,8 @@ import { isWalkable } from './map';
 import type { BuildingState, Unit } from './model';
 import { clearLine, Pather } from './pather';
 import { shoot } from './projectiles';
-import { monsterById, nearestMonster } from './queries';
+import { canShootAt } from './light';
+import { monsterById, nearestMonster, nearestShootable } from './queries';
 import { makeRookie, rookieDamage } from './rookieStats';
 import { norm, setState, tickTimers } from './units';
 import type { World } from './world';
@@ -92,7 +93,8 @@ export function updateRookie(w: World, r: Unit) {
     if (r.hitPending && r.stateTime >= def.attackHitTime) {
       r.hitPending = false;
       if (def.keepAway > 0) {
-        if (target && target.state !== 'dead') shoot(w, r.x, r.y, target, rookieDamage(w, r), def.projectileSpeed, r.id);
+        // The shot leaves only if the target is still in light (night towns).
+        if (target && target.state !== 'dead' && canShootAt(w, target)) shoot(w, r.x, r.y, target, rookieDamage(w, r), def.projectileSpeed, r.id);
       } else {
         swingHits(w, r, def.range, KNIGHT.attackArc, rookieDamage(w, r), KNIGHT.knockback * 0.6);
       }
@@ -116,7 +118,9 @@ export function updateRookie(w: World, r: Unit) {
 
   r.retargetIn -= DT;
   let target = monsterById(w, r.targetId);
-  if (!target || target.state === 'dead' || r.retargetIn <= 0) {
+  // Archers drop a target that has stepped out of the light (night towns).
+  const lostInDark = def.keepAway > 0 && !!target && !canShootAt(w, target);
+  if (!target || target.state === 'dead' || r.retargetIn <= 0 || lostInDark) {
     target = pickRookieTarget(w, r);
     r.targetId = target ? target.id : -1;
     r.retargetIn = ARMY.retargetEvery;
@@ -197,21 +201,26 @@ function nearestMonsterWhere(w: World, r: Unit, range: number, test: (m: Unit) =
   return best;
 }
 
-/** Monsters hitting the rookie first, then building attackers within defendRange (nearest to the rookie), else nearest monster in huntRange. */
+/**
+ * Monsters hitting the rookie first, then building attackers within defendRange (nearest to the rookie),
+ * else nearest monster in huntRange. Archers only pick monsters standing in light (night towns).
+ */
 function pickRookieTarget(w: World, r: Unit): Unit | null {
+  const ranged = ROOKIES[r.kind as RookieKind].keepAway > 0;
+  const seen = (m: Unit) => !ranged || canShootAt(w, m);
   // Fight back first: whoever is hitting this rookie right now.
-  const attacker = nearestMonsterWhere(w, r, Infinity, (m) => m.state === 'attack' && m.attackBuilding < 0 && m.targetId === r.id);
+  const attacker = nearestMonsterWhere(w, r, Infinity, (m) => m.state === 'attack' && m.attackBuilding < 0 && m.targetId === r.id && seen(m));
   if (attacker) return attacker;
   // Building attackers idle between swings; they stay targets until they walk off or the building falls.
   const wrecker = nearestMonsterWhere(
     w,
     r,
     ARMY.defendRange,
-    (m) => m.attackBuilding >= 0 && m.state !== 'walk' && m.state !== 'dead' && !w.buildings[m.attackBuilding].ruined,
+    (m) => m.attackBuilding >= 0 && m.state !== 'walk' && m.state !== 'dead' && !w.buildings[m.attackBuilding].ruined && seen(m),
   );
   if (wrecker) return wrecker;
   // A boss on the field is worth walking further for (play-test note: rookies ignored a distant boss).
   const boss = w.boss;
-  if (boss && Math.hypot(boss.x - r.x, boss.y - r.y) <= ARMY.bossRange) return boss;
-  return nearestMonster(w, r.x, r.y, ARMY.huntRange);
+  if (boss && Math.hypot(boss.x - r.x, boss.y - r.y) <= ARMY.bossRange && seen(boss)) return boss;
+  return ranged ? nearestShootable(w, r.x, r.y, ARMY.huntRange) : nearestMonster(w, r.x, r.y, ARMY.huntRange);
 }
