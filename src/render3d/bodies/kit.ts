@@ -66,3 +66,27 @@ export interface BodySpec {
   note: string;
   pieces: BodyPiece[];
 }
+
+type V3 = [number, number, number];
+
+/**
+ * A pole held in the right hand at `grip` (model space, rest pose), running up the arm's +X (towards
+ * the shoulder: up while the arm hangs), leaning `lean` radians towards the front and splayed `splay`
+ * radians towards the arm's +Y (outwards while the arm hangs, so it stands clear of the body). It sits
+ * in front of the body at rest and is raised in the attack swing. `place` puts a piece on it: `t`
+ * along the pole from the grip, `out` towards its front face and `side` across it (+side is inwards
+ * while the arm hangs); pieces given `rot: pole.rot` have their Y along the pole (`rotDown`: reversed),
+ * X across it and Z out of its front face.
+ */
+export function heldPole(grip: V3, length: number, below: number, lean: number, splay: number, color: PieceColor, thick = 0.045) {
+  const [cl, sl, cs, ss] = [Math.cos(lean), Math.sin(lean), Math.cos(splay), Math.sin(splay)];
+  const d: V3 = [cs * cl, ss, cs * sl];
+  const n: V3 = [-sl, 0, cl];
+  const x: V3 = [ss * cl, -cs, ss * sl];
+  const place = (t: number, out = 0, side = 0): V3 => [0, 1, 2].map((k) => grip[k] + d[k] * t + n[k] * out + x[k] * side) as V3;
+  const rot: V3 = [0, -lean, -Math.PI / 2 + splay];
+  const rotDown: V3 = [0, -lean, Math.PI / 2 + splay];
+  const top = length - below;
+  const piece: BodyPiece = { bone: 'arm-right', shape: 'cylinder', size: [thick, length, thick], at: place(top - length / 2), rot, color, sides: 6 };
+  return { piece, top, place, rot, rotDown };
+}

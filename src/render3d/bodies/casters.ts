@@ -7,30 +7,13 @@
 // The staff runs from the right hand up the arm's +X (towards the shoulder: up while the arm
 // hangs) leaning forward along +Z, so it stands in front of the body at rest and is raised in the swing.
 
-import { PALETTE, type BodyPiece, type BodySpec, type PieceColor } from './kit';
+import { heldPole, PALETTE, type BodySpec, type PieceColor } from './kit';
 
 const SHOULDER = 0.373;
 
-type V3 = [number, number, number];
-
-/**
- * A staff in the right hand, leaning `lean` radians from the arm's +X towards the front and splayed
- * `splay` radians towards the arm's +Y (outwards while the arm hangs, so it stands clear of the body).
- * `place` puts a piece on it: `t` along the staff from the grip, `out` towards its front face and
- * `side` across it; pieces given `rot: staff.rot` have their Y along the staff (`rotDown`: reversed).
- */
+/** A staff in the right hand (see heldPole). */
 function staff(length: number, below: number, lean: number, splay: number, wood: PieceColor) {
-  const grip: V3 = [-0.38, SHOULDER, 0.02];
-  const [cl, sl, cs, ss] = [Math.cos(lean), Math.sin(lean), Math.cos(splay), Math.sin(splay)];
-  const d: V3 = [cs * cl, ss, cs * sl];
-  const n: V3 = [-sl, 0, cl];
-  const x: V3 = [ss * cl, -cs, ss * sl];
-  const place = (t: number, out = 0, side = 0): V3 => [0, 1, 2].map((k) => grip[k] + d[k] * t + n[k] * out + x[k] * side) as V3;
-  const rot: V3 = [0, -lean, -Math.PI / 2 + splay];
-  const rotDown: V3 = [0, -lean, Math.PI / 2 + splay];
-  const top = length - below;
-  const piece: BodyPiece = { bone: 'arm-right', shape: 'cylinder', size: [0.045, length, 0.045], at: place(top - length / 2), rot, color: wood, sides: 6 };
-  return { piece, top, place, rot, rotDown };
+  return heldPole([-0.38, SHOULDER, 0.02], length, below, lean, splay, wood);
 }
 
 const ROBE_DARK = [0x8a5cd0, 0x4a2c94] as const;

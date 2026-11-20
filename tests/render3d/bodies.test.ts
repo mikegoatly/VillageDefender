@@ -72,6 +72,18 @@ describe('monster bodies', () => {
     expect(borrowed).toEqual([]);
   });
 
+  it('every boss has a designed body of its own, bringing its own colours (no tint or pallor)', () => {
+    const bosses = Object.entries(MONSTERS).filter(([, def]) => def.boss);
+    expect(bosses.length).toBeGreaterThan(0);
+    for (const [kind, def] of bosses) {
+      expect(BODIES[def.sheet], kind).toBeDefined();
+      const shared = Object.entries(MONSTERS).filter(([other, d]) => other !== kind && d.sheet === def.sheet).map(([other]) => other);
+      expect(shared, kind).toEqual([]);
+      expect(def.tint, kind).toBe(0xffffff);
+      expect(def.pallor ?? 0, kind).toBe(0);
+    }
+  });
+
   it('dressing a rig drops its meshes and hangs one merged, coloured mesh per used bone, placed in model space', () => {
     const spec: BodySpec = {
       note: 'test',

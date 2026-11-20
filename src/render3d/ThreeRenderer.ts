@@ -34,6 +34,7 @@ const MAX_GEMS = 1024;
 /** Label heights above the ground (world units). */
 const HEAD = { knight: 1.5, rookie: 1.35, monster: 1.1, villager: 1.25 };
 const BAR_COLORS = { good: '#8cc152', hurt: '#f0ad4e', bad: '#d9534f' };
+const hpColor = (frac: number) => (frac > BUILDING.damagedAt ? BAR_COLORS.good : frac > 0.25 ? BAR_COLORS.hurt : BAR_COLORS.bad);
 /** Dash dust per town theme: sandy on grass, grey on graveyard soil, powder on snow. */
 const DASH_DUST = { meadow: 0xc9b29b, graveyard: 0x8f8a80, frost: 0xf0f6fb };
 const HIT_SPARK = 0xfff0c0;
@@ -482,10 +483,7 @@ export class ThreeRenderer implements Renderer {
       if (b.ruined) continue;
       const top = this.town.topOf(b.id);
       const frac = b.hp / b.maxHp;
-      if (frac < 1) {
-        const color = frac > BUILDING.damagedAt ? BAR_COLORS.good : frac > 0.25 ? BAR_COLORS.hurt : BAR_COLORS.bad;
-        this.labels.bar(`bar${b.id}`, top.x, top.y, top.z, frac, color);
-      }
+      if (frac < 1) this.labels.bar(`bar${b.id}`, top.x, top.y, top.z, frac, hpColor(frac));
       if (b.role) this.labels.badge(`role${b.id}`, top.x, top.y + 0.35, top.z, ROLES[b.role].icon, '#3b2418', 0.3, '#f3e3d0');
     }
     for (const r of world.trapRunners) {
@@ -494,10 +492,7 @@ export class ThreeRenderer implements Renderer {
     for (const r of world.rookies) {
       if (r.state === 'dead') continue;
       const frac = r.hp / r.maxHp;
-      if (frac < 1) {
-        const color = frac > BUILDING.damagedAt ? BAR_COLORS.good : frac > 0.25 ? BAR_COLORS.hurt : BAR_COLORS.bad;
-        this.labels.bar(`hp${r.id}`, r.x, HEAD.rookie, r.y, frac, color);
-      }
+      if (frac < 1) this.labels.bar(`hp${r.id}`, r.x, HEAD.rookie, r.y, frac, hpColor(frac));
       if (r.rank <= 0) continue;
       this.labels.badge(`rank${r.id}`, r.x, HEAD.rookie * (1 + 0.06 * r.rank), r.y, r.rank === 1 ? '▲' : '▲▲', r.rank === 2 ? '#ffffff' : '#ffd75e', 0.3);
     }

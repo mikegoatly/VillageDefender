@@ -282,28 +282,28 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   warlord: {
     // Town 1 boss (decision 41). Abilities live in BOSS below.
-    sheet: 'orc', scale: 2.5, tint: 0xb06060, alpha: 1, target: 'buildings', aggroRange: 0,
+    sheet: 'warlord', scale: 2.5, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.55, hp: 1400, speed: 0.85, speedJitter: 0,
     damage: 25, buildingDamage: 35, attackWindup: 0.9, attackCooldown: 1.6, attackReach: 0.3,
     knockbackResist: 1, corpseTime: 3, xp: 40, coins: 50, boss: 'warlord', name: 'Orc Warlord', // no swat: his ground slam already punishes melee
   },
   troll: {
     // Town 2 boss (decision 46): wades the river, lobs boulders at buildings, regenerates in water.
-    sheet: 'zombie', scale: 2.8, tint: 0x7f9fd8, alpha: 1, target: 'buildings', aggroRange: 0,
+    sheet: 'troll', scale: 2.8, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.58, hp: 1000, speed: 0.8, speedJitter: 0,
     damage: 8, buildingDamage: 30, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
     knockbackResist: 1, corpseTime: 3, xp: 50, coins: 60, wades: true, boss: 'troll', name: 'River Troll', swatsBlockers: true,
   },
   gravekeeper: {
     // Town 3 boss: rings a death toll on the knight and raises the dead from the gravestones.
-    sheet: 'gravekeeper', scale: 2.4, tint: 0xffffff, pallor: 0.8, alpha: 1, target: 'buildings', aggroRange: 0,
+    sheet: 'gravekeeper', scale: 2.4, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.5, hp: 1100, speed: 0.8, speedJitter: 0,
     damage: 10, buildingDamage: 28, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
     knockbackResist: 1, corpseTime: 3, xp: 55, coins: 70, boss: 'gravekeeper', name: 'Gravekeeper', swatsBlockers: true,
   },
   frostGiant: {
     // Town 4 boss: stomps the ground under the knight into ice, and hurls ice boulders at buildings.
-    sheet: 'frostGiant', scale: 2.6, tint: 0xa8d4ff, pallor: 0.85, alpha: 1, target: 'buildings', aggroRange: 0,
+    sheet: 'frostGiant', scale: 2.6, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.58, hp: 1300, speed: 0.75, speedJitter: 0,
     damage: 22, buildingDamage: 32, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
     knockbackResist: 1, corpseTime: 3, xp: 60, coins: 80, boss: 'frostGiant', name: 'Frost Giant', swatsBlockers: true,

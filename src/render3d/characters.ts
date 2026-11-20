@@ -33,6 +33,9 @@ export const CHARACTER_MODELS: Record<string, string> = {
   iceGolem: 'graveyard/character-zombie',
   iceShard: 'graveyard/character-zombie',
   iceling: 'graveyard/character-zombie',
+  // Bosses: designed bodies (render3d/bodies/bosses.ts) on the rig whose clips suit them.
+  warlord: 'mini-dungeon/character-orc',
+  troll: 'graveyard/character-zombie',
   frostGiant: 'mini-dungeon/character-orc',
   // Town looks (data/towns.ts): bodies from render3d/bodies/, on the rig whose clips suit them.
   drowned: 'graveyard/character-zombie',
@@ -79,7 +82,6 @@ const ATTACHMENTS: Record<string, Attachment[]> = {
   skeletonArcher: [BOW],
   boneKnight: [{ ...RIGHT, model: 'mini-dungeon/weapon-sword' }, { ...SHIELD, model: 'mini-dungeon/shield-rectangle', scale: 0.9 }],
   gravedigger: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
-  frostGiant: [{ ...RIGHT, model: 'medieval-weapons/club-a', scale: 0.13 }],
 };
 
 /** Every character and attachment model, for preloading. */

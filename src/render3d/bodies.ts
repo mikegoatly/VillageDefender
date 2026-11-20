@@ -38,6 +38,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BONES, expandPieces, FLAT_SHADE, type BodyPiece, type BodySpec, type PieceColor } from './bodies/kit';
+import { FROST_GIANT, GRAVEKEEPER, TROLL, WARLORD } from './bodies/bosses';
 import { FROST_SHAMAN, NECROMANCER } from './bodies/casters';
 import { FROST_THRALL, YETI } from './bodies/frostpeak';
 import { GHOUL } from './bodies/graveyard';
@@ -66,6 +67,11 @@ export const BODIES: Record<string, BodySpec> = {
   ghoul: GHOUL,
   frostThrall: FROST_THRALL,
   yeti: YETI,
+  // Town bosses: more detail than the horde, as only one is on screen.
+  warlord: WARLORD,
+  troll: TROLL,
+  gravekeeper: GRAVEKEEPER,
+  frostGiant: FROST_GIANT,
 };
 
 function pieceGeometry(p: BodyPiece): THREE.BufferGeometry {
