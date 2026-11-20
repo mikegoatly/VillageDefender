@@ -17,14 +17,14 @@
 - Plan and decisions: `docs/GAME_PLAN.md`.
 - Commands: `npm run dev`, `npm test`, `npm run build`, `npm run import-assets` (needs `KENNEY_ROOT` set to the local Kenney assets folder),
   `node tools/screenshot.mjs "<query>"` (needs dev server on 5173),
-  `node tools/measure3d.mjs` (frame cost at full and 4× throttled CPU; noisy on a busy machine),
+  `node tools/measure3d.mjs ["<extra query>"]` (frame cost at full and 4× throttled CPU, e.g. `"town=lanternwick"`; noisy on a busy machine),
   `node tools/playtest.mjs "<query>" <seconds> <shots>` (scripted play via `window.__vd`,
   saves `screenshots/playtest-N.png` and `-close.png`, needs dev server),
   `node tools/animframes.mjs [weapon] [times]` (knight attack frame by frame at exact times via a
   fake animation clock, three facings; saves `screenshots/anim-<weapon>-<view>.png`, needs dev server).
   Code-built animation clips (no clip in the Kenney rig, e.g. the spear `thrust`) live in `render3d/clips.ts`.
 - URL debug params: `?seed= &speed= &god=1 &wave= &plan=0` (`plan=0` skips the planning phase).
-  Rendering: `&stress=<monsters>` (spawn at once, implies god/plan=0, shows perf), `&perf=1`,
+  Rendering: `&stress=<monsters>` (spawn at once, implies god/plan=0, shows perf), `&perf=1`, `&lightning=0` and `&lights=<n>` (night towns),
   `&shadows=0`, `&sil=0` (no occlusion silhouettes), `&dpr=<max pixel ratio>`.
 - Live build: https://mikegoatly.github.io/VillageDefender/ (every push to `main` deploys).
 - Debug mode: dev builds or `?debug=1`; toggle with backtick/F2/🐞. World debug API: `debugSpawn`, `debugGiveXp`, `debugGiveUpgrade`, `debugAddRookie`, `debugJumpToWave`, `debugKillAll`, `debugSetBuildingHp`, `debugEnd`, `debugInfo`; overlays via `window.__vd.overlays`; `window.__vd.startTown()` / `window.__vd.profile()`. Balance retunes: edit live in the panel, Copy balance JSON, then bake the numbers into src/data/*.

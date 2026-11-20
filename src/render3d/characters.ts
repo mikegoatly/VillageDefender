@@ -6,6 +6,7 @@ import { ROOKIES, type RookieKind } from '../data/rookies';
 import type { WeaponKind } from '../data/weapons';
 import { Ground, inBounds, type TownMap } from '../sim/map';
 import type { ArmyGear, KnightGear } from './upgradeFx';
+import type { BodyPiece } from './bodies/kit';
 import type { Unit } from '../sim/world';
 
 export const CHARACTER_MODELS: Record<string, string> = {
@@ -192,13 +193,29 @@ export interface UnitLook {
   scale: number;
   /** Attack clip in place of the sheet's usual one (the knight's spear thrust). */
   attackClip?: string;
+  /** Body-kit pieces hung on the rig beside its own meshes (the knight's night lantern). */
+  pieces?: readonly BodyPiece[];
 }
+
+/**
+ * Night towns: a small iron lantern on the knight's left hip with a glowing pane, so his light
+ * visibly comes from him (model space at the rest pose; the rig's left is +x, front +z).
+ */
+export const KNIGHT_LANTERN: BodyPiece[] = [
+  { bone: 'torso', shape: 'cylinder', size: [0.016, 0.05, 0.016], at: [0.08, 0.25, 0.125], color: 0x3b3e4a, sides: 4 },
+  { bone: 'torso', shape: 'cone', size: [0.1, 0.04, 0.1], at: [0.08, 0.215, 0.125], color: 0x464650, sides: 4, rot: [0, Math.PI / 4, 0] },
+  { bone: 'torso', shape: 'box', size: [0.078, 0.016, 0.078], at: [0.08, 0.193, 0.125], color: 0x353539 },
+  { bone: 'torso', shape: 'box', size: [0.062, 0.08, 0.062], at: [0.08, 0.145, 0.125], color: 0xffe08a, glow: true },
+  { bone: 'torso', shape: 'box', size: [0.084, 0.018, 0.084], at: [0.08, 0.098, 0.125], color: 0x353539 },
+];
 
 /** The trap villager: a recruit without a weapon. */
 export const VILLAGER_LOOK: UnitLook = { key: 'villager', sheet: 'villager', attachments: [], tint: 0xffffff, alpha: 1, pallor: 0, scale: 1 };
 
 /** `townLooks`: the town's per-kind body swaps (TownDef.looks); a swapped-in body brings its own colours, so no tint or pallor. */
-export function lookFor(u: Unit, weapon: WeaponKind, gear?: KnightGear, army?: ArmyGear, townLooks?: Partial<Record<string, string>>): UnitLook {
+export function lookFor(
+  u: Unit, weapon: WeaponKind, gear?: KnightGear, army?: ArmyGear, townLooks?: Partial<Record<string, string>>, lantern = false,
+): UnitLook {
   if (u.team === 'enemy') {
     const def = MONSTERS[u.kind as MonsterKind];
     const swap = townLooks?.[u.kind];
@@ -207,7 +224,7 @@ export function lookFor(u: Unit, weapon: WeaponKind, gear?: KnightGear, army?: A
     const pallor = swap ? 0 : def.pallor ?? 0;
     return { key: `${sheet}:${def.alpha}:${pallor}`, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint, alpha: def.alpha, pallor, scale: def.scale };
   }
-  if (u.kind === 'knight') return knightLook(weapon, gear);
+  if (u.kind === 'knight') return knightLook(weapon, gear, lantern);
   return rookieLook(u.kind as RookieKind, u.rank, army);
 }
 
@@ -236,9 +253,9 @@ function rookieLook(kind: RookieKind, rank: number, army: ArmyGear | undefined):
 
 const knightLooks = new Map<string, UnitLook>();
 
-/** The knight's look per weapon and gear (cached: it is asked for every frame). */
-function knightLook(weapon: WeaponKind, gear: KnightGear | undefined): UnitLook {
-  const key = `knight:${weapon}:${gear?.key ?? 0}`;
+/** The knight's look per weapon and gear, with a lantern at night (cached: it is asked for every frame). */
+function knightLook(weapon: WeaponKind, gear: KnightGear | undefined, lantern: boolean): UnitLook {
+  const key = `knight:${weapon}:${gear?.key ?? 0}${lantern ? ':lantern' : ''}`;
   let look = knightLooks.get(key);
   if (!look) {
     const [held, ...rest] = KNIGHT_WEAPONS[weapon];
@@ -246,7 +263,10 @@ function knightLook(weapon: WeaponKind, gear: KnightGear | undefined): UnitLook 
     const scale = (held.scale ?? 1) * (gear?.weaponScale ?? 1);
     const attachments = [{ ...held, scale, glow: wfx && wfx.glow > 0 ? { color: wfx.color, amount: wfx.glow } : undefined }, ...rest];
     const attackClip = KNIGHT_THRUSTS[weapon];
-    knightLooks.set(key, (look = { key, sheet: 'knight', attachments, tint: 0xffffff, alpha: 1, pallor: 0, scale: gear?.bodyScale ?? 1, attackClip }));
+    knightLooks.set(key, (look = {
+      key, sheet: 'knight', attachments, tint: 0xffffff, alpha: 1, pallor: 0, scale: gear?.bodyScale ?? 1, attackClip,
+      pieces: lantern ? KNIGHT_LANTERN : undefined,
+    }));
   }
   return look;
 }

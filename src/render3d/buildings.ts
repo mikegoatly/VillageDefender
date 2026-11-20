@@ -63,17 +63,23 @@ const hol = (m: string) => `holiday/${m}`;
 const SNOW_TREES = ['tree-snow-a', 'tree-snow-b', 'tree-snow-c'].map(hol);
 const SNOW_ROCKS = ['rocks-medium', 'rocks-small'].map(hol);
 
+/** Night (Lanternwick): dark pines and old oaks, and a lamp post (its lantern head is at LAMP_HEAD). */
+const NIGHT_TREES = [...GRAVEYARD_TREES, ft('tree'), ft('tree-high')];
+export const LAMP_MODEL = ft('lantern');
+/** Lamp posts are scaled by this; the glass of the lantern sits this high (world units) after scaling. */
+export const LAMP = { scale: 0.85, head: 1.17 };
+
 /** Every model the town can use, for preloading. */
 export const TOWN_MODELS = [
   ...['wall', 'wall-door', 'wall-window-shutters', 'wall-broken', 'wall-half',
     'wall-wood', 'wall-wood-door', 'wall-wood-window-shutters', 'wall-wood-broken', 'wall-wood-half',
     'roof-gable', 'roof-point', 'roof-high-point', 'roof-high-gable', 'chimney', 'banner-red',
-    'tree', 'stall-red', 'road'].map(ft),
+    'tree', 'tree-high', 'lantern', 'stall-red', 'road'].map(ft),
   'castle/flag', 'castle/flag-pennant', 'castle/tower-square-top', 'castle/tower-square-top-roof',
   'graveyard/cross', 'graveyard/candle-multiple', 'graveyard/debris', 'graveyard/debris-wood',
   ...GRAVEYARD_TREES, ...GRAVESTONES,
   ...SNOW_TREES, ...SNOW_ROCKS, 'holiday/snow-pile', 'holiday/snow-flat', 'holiday/lantern', 'holiday/sled',
-  'graveyard/gravestone-debris', 'graveyard/grave', 'graveyard/fire-basket',
+  'graveyard/gravestone-debris', 'graveyard/grave', 'graveyard/fire-basket', 'graveyard/pumpkin-carved',
   'survival/workbench-anvil', 'survival/grass', 'survival/grass-large', 'survival/resource-planks',
   'mini-arena/weapon-rack', 'mini-forest/bridge', 'mini-forest/plant',
   'fantasy-town/fence', 'survival/fence-fortified', 'mini-dungeon/trap', 'mini-forest/ladder',
@@ -412,6 +418,10 @@ export function decorPiece(d: Decor, theme: Theme = 'meadow'): Piece {
   if (theme === 'frost') {
     if (d.kind === 'tree') return { model: pick(SNOW_TREES, 3), x: d.i, y: 0, z: d.j, rotY: turn, scale: 1.0 + hash01(d.i, d.j, 2) * 0.35 };
     if (d.kind === 'rock') return { model: pick(SNOW_ROCKS, 4), x: d.i, y: 0, z: d.j, rotY: hash01(d.i, d.j, 5) * Math.PI * 2, scale: 0.8 };
+  }
+  if (d.kind === 'lamp') return { model: LAMP_MODEL, x: d.i, y: 0, z: d.j, rotY: turn, scale: LAMP.scale };
+  if (theme === 'night' && d.kind === 'tree') {
+    return { model: pick(NIGHT_TREES, 3), x: d.i, y: 0, z: d.j, rotY: turn, scale: 1.0 + hash01(d.i, d.j, 2) * 0.4 };
   }
   if (theme === 'graveyard') {
     if (d.kind === 'tree') return { model: pick(GRAVEYARD_TREES, 3), x: d.i, y: 0, z: d.j, rotY: turn, scale: 1.1 + hash01(d.i, d.j, 2) * 0.35 };

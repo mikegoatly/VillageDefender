@@ -2,7 +2,7 @@
 
 import type { MonsterKind } from './monsters';
 import type { MapOptions } from '../sim/map';
-import { TOWN1_WAVES, TOWN2_WAVES, TOWN3_WAVES, TOWN4_WAVES, type WaveDef } from './waves';
+import { TOWN1_WAVES, TOWN2_WAVES, TOWN3_WAVES, TOWN4_WAVES, TOWN5_WAVES, type WaveDef } from './waves';
 
 export interface TownDef {
   id: string;
@@ -47,6 +47,11 @@ export const TOWNS: TownDef[] = [
     blurb: 'Frozen ponds send you skating, dwarves plant powder kegs, and shieldbearers ward the horde. The Frost Giant comes down the mountain last.',
     planningPoints: 3, waves: TOWN4_WAVES, map: { theme: 'frost' }, unlockStars: 1, bossName: 'Frost Giant',
     looks: { zombie: 'frostThrall', orc: 'yeti' },
+  },
+  {
+    id: 'lanternwick', name: 'Lanternwick',
+    blurb: 'A forest village that lives by its lanterns. Night falls wave by wave, and things come out of the dark. The Pumpkin King rises under the harvest moon.',
+    planningPoints: 3, waves: TOWN5_WAVES, map: { theme: 'night' }, unlockStars: 1, bossName: 'Pumpkin King',
   },
 ];
 

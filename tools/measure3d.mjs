@@ -1,6 +1,6 @@
 // Measures the three.js renderer (?look=3d). Requires `npm run dev` (port 5173), or VD_URL.
 //
-//   node tools/measure3d.mjs
+//   node tools/measure3d.mjs ["<extra query>"]     e.g. "town=lanternwick&lightning=0"
 //
 // Runs with the real GPU and vsync off, so frame times are uncapped. "cpu x4" throttles the main
 // thread 4x (Chrome DevTools' mid-range phone approximation); it does not model a phone GPU.
@@ -10,6 +10,8 @@ import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const BASE = process.env.VD_URL ?? 'http://localhost:5173/';
+/** Appended to every case's query (pick a town, a wave, turn lightning off...). */
+const EXTRA = process.argv[2] ? `&${process.argv[2].replace(/^[?&]/, '')}` : '';
 const cases = [
   { name: 'wave 1', q: 'god=1&plan=0&perf=1' },
   { name: '300 monsters', q: 'stress=300' },
@@ -30,7 +32,7 @@ try {
       const page = await ctx.newPage();
       page.on('pageerror', (e) => { failed = true; console.error('page error:', e.message); });
       const cdp = await ctx.newCDPSession(page);
-      await page.goto(`${BASE}?look=3d&seed=42&${c.q}`);
+      await page.goto(`${BASE}?look=3d&seed=42&${c.q}${EXTRA}`);
       await page.waitForFunction(() => window.__vd?.perf, null, { timeout: 30000 });
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: throttle });
       await page.waitForTimeout(8000);

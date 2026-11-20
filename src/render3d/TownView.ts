@@ -44,6 +44,8 @@ const HIGHLIGHT_HIGH = new THREE.Color(0x8a6a1a);
 const SELECT_COLOR = 0xffd75e;
 const SELECT = { pulseHz: 1.6, outlineGap: 0.22, bar: 0.12, arrowLift: 1.0, bob: 0.18 };
 const HIT_FLASH = 0x9a9a9a;
+/** At night the same flash would glare white against the dark; a dimmer one reads the same. */
+const NIGHT_HIT_FLASH = 0x4a4a4a;
 /** Hit shake length (s) and how long the white flash lasts within it. */
 const SHAKE = { time: 0.18, flash: 0.06, amplitude: 0.05 };
 
@@ -65,7 +67,25 @@ const SNOW_SCATTER: [string, number, number][] = [
   ['holiday/snow-pile', 0.5, 0.8], ['holiday/snow-flat', 0.4, 0.9],
   ['holiday/lantern', 0.05, 0.8], ['holiday/sled', 0.05, 0.8],
 ];
+/** Night (Lanternwick): dark forest grass, ferns and the odd carved pumpkin. */
+const NIGHT_GRASS = 0x6f8a5a;
+const NIGHT_SCATTER: [string, number, number][] = [
+  ['survival/grass', 0.35, 1.4], ['survival/grass-large', 0.3, 1.3], ['mini-forest/plant', 0.27, 1.1],
+  ['graveyard/pumpkin-carved', 0.08, 0.8],
+];
+/**
+ * Night: lit windows. A warm unlit pane behind each camera-facing window, in the piece's own space
+ * (window walls sit on the +X edge): in the stone wall's opening as four panes round a dark cross
+ * (the pane hides the model's own mullions), on the face of the timber wall's painted window.
+ */
+const WINDOW_GLOW = {
+  color: 0xffb85c,
+  stone: { x: 0.47, y: 0.5, w: 0.42, h: 0.38, cross: 0.035 },
+  wood: { x: 0.503, y: 0.5, w: 0.3, h: 0.34, cross: 0 },
+};
 const SCATTER_CHANCE = 0.16;
+const GROUND_BY_THEME = { meadow: GRASS, graveyard: GRAVEYARD_GRASS, frost: SNOW, night: NIGHT_GRASS };
+const SCATTER_BY_THEME = { meadow: SCATTER, graveyard: GRAVEYARD_SCATTER, frost: SNOW_SCATTER, night: NIGHT_SCATTER };
 
 interface BuildingView {
   def: Building;
@@ -76,6 +96,8 @@ interface BuildingView {
   lastFrac: number;
   /** Seconds of hit shake left. */
   shake: number;
+  /** Night: this building's lit window panes, merged (none when ruined). */
+  windows: THREE.BufferGeometry | null;
   /** Centre of the footprint. */
   cx: number;
   cz: number;
@@ -111,11 +133,15 @@ export class TownView {
     this.own(new THREE.MeshStandardMaterial({ color: GENERATED.tar.color, roughness: 0.2 })),
   ];
 
+  /** Night only: the lit-window material (shared by every building's merged panes). */
+  private readonly windowMat: THREE.MeshBasicMaterial | null;
+
   constructor(private readonly library: ModelLibrary, private readonly map: TownMap, private readonly particles: Particles) {
+    this.windowMat = map.theme === 'night' ? this.own(new THREE.MeshBasicMaterial({ color: WINDOW_GLOW.color })) : null;
     this.makeGround();
     this.makeDecor();
     this.views = map.buildings.map((def) => ({
-      def, group: null, materials: [], look: null, emitters: [], lastFrac: 1, shake: 0,
+      def, group: null, materials: [], look: null, emitters: [], lastFrac: 1, shake: 0, windows: null,
       cx: def.cells.reduce((a, [i]) => a + i, 0) / def.cells.length,
       cz: def.cells.reduce((a, [, j]) => a + j, 0) / def.cells.length,
     }));
@@ -241,6 +267,7 @@ export class TownView {
     for (const v of this.views) {
       for (const e of v.emitters) this.particles.removeEmitter(e);
       for (const m of v.materials) m.dispose();
+      v.windows?.dispose();
     }
     for (const im of this.instanced) im.dispose();
     for (const o of this.owned) o.dispose();
@@ -253,8 +280,11 @@ export class TownView {
     for (const m of v.materials) m.dispose();
     for (const e of v.emitters) this.particles.removeEmitter(e);
 
+    v.windows?.dispose();
+    v.windows = null;
     const group = new THREE.Group();
-    for (const p of buildingPieces(v.def, look)) group.add(this.place(this.pieceObject(p.model), p));
+    const pieces = buildingPieces(v.def, look);
+    for (const p of pieces) group.add(this.place(this.pieceObject(p.model), p));
     // Own materials so this building can darken and glow on its own (from each one's own colour).
     const cloned = new Map<THREE.Material, THREE.MeshStandardMaterial>();
     group.traverse((o) => {
@@ -268,6 +298,11 @@ export class TownView {
       }
       mesh.material = cloned.get(src)!;
     });
+    // Lit windows go on after, so they keep their own unlit material.
+    if (this.windowMat) {
+      v.windows = windowPanes(pieces);
+      if (v.windows) group.add(new THREE.Mesh(v.windows, this.windowMat));
+    }
     this.root.add(group);
     v.group = group;
     v.materials = [...cloned.values()];
@@ -281,7 +316,7 @@ export class TownView {
     const flash = !ruined && v.shake > SHAKE.time - SHAKE.flash;
     const on = !ruined && v.def.id === this.highlighted;
     for (const m of v.materials) {
-      if (flash) m.emissive.setHex(HIT_FLASH);
+      if (flash) m.emissive.setHex(this.windowMat ? NIGHT_HIT_FLASH : HIT_FLASH);
       else if (on) m.emissive.copy(HIGHLIGHT_HIGH);
       else m.emissive.setHex(0);
     }
@@ -362,7 +397,7 @@ export class TownView {
     grass.forEach(([i, j], n) => {
       ground.setMatrixAt(n, m.makeTranslation(i, 0, j));
       const shade = 0.9 + 0.12 * smoothNoise(i / 4, j / 4) + 0.03 * hash01(i, j, 7);
-      const base = this.map.theme === 'graveyard' ? GRAVEYARD_GRASS : this.map.theme === 'frost' ? SNOW : GRASS;
+      const base = GROUND_BY_THEME[this.map.theme ?? 'meadow'];
       ground.setColorAt(n, c.setHex(base).multiplyScalar(this.map.theme === 'frost' ? 0.97 + (shade - 0.9) * 0.3 : shade));
     });
     ground.count = grass.length;
@@ -398,7 +433,7 @@ export class TownView {
   private scatterOn(i: number, j: number, out: Map<string, THREE.Matrix4[]>) {
     if (hash01(i, j, 11) >= SCATTER_CHANCE) return;
     let pick = hash01(i, j, 12);
-    const table = this.map.theme === 'graveyard' ? GRAVEYARD_SCATTER : this.map.theme === 'frost' ? SNOW_SCATTER : SCATTER;
+    const table = SCATTER_BY_THEME[this.map.theme ?? 'meadow'];
     const entry = table.find(([, w]) => (pick -= w) < 0) ?? table[0];
     const [model, , scale] = entry;
     const t = new THREE.Matrix4().compose(
@@ -463,6 +498,29 @@ export class TownView {
     this.owned.push(o);
     return o;
   }
+}
+
+/** Night: one merged mesh of glowing panes for a building's window walls (null when it has none). */
+function windowPanes(pieces: readonly Piece[]): THREE.BufferGeometry | null {
+  const panes: THREE.BufferGeometry[] = [];
+  const m = new THREE.Matrix4();
+  for (const p of pieces) {
+    if (!p.model.endsWith('window-shutters')) continue;
+    const g = p.model.includes('wood') ? WINDOW_GLOW.wood : WINDOW_GLOW.stone;
+    const at = m.makeRotationY(p.rotY).setPosition(p.x, p.y, p.z);
+    // A plane faces +Z; a quarter turn faces it out of the +X edge. With a cross, four quarter panes.
+    const grid = g.cross > 0 ? [[-1, -1], [-1, 1], [1, -1], [1, 1]] : [[0, 0]];
+    const w = g.cross > 0 ? (g.w - g.cross) / 2 : g.w;
+    const h = g.cross > 0 ? (g.h - g.cross) / 2 : g.h;
+    for (const [u, v] of grid) {
+      const pane = new THREE.PlaneGeometry(w, h).rotateY(Math.PI / 2).translate(g.x, g.y + (v * (h + g.cross)) / 2, (u * (w + g.cross)) / 2);
+      panes.push(pane.applyMatrix4(at));
+    }
+  }
+  if (!panes.length) return null;
+  const merged = mergeGeometries(panes)!;
+  for (const g of panes) g.dispose();
+  return merged;
 }
 
 /** Smooth value noise in about [-0.5, 0.5]. */

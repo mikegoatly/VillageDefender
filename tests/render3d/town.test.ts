@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildingPieces, decorPiece, ROCK, wallLevels, type Piece } from '../../src/render3d/buildings';
+import { buildingPieces, decorPiece, LAMP_MODEL, ROCK, TOWN_MODELS, wallLevels, type Piece } from '../../src/render3d/buildings';
 import { aBuilding, aDecor } from '../helpers/town3d';
 
 const walls = (ps: Piece[]) => ps.filter((p) => p.model.includes('/wall'));
@@ -59,5 +59,14 @@ describe('decorPiece', () => {
 
   it('is stable for the same cell (no randomness between sessions)', () => {
     expect(decorPiece(aDecor('tree', 7, 2))).toEqual(decorPiece(aDecor('tree', 7, 2)));
+  });
+});
+
+describe('decorPiece at night', () => {
+  it('draws lamp posts as the kit lantern post, and trees from the dark forest set', () => {
+    expect(decorPiece({ i: 3, j: 4, kind: 'lamp', blocks: false }, 'night')).toMatchObject({ model: LAMP_MODEL, x: 3, z: 4 });
+    const trees = new Set(Array.from({ length: 30 }, (_, k) => decorPiece(aDecor('tree', k, k * 7), 'night').model));
+    expect(trees.size).toBeGreaterThan(2);
+    for (const m of trees) expect(TOWN_MODELS).toContain(m);
   });
 });

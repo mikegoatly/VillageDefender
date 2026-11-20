@@ -79,6 +79,24 @@ export const TOWN4_WAVES: WaveDef[] = [
   { monsters: { frostGiant: 1, zombie: 6, shieldbearer: 2, kobold: 3, iceGolem: 2, frostShaman: 1 }, sides: 3 },
 ];
 
+/**
+ * Town 5 (Lanternwick): PLACEHOLDER, replaced in phase 3 by the night monsters. For now a mix of
+ * existing monsters on the usual ten-wave curve, with the Gravekeeper standing in for the
+ * Pumpkin King (phase 4) in wave 10.
+ */
+export const TOWN5_WAVES: WaveDef[] = [
+  { monsters: { zombie: 8, orc: 3, ghost: 2 }, sides: 1 },
+  { monsters: { zombie: 8, orc: 4, skeleton: 3, ghost: 2 }, sides: 2 },
+  { monsters: { zombie: 9, orc: 4, vampire: 2, banshee: 1 }, sides: 2 },
+  { monsters: { zombie: 9, orc: 5, ghost: 3, gravedigger: 2, skeletonArcher: 2 }, sides: 2 },
+  { monsters: { zombie: 10, orc: 5, vampire: 2, banshee: 2, necromancer: 1 }, sides: 3 },
+  { monsters: { zombie: 10, orc: 6, ghost: 3, boneKnight: 2, sapper: 2 }, sides: 3 },
+  { monsters: { zombie: 10, orc: 6, vampire: 3, banshee: 2, skeletonArcher: 3, brute: 1 }, sides: 3 },
+  { monsters: { zombie: 11, orc: 6, ghost: 4, gravedigger: 3, necromancer: 1, brute: 1 }, sides: 3 },
+  { monsters: { zombie: 12, orc: 7, vampire: 3, banshee: 3, boneKnight: 3, brute: 1 }, sides: 3 },
+  { monsters: { gravekeeper: 1, zombie: 6, ghost: 3, vampire: 2, banshee: 2 }, sides: 3 },
+];
+
 /** Flattens a wave into a spawn order that mixes kinds rather than sending them in blocks. */
 export function spawnOrder(w: WaveDef): MonsterKind[] {
   const left = { ...w.monsters } as Record<MonsterKind, number>;

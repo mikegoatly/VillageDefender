@@ -17,7 +17,7 @@ const iced = (rows: string[]) => rows.map((r) => r.replace(/\./g, '*'));
 
 describe('Town 4: Frostpeak Mine', () => {
   it('is the fourth town, unlocked by a star in the third, with its own theme and boss', () => {
-    expect(TOWNS.map((t) => t.id)).toEqual(['village', 'riverside', 'graveyard', 'frostpeak']);
+    expect(TOWNS.map((t) => t.id).slice(0, 4)).toEqual(['village', 'riverside', 'graveyard', 'frostpeak']);
     expect(frostpeak.unlockStars).toBe(1);
     expect(frostpeak.map.theme).toBe('frost');
     expect(frostpeak.waves).toBe(TOWN4_WAVES);

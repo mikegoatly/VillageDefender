@@ -65,3 +65,39 @@ function isIn(o: THREE.Object3D, view: TownView, id: number): boolean {
   while (p && p !== groups[id].group) p = p.parent;
   return p !== null;
 }
+
+/** The lit-window meshes (unlit basic material) under a building's group. */
+function windowMeshes(view: TownView, id: number): THREE.Mesh[] {
+  const out: THREE.Mesh[] = [];
+  view.root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && (m.material as THREE.Material).type === 'MeshBasicMaterial' && isIn(m, view, id)) out.push(m);
+  });
+  return out;
+}
+
+describe('TownView at night', () => {
+  const town = (theme?: 'night') => {
+    const { world } = aWorld().withTownMap(generateTown(1, theme ? { theme } : {})).build();
+    const view = new TownView(fakeLibrary, world.map, new Particles());
+    view.sync(world.buildings, 0, NO_FORT);
+    return { view, world };
+  };
+
+  it('lights every standing building\'s windows (only at night)', () => {
+    const { view, world } = town('night');
+    for (const b of world.buildings.filter((x) => world.map.buildings[x.id].kind !== 'tower')) expect(windowMeshes(view, b.id)).toHaveLength(1);
+    const day = town();
+    expect(windowMeshes(day.view, 0)).toHaveLength(0);
+  });
+
+  it('a ruined building goes dark, and a hit flash leaves the windows alone', () => {
+    const { view, world } = town('night');
+    const b = world.buildings.find((x) => world.map.buildings[x.id].kind !== 'tower')!;
+    view.hit(b.id);
+    expect(() => view.sync(world.buildings, 0.01, NO_FORT)).not.toThrow();
+    b.ruined = true;
+    view.sync(world.buildings, 0, NO_FORT);
+    expect(windowMeshes(view, b.id)).toHaveLength(0);
+  });
+});

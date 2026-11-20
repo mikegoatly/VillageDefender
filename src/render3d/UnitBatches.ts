@@ -15,7 +15,7 @@ import { unitBase } from '../sim/units';
 import type { TrapRunner, Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
 import { CHARACTER_MODELS, WADE, animFor, animLoops, clipNames, echoLook, lookFor, unitFx, VILLAGER_LOOK, wadeDepth, type AnimName, type Attachment, type UnitLook } from './characters';
-import { BODIES, dressBody } from './bodies';
+import { BODIES, dressBody, hangPieces } from './bodies';
 import { findClip } from './clips';
 import { ECHO_ALPHA } from './motionFx';
 import { bakeClip, collectParts, frameIndex, type PoseClip } from './poses';
@@ -133,12 +133,13 @@ export class UnitBatches {
     let halos = 0;
     const live = new Set<number>();
     const townLooks = TOWN_BY_ID[world.townId]?.looks;
+    const lantern = world.map.theme === 'night';
     for (const list of [world.players, world.rookies, world.monsters]) {
       for (const u of list) {
         // Props (planted kegs) are drawn by FrostView.
         if (u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].inert) continue;
         live.add(u.id);
-        const look = lookFor(u, world.weapon, gear, army, townLooks);
+        const look = lookFor(u, world.weapon, gear, army, townLooks, lantern);
         const rot = this.animate(u, dt);
         const a = this.anims.get(u.id)!;
         a.wade += (wadeDepth(world.map, u, look.scale) - a.wade) * Math.min(1, dt * WADE.rate);
@@ -258,6 +259,7 @@ export class UnitBatches {
     // A designed body replaces the rig's own meshes (render3d/bodies.ts); attachments go on after.
     const body = BODIES[look.sheet];
     if (body) this.owned.push(...dressBody(model, body));
+    if (look.pieces) this.owned.push(...hangPieces(model, look.pieces));
     this.attach(model, look.attachments);
     const parts = collectParts(model, (m) => this.unitMaterial(m, look.alpha, look.pallor, look.gild ?? 0));
     for (const p of parts) if (p.owned) this.owned.push(p.geometry);

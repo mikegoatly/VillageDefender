@@ -12,6 +12,17 @@ export interface StageOptions {
   maxPixelRatio: number;
 }
 
+/**
+ * Night grade (Lanternwick): `dusk` at level 0 (a low orange sun under a purple sky), `night` at 1
+ * (a cool blue moon, a navy sky, low bluish ambient). Lightning lifts ambient and moon towards `flash`.
+ */
+const NIGHT_GRADE = {
+  dusk: { sky: 0x4a3558, ambient: 0xc0a8d8, ambientI: 1.05, moon: 0xffa66e, moonI: 1.35 },
+  night: { sky: 0x0b1226, ambient: 0x6a80c8, ambientI: 0.52, moon: 0xa8c0ff, moonI: 0.75 },
+  flash: { color: 0xd4e0ff, ambientI: 2.1, moonI: 2.6 },
+  fog: { near: 58, far: 122 },
+};
+
 export interface DrawInfo {
   calls: number;
   triangles: number;
@@ -29,6 +40,10 @@ export class Stage {
   private readonly basePosition = new THREE.Vector3();
   private readonly projected = new THREE.Vector3();
   private readonly shakeUp = new THREE.Vector3();
+  private night = false;
+  private readonly gradeA = new THREE.Color();
+  private readonly gradeB = new THREE.Color();
+  private readonly flashColor = new THREE.Color(NIGHT_GRADE.flash.color);
   private shakeLeft = 0;
   private shakeIntensity = 0;
 
@@ -58,9 +73,13 @@ export class Stage {
     return this.renderer.domElement;
   }
 
-  /** Lighting and backdrop for a town's look (meadow by day, graveyard at dusk, frost on a cold bright morning). */
+  /** Lighting and backdrop for a town's look (meadow by day, graveyard at dusk, frost on a cold bright morning, night by moonlight). */
   setTheme(theme: Theme) {
-    if (theme === 'frost') {
+    this.night = theme === 'night';
+    if (theme === 'night') {
+      this.scene.fog = new THREE.Fog(NIGHT_GRADE.night.sky, NIGHT_GRADE.fog.near, NIGHT_GRADE.fog.far);
+      this.setNight(0, 0);
+    } else if (theme === 'frost') {
       const sky = new THREE.Color(0xb9cfe0);
       this.ambient.color.setHex(0xdfeaff); this.ambient.intensity = 1.5;
       this.sun.color.setHex(0xf2f7ff); this.sun.intensity = 2.1;
@@ -78,6 +97,22 @@ export class Stage {
       this.renderer.setClearColor(0xd9bfa6);
       this.scene.fog = null;
     }
+  }
+
+  /**
+   * Night towns only: grades the light between dusk (0) and full night (1), and lifts it with a
+   * lightning flash (0..1). Called every frame by the night view.
+   */
+  setNight(level: number, flash: number) {
+    if (!this.night) return;
+    const { dusk, night, flash: f } = NIGHT_GRADE;
+    const sky = this.gradeA.setHex(dusk.sky).lerp(this.gradeB.setHex(night.sky), level).lerp(this.flashColor, flash * 0.35);
+    this.renderer.setClearColor(sky);
+    (this.scene.fog as THREE.Fog).color.copy(sky);
+    this.ambient.color.setHex(dusk.ambient).lerp(this.gradeB.setHex(night.ambient), level).lerp(this.flashColor, flash);
+    this.ambient.intensity = dusk.ambientI + (night.ambientI - dusk.ambientI) * level + (f.ambientI - night.ambientI) * flash;
+    this.sun.color.setHex(dusk.moon).lerp(this.gradeB.setHex(night.moon), level).lerp(this.flashColor, flash);
+    this.sun.intensity = dusk.moonI + (night.moonI - dusk.moonI) * level + (f.moonI - night.moonI) * flash;
   }
 
   /** Frames this ground area (a new town). */

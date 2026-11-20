@@ -141,6 +141,14 @@ export function dressBody(model: THREE.Object3D, spec: BodySpec): { dispose(): v
     }
     o.removeFromParent();
   }
+  return hangPieces(model, spec.pieces);
+}
+
+/**
+ * Hangs body pieces on a rig's bones (model space at the rest pose), one merged mesh per bone, beside
+ * whatever the rig already has (the knight's night lantern). Returns what the caller must dispose.
+ */
+export function hangPieces(model: THREE.Object3D, pieces: readonly BodyPiece[]): { dispose(): void }[] {
   model.updateMatrixWorld(true);
   const rootInv = model.matrixWorld.clone().invert();
 
@@ -148,7 +156,7 @@ export function dressBody(model: THREE.Object3D, spec: BodySpec): { dispose(): v
   const lit = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
   const glow = new THREE.MeshBasicMaterial({ vertexColors: true });
   const owned: { dispose(): void }[] = [lit, glow];
-  const all = expandPieces(spec.pieces);
+  const all = expandPieces(pieces);
   for (const bone of BONES) {
     const onBone = all.filter((p) => p.bone === bone);
     if (!onBone.length) continue;

@@ -40,7 +40,8 @@ export interface Building {
   blocks: Block[];
 }
 
-export type DecorKind = 'tree' | 'well' | 'rock';
+/** `lamp`: a lamp post along a road (night towns); it never blocks. */
+export type DecorKind = 'tree' | 'well' | 'rock' | 'lamp';
 
 export interface Decor {
   i: number;
@@ -54,7 +55,7 @@ export type Side = 'top' | 'right' | 'bottom' | 'left';
 export const SIDES: readonly Side[] = ['top', 'right', 'bottom', 'left'];
 
 /** Look of a town: picks ground colour, props and lighting in the renderer. */
-export type Theme = 'meadow' | 'graveyard' | 'frost';
+export type Theme = 'meadow' | 'graveyard' | 'frost' | 'night';
 
 export interface TownMap {
   /** Visual theme; missing means 'meadow'. */
@@ -78,7 +79,8 @@ export interface MapOptions {
   river?: boolean;
   /**
    * Visual theme. Town 3 is a graveyard (many more gravestones, which are the rock decor);
-   * Town 4 is frost (more boulders, and frozen ponds of slippery ice).
+   * Town 4 is frost (more boulders, and frozen ponds of slippery ice); Town 5 is night (a denser
+   * forest round the rim and lamp posts along the roads).
    */
   theme?: Theme;
 }
@@ -224,9 +226,64 @@ export function generateTown(seed: number, opts: MapOptions = {}): TownMap {
     }
   }
 
+  if (opts.theme === 'night') denserForest(map, seed, (i, j) => inTown(i, j) || edgeSet.has(j * size + i));
   removeUnreachable(map);
   if (opts.theme === 'frost') freezePonds(map, seed);
+  if (opts.theme === 'night') placeLamps(map, seed);
   return map;
+}
+
+/** Night theme: extra trees per open rim cell (on top of the usual ones), so the town sits in a dark forest. */
+const NIGHT_FOREST = { treeChance: 0.1 };
+/** Night theme: a lamp post every `every` cells along each road arm, from `from` out, alternating sides. */
+const NIGHT_LAMPS = { from: 3, every: 4 };
+
+/**
+ * Night theme: thickens the forest outside the town. Uses its own RNG so the buildings and the usual
+ * decor match the same seed's meadow; runs before removeUnreachable, which seals any pocket it closes.
+ */
+function denserForest(map: TownMap, seed: number, skip: (i: number, j: number) => boolean) {
+  const rng = new Rng(seed * 37 + 3);
+  const { size, centre: c } = map;
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      // The roads and their verges stay open (lamp posts go on the verges).
+      if (!inBounds(map, i, j) || skip(i, j) || Math.abs(i - c) <= 1 || Math.abs(j - c) <= 1 || map.blocked[j * size + i]) continue;
+      if (rng.frac() >= NIGHT_FOREST.treeChance) continue;
+      map.decor.push({ i, j, kind: 'tree', blocks: true });
+      map.blocked[j * size + i] = 1;
+    }
+  }
+}
+
+/**
+ * Night theme: lamp posts beside the two roads, at the lane mouths between building slots, alternating
+ * sides (the other side when one is taken). They don't block, so pathing is unchanged. Own RNG, last.
+ */
+function placeLamps(map: TownMap, seed: number) {
+  const rng = new Rng(seed * 53 + 11);
+  const { size, centre: c } = map;
+  const free = (i: number, j: number) =>
+    isWalkable(map, i, j) && map.ground[j * size + i] === Ground.Grass &&
+    inBounds(map, i + 1, j) && inBounds(map, i - 1, j) && inBounds(map, i, j + 1) && inBounds(map, i, j - 1);
+  // Each arm: a step along the road and the sideways step to the verge.
+  const arms: [number, number, number, number][] = [[1, 0, 0, 1], [-1, 0, 0, 1], [0, 1, 1, 0], [0, -1, 1, 0]];
+  for (const [di, dj, si, sj] of arms) {
+    let side = rng.frac() < 0.5 ? 1 : -1;
+    for (let d = NIGHT_LAMPS.from; d < size; d += NIGHT_LAMPS.every) {
+      const ri = c + di * d;
+      const rj = c + dj * d;
+      if (!inBounds(map, ri, rj)) break;
+      for (const s of [side, -side]) {
+        const i = ri + si * s;
+        const j = rj + sj * s;
+        if (!free(i, j)) continue;
+        map.decor.push({ i, j, kind: 'lamp', blocks: false });
+        break;
+      }
+      side = -side;
+    }
+  }
 }
 
 /** True where the ground is slippery ice. */

@@ -3,6 +3,7 @@
 //
 // Extra params: &stress=<monsters> (spawns them at once, implies god=1&plan=0, shows perf)
 //               &perf=1 (perf overlay) &shadows=0 &sil=0 (no occlusion silhouettes) &dpr=<max ratio>
+//               &lightning=0 (no lightning strikes in night towns) &lights=<n> (night point-light pool, default 8)
 
 import { SIDES } from '../sim/map';
 import type { MonsterKind } from '../data/monsters';
@@ -20,6 +21,8 @@ export async function startThreeGame(root: HTMLElement) {
   const q = new URLSearchParams(location.search);
   const stress = Number(q.get('stress') ?? 0);
   const silhouettes = q.get('sil') !== '0';
+  const lightning = q.get('lightning') !== '0';
+  const lights = q.has('lights') ? Number(q.get('lights')) : undefined;
   const stage = new Stage(root, { shadows: q.get('shadows') !== '0', maxPixelRatio: Number(q.get('dpr') ?? 2) });
   const library = new ModelLibrary();
   // Sounds load in the background while the models load; sessions share the decoded files.
@@ -38,9 +41,12 @@ export async function startThreeGame(root: HTMLElement) {
     controller?.destroy();
     const session = createSession(data, getProfile(), search);
     world = session.world;
-    renderer = new ThreeRenderer(stage, library, session.world, { silhouettes });
+    const audio = new GameAudio(sound);
+    // Thunder: the slam sound, quieter and an octave down.
+    const onThunder = () => audio.play('bossSlam', { volume: 0.35, detune: -1200 });
+    renderer = new ThreeRenderer(stage, library, session.world, { silhouettes, lightning, onThunder, lights });
     controller = new GameController({
-      session, renderer, audio: new GameAudio(sound), profile: getProfile(), root,
+      session, renderer, audio, profile: getProfile(), root,
       host: { restart: (d) => { pendingRestart = d; } },
     });
     if (stress > 0 && !data.menu) spawnAtEdges(session.world, stress);
@@ -68,6 +74,8 @@ export async function startThreeGame(root: HTMLElement) {
   vd.renderer = stage.renderer;
   vd.perf = () => meter.snapshot();
   vd.spawn = (n: number) => world && spawnAtEdges(world, n);
+  /** Night towns: hold a lightning flash at its peak (screenshots); false lets it go. */
+  vd.lightning = (hold = true) => renderer?.lightning(hold);
 }
 
 function spawnAtEdges(world: World, count: number) {

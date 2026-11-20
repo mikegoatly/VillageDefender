@@ -27,6 +27,7 @@ import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
 import { FrostView } from './FrostView';
+import { NightView } from './NightView';
 import { TrapView } from './TrapView';
 import { CHAR_HEIGHT, CHAR_SCALE, HALO_ROOKIE, UnitBatches } from './UnitBatches';
 
@@ -35,8 +36,8 @@ const MAX_GEMS = 1024;
 const HEAD = { knight: 1.5, rookie: 1.35, monster: 1.1, villager: 1.25 };
 const BAR_COLORS = { good: '#8cc152', hurt: '#f0ad4e', bad: '#d9534f' };
 const hpColor = (frac: number) => (frac > BUILDING.damagedAt ? BAR_COLORS.good : frac > 0.25 ? BAR_COLORS.hurt : BAR_COLORS.bad);
-/** Dash dust per town theme: sandy on grass, grey on graveyard soil, powder on snow. */
-const DASH_DUST = { meadow: 0xc9b29b, graveyard: 0x8f8a80, frost: 0xf0f6fb };
+/** Dash dust per town theme: sandy on grass, grey on graveyard soil, powder on snow, dark forest soil. */
+const DASH_DUST = { meadow: 0xc9b29b, graveyard: 0x8f8a80, frost: 0xf0f6fb, night: 0x6a5a48 };
 const HIT_SPARK = 0xfff0c0;
 /** Progress bar over a villager building a trap. */
 const TRAP_BAR = '#e8a45a';
@@ -59,6 +60,12 @@ const CAMERA_GROUND = norm({ x: CAMERA_DIR.x, y: CAMERA_DIR.z });
 
 export interface ThreeRendererOptions {
   silhouettes: boolean;
+  /** Night towns: random lightning strikes (default on; `&lightning=0` turns them off). */
+  lightning?: boolean;
+  /** Night towns: called for the thunder after a lightning strike. */
+  onThunder?: () => void;
+  /** Night towns: size of the real point-light pool (`&lights=<n>`; default 8). */
+  lights?: number;
 }
 
 /** Per-frame cost, for the perf overlay and tools/measure3d.mjs. */
@@ -89,6 +96,8 @@ export class ThreeRenderer implements Renderer {
   private readonly townFx: TownVisuals;
   private readonly traps = new TrapView();
   private readonly frost: FrostView;
+  /** Night towns only (Lanternwick): moonlight, real lights, glow pools and lightning. */
+  private readonly night: NightView | null;
   private readonly labels: Labels;
   private debug: DebugOverlay3D | null = null;
   private readonly gems: THREE.InstancedMesh;
@@ -113,6 +122,7 @@ export class ThreeRenderer implements Renderer {
     this.knight = new KnightVisuals(this.particles, this.effects, this.dustColor);
     this.townFx = new TownVisuals(this.particles);
     this.labels = new Labels(stage, stage.canvas.parentElement!);
+    this.night = theme === 'night' ? new NightView(stage, world, { lightning: opts.lightning ?? true, onThunder: opts.onThunder, lights: opts.lights }) : null;
     // Faceted sapphire, as in the sprite renderer.
     this.gems = new THREE.InstancedMesh(
       new THREE.OctahedronGeometry(0.1),
@@ -122,6 +132,7 @@ export class ThreeRenderer implements Renderer {
     this.gems.frustumCulled = false;
     this.gems.count = 0;
     this.root.add(this.town.root, this.units.root, this.effects.root, this.traps.root, this.frost.root, this.gems, this.particles.root);
+    if (this.night) this.root.add(this.night.root);
     stage.scene.add(this.root);
     stage.canvas.addEventListener('pointerdown', this.onPointerDown);
   }
@@ -142,6 +153,7 @@ export class ThreeRenderer implements Renderer {
     this.syncAxeTrails(world);
     this.syncGems(world);
     this.syncLabels(world);
+    this.night?.sync(world, dt);
     this.labels.layout();
     const draw = this.stage.render(dt);
     this.lastPerf = { renderMs: performance.now() - t0, calls: draw.calls, triangles: draw.triangles, units: this.units.size, particles: this.particles.live };
@@ -335,6 +347,11 @@ export class ThreeRenderer implements Renderer {
     return { zoom: (Math.SQRT2 * ppu) / (2 * ISO_HX * MAP.tileScale), charPx: CHAR_HEIGHT * CHAR_SCALE * ppu * Math.cos(ELEVATION) };
   }
 
+  /** Night towns, debug/screenshots: hold a lightning flash at its peak (true) or release it. */
+  lightning(hold: boolean) {
+    this.night?.lightning(hold);
+  }
+
   perf(): RenderPerf {
     return this.lastPerf;
   }
@@ -348,6 +365,7 @@ export class ThreeRenderer implements Renderer {
     this.effects.dispose();
     this.traps.dispose();
     this.frost.dispose();
+    this.night?.dispose();
     this.debug?.dispose();
     this.labels.destroy();
     this.gems.geometry.dispose();
