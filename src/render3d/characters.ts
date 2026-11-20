@@ -34,6 +34,12 @@ export const CHARACTER_MODELS: Record<string, string> = {
   iceShard: 'graveyard/character-zombie',
   iceling: 'graveyard/character-zombie',
   frostGiant: 'mini-dungeon/character-orc',
+  // Town looks (data/towns.ts): bodies from render3d/bodies/, on the rig whose clips suit them.
+  drowned: 'graveyard/character-zombie',
+  frogfolk: 'mini-dungeon/character-orc',
+  ghoul: 'mini-dungeon/character-orc',
+  frostThrall: 'graveyard/character-zombie',
+  yeti: 'mini-dungeon/character-orc',
   // The villager who sets traps is the same recruit model, unarmed.
   villager: 'mini-characters/character-male-f',
 };
@@ -68,13 +74,11 @@ const ATTACHMENTS: Record<string, Attachment[]> = {
   orc: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
   swordsman: [{ ...RIGHT, model: 'mini-arena/weapon-sword' }, { ...SHIELD, scale: 0.6 }],
   archer: [BOW],
-  recruitSwordsman: [{ ...RIGHT, model: 'medieval-weapons/club-a', scale: 0.13 }],
+  recruitSwordsman: [{ ...RIGHT, model: 'mini-dungeon/weapon-sword' }],
   recruitArcher: [BOW],
   skeletonArcher: [BOW],
-  necromancer: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
   boneKnight: [{ ...RIGHT, model: 'mini-dungeon/weapon-sword' }, { ...SHIELD, model: 'mini-dungeon/shield-rectangle', scale: 0.9 }],
   gravedigger: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
-  frostShaman: [{ ...RIGHT, model: 'mini-dungeon/weapon-spear' }],
   frostGiant: [{ ...RIGHT, model: 'medieval-weapons/club-a', scale: 0.13 }],
 };
 
@@ -191,11 +195,15 @@ export interface UnitLook {
 /** The trap villager: a recruit without a weapon. */
 export const VILLAGER_LOOK: UnitLook = { key: 'villager', sheet: 'villager', attachments: [], tint: 0xffffff, alpha: 1, pallor: 0, scale: 1 };
 
-export function lookFor(u: Unit, weapon: WeaponKind, gear?: KnightGear, army?: ArmyGear): UnitLook {
+/** `townLooks`: the town's per-kind body swaps (TownDef.looks); a swapped-in body brings its own colours, so no tint or pallor. */
+export function lookFor(u: Unit, weapon: WeaponKind, gear?: KnightGear, army?: ArmyGear, townLooks?: Partial<Record<string, string>>): UnitLook {
   if (u.team === 'enemy') {
     const def = MONSTERS[u.kind as MonsterKind];
-    const pallor = def.pallor ?? 0;
-    return { key: `${def.sheet}:${def.alpha}:${pallor}`, sheet: def.sheet, attachments: ATTACHMENTS[def.sheet] ?? [], tint: def.tint, alpha: def.alpha, pallor, scale: def.scale };
+    const swap = townLooks?.[u.kind];
+    const sheet = swap ?? def.sheet;
+    const tint = swap ? 0xffffff : def.tint;
+    const pallor = swap ? 0 : def.pallor ?? 0;
+    return { key: `${sheet}:${def.alpha}:${pallor}`, sheet, attachments: ATTACHMENTS[sheet] ?? [], tint, alpha: def.alpha, pallor, scale: def.scale };
   }
   if (u.kind === 'knight') return knightLook(weapon, gear);
   return rookieLook(u.kind as RookieKind, u.rank, army);

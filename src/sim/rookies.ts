@@ -153,7 +153,8 @@ export function updateRookie(w: World, r: Unit) {
     return;
   }
   // Swordsman.
-  if (d - target.radius - r.radius <= def.range * 0.8) {
+  // Same measure as swingHits (target surface to the rookie's centre), so a swing never starts from out of reach.
+  if (d - target.radius <= def.range * 0.8) {
     r.facing = norm({ x: dx, y: dy });
     if (r.attackCooldown <= 0) startRookieAttack(r, def.attackCooldown);
     else setState(r, 'idle', true);
@@ -181,21 +182,34 @@ function moveRookie(w: World, r: Unit, tx: number, ty: number, speed: number) {
   setState(r, 'walk', true);
 }
 
-/** Building attackers within defendRange first (nearest to the rookie), else nearest monster in huntRange. */
-function pickRookieTarget(w: World, r: Unit): Unit | null {
+/** The monster nearest the rookie within `range` that passes `test`. */
+function nearestMonsterWhere(w: World, r: Unit, range: number, test: (m: Unit) => boolean): Unit | null {
   let best: Unit | null = null;
-  let bestD = ARMY.defendRange;
+  let bestD = range;
   for (const m of w.monsters) {
-    // Building attackers idle between swings; they stay targets until they walk off or the building falls.
-    const wrecking = m.attackBuilding >= 0 && m.state !== 'walk' && !w.buildings[m.attackBuilding].ruined;
-    if (m.state === 'dead' || !wrecking) continue;
+    if (!test(m)) continue;
     const d = Math.hypot(m.x - r.x, m.y - r.y);
     if (d < bestD) {
       bestD = d;
       best = m;
     }
   }
-  if (best) return best;
+  return best;
+}
+
+/** Monsters hitting the rookie first, then building attackers within defendRange (nearest to the rookie), else nearest monster in huntRange. */
+function pickRookieTarget(w: World, r: Unit): Unit | null {
+  // Fight back first: whoever is hitting this rookie right now.
+  const attacker = nearestMonsterWhere(w, r, Infinity, (m) => m.state === 'attack' && m.attackBuilding < 0 && m.targetId === r.id);
+  if (attacker) return attacker;
+  // Building attackers idle between swings; they stay targets until they walk off or the building falls.
+  const wrecker = nearestMonsterWhere(
+    w,
+    r,
+    ARMY.defendRange,
+    (m) => m.attackBuilding >= 0 && m.state !== 'walk' && m.state !== 'dead' && !w.buildings[m.attackBuilding].ruined,
+  );
+  if (wrecker) return wrecker;
   // A boss on the field is worth walking further for (play-test note: rookies ignored a distant boss).
   const boss = w.boss;
   if (boss && Math.hypot(boss.x - r.x, boss.y - r.y) <= ARMY.bossRange) return boss;

@@ -116,6 +116,31 @@ describe('rookie combat', () => {
     expect(r.targetId).toBe(orc.id);
   });
 
+  describe.each(['swordsman', 'archer'] as const)('a %s being attacked', (kind) => {
+    it('fights the monster hitting him instead of one wrecking a building', () => {
+      const { world, monsters, rookies } = town()
+        .withMonster('brute', 9.2, 10.5)
+        .withMonster('zombie', 13, 11.4)
+        .withRookie(kind, 13, 10.5)
+        .build();
+      const [brute, zombie] = monsters;
+      const r = rookies[0];
+      runUntil(world, () => zombie.state === 'attack' && brute.attackBuilding === 0, 120);
+      expect(brute.attackBuilding).toBe(0);
+      expect(distance(r, brute)).toBeLessThan(ARMY.defendRange);
+      runSeconds(world, ARMY.retargetEvery + 0.1);
+      expect(r.targetId).toBe(zombie.id);
+    });
+  });
+
+  it('a swordsman damages a stationary monster (swings start only from within blade reach)', () => {
+    const { world, monsters } = town().withMonster('skeletonArcher', 20, 20).withRookie('swordsman', 20, 17).build();
+    const archer = monsters[0];
+    const startHp = archer.hp;
+    runSeconds(world, 4);
+    expect(archer.hp).toBeLessThan(startHp);
+  });
+
   it('a swordsman kills a monster beside him and credits the kill', () => {
     const { world, monsters, rookies } = town().withMonster('zombie', 20, 20.8).withRookie('swordsman', 20, 20).build();
     runUntil(world, () => monsters[0].state === 'dead', 600);
@@ -191,7 +216,8 @@ describe('rookie combat', () => {
       runUntil(world, () => z.state === 'attack', 300);
       expect(z.state).toBe('attack');
       expect(z.targetId).toBe(rookies[0].id);
-      runSeconds(world, 1);
+      // The rookie fights back and knocks the zombie about, so give the zombie a few swings to land one.
+      runUntil(world, () => rookies[0].hp < rookies[0].maxHp, 300);
       expect(rookies[0].hp).toBeLessThan(rookies[0].maxHp);
       expect(knight.hp).toBe(knight.maxHp);
     });

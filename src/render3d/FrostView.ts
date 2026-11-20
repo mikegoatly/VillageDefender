@@ -9,6 +9,8 @@ import type { ModelLibrary } from './assets';
 
 const GROUND_Y = 0.03;
 const KEG = { model: 'mini-dungeon/barrel', scale: 0.9, spark: 0xffb040, blink: 6 };
+/** Models the Frostpeak extras need preloaded. */
+export const FROST_MODELS = [KEG.model];
 const WARD = { color: 0x9fd8ff, opacity: 0.5, width: 0.06 };
 const ICE = { color: 0xcdeeff, opacity: 0.75, fadeIn: 0.25, fadeOut: 1.5 };
 /** Ice block around a frozen unit: size relative to its body, and colour. */

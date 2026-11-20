@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MONSTERS, type MonsterKind } from '../data/monsters';
+import { TOWN_BY_ID } from '../data/towns';
 import { unitBase } from '../sim/units';
 import type { TrapRunner, Unit, World } from '../sim/world';
 import type { ModelLibrary } from './assets';
@@ -131,12 +132,13 @@ export class UnitBatches {
     for (const b of this.batches.values()) b.count = 0;
     let halos = 0;
     const live = new Set<number>();
+    const townLooks = TOWN_BY_ID[world.townId]?.looks;
     for (const list of [world.players, world.rookies, world.monsters]) {
       for (const u of list) {
         // Props (planted kegs) are drawn by FrostView.
         if (u.team === 'enemy' && MONSTERS[u.kind as MonsterKind].inert) continue;
         live.add(u.id);
-        const look = lookFor(u, world.weapon, gear, army);
+        const look = lookFor(u, world.weapon, gear, army, townLooks);
         const rot = this.animate(u, dt);
         const a = this.anims.get(u.id)!;
         a.wade += (wadeDepth(world.map, u, look.scale) - a.wade) * Math.min(1, dt * WADE.rate);

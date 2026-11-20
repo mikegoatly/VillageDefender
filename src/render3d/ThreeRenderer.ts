@@ -476,7 +476,7 @@ export class ThreeRenderer implements Renderer {
     this.gems.instanceMatrix.needsUpdate = true;
   }
 
-  /** Building HP bars and role icons, rookie rank chevrons. */
+  /** Building and rookie HP bars (once hurt), role icons, rookie rank chevrons. */
   private syncLabels(world: World) {
     for (const b of world.buildings) {
       if (b.ruined) continue;
@@ -492,7 +492,13 @@ export class ThreeRenderer implements Renderer {
       if (r.setLeft !== null) this.labels.bar(`trap${r.id}`, r.x, HEAD.villager, r.y, 1 - r.setLeft / r.setTotal, TRAP_BAR);
     }
     for (const r of world.rookies) {
-      if (r.rank <= 0 || r.state === 'dead') continue;
+      if (r.state === 'dead') continue;
+      const frac = r.hp / r.maxHp;
+      if (frac < 1) {
+        const color = frac > BUILDING.damagedAt ? BAR_COLORS.good : frac > 0.25 ? BAR_COLORS.hurt : BAR_COLORS.bad;
+        this.labels.bar(`hp${r.id}`, r.x, HEAD.rookie, r.y, frac, color);
+      }
+      if (r.rank <= 0) continue;
       this.labels.badge(`rank${r.id}`, r.x, HEAD.rookie * (1 + 0.06 * r.rank), r.y, r.rank === 1 ? '▲' : '▲▲', r.rank === 2 ? '#ffffff' : '#ffd75e', 0.3);
     }
   }

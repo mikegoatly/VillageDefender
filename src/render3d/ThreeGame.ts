@@ -12,11 +12,9 @@ import { GameController } from '../game/GameController';
 import { createSession, getProfile, type SessionData } from '../game/session';
 import type { World } from '../sim/world';
 import { ModelLibrary } from './assets';
-import { characterModelPaths } from './characters';
-import { EFFECT_MODELS } from './Effects';
+import { preloadModels } from './preload';
 import { Stage } from './Stage';
 import { ThreeRenderer, type RenderPerf } from './ThreeRenderer';
-import { TOWN_MODELS } from './buildings';
 
 export async function startThreeGame(root: HTMLElement) {
   const q = new URLSearchParams(location.search);
@@ -26,7 +24,7 @@ export async function startThreeGame(root: HTMLElement) {
   const library = new ModelLibrary();
   // Sounds load in the background while the models load; sessions share the decoded files.
   const sound = new WebAudioBackend();
-  await library.load([...characterModelPaths(), ...TOWN_MODELS, ...EFFECT_MODELS]);
+  await library.load(preloadModels());
   // Stress runs skip the menu and planning, and the knight cannot die.
   const search = stress > 0 ? `${location.search}&god=1&plan=0` : location.search;
 

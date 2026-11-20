@@ -176,7 +176,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   necromancer: {
     // Hangs back out of the town and raises zombies until someone goes out to deal with him.
-    sheet: 'necromancer', scale: 1.1, tint: 0x8f6fd8, alpha: 1, target: 'buildings', aggroRange: 0,
+    sheet: 'necromancer', scale: 1.1, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.24, hp: 70, speed: 1.2, speedJitter: 0.1,
     damage: 6, buildingDamage: 2, attackWindup: 0.45, attackCooldown: 1.2, attackReach: 0.2,
     knockbackResist: 0.3, corpseTime: 1.4, swatsBlockers: true, xp: 6, coins: 5,
@@ -251,7 +251,7 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   },
   frostShaman: {
     // Town 4: hangs back, heals the monsters around it and freezes rookies solid.
-    sheet: 'frostShaman', scale: 1.05, tint: 0x9fd8ff, pallor: 0.5, alpha: 1, target: 'buildings', aggroRange: 0,
+    sheet: 'frostShaman', scale: 1.05, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
     radius: 0.23, hp: 55, speed: 1.2, speedJitter: 0.1,
     damage: 5, buildingDamage: 2, attackWindup: 0.45, attackCooldown: 1.2, attackReach: 0.2,
     knockbackResist: 0.2, corpseTime: 1.2, xp: 5, coins: 4,

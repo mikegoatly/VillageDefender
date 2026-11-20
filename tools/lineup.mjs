@@ -1,16 +1,21 @@
 // Character close-ups for designing monster bodies (render3d/bodies.ts). Needs the dev server (port 5173).
 //
-//   node tools/lineup.mjs <kind> [compare...]
+//   node tools/lineup.mjs [--town <id>] <kind> [compare...]
 //   node tools/lineup.mjs shieldbearer swordsman orc
+//   node tools/lineup.mjs --town riverside zombie orc     (kinds as that town draws them: TownDef.looks)
 //
 // For each kind, one row: front, side, back (idle), mid-walk and mid-attack. Friendly kinds
-// (knight, swordsman, archer) work too, for comparison. Saves screenshots/lineup-<kind>.png.
+// (knight, swordsman, archer) work too, for comparison. Saves screenshots/lineup-<kind>.png
+// (lineup-<town>-<kind>.png with --town).
 
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const BASE = process.env.VD_URL ?? 'http://localhost:5173/';
-const kinds = process.argv.slice(2);
+const args = process.argv.slice(2);
+const townAt = args.indexOf('--town');
+const town = townAt >= 0 ? args.splice(townAt, 2)[1] : null;
+const kinds = args;
 if (!kinds.length) {
   console.error('Usage: node tools/lineup.mjs <kind> [compare...]');
   process.exit(1);
@@ -34,7 +39,7 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   // Seed 1's town, paused (speed=0) so nothing moves on its own; the row stands on the open road.
-  await page.goto(`${BASE}?seed=1&plan=0&god=1&speed=0&dpr=3`);
+  await page.goto(`${BASE}?seed=1&plan=0&god=1&speed=0&dpr=3${town ? `&town=${town}` : ''}`);
   await page.waitForFunction(() => typeof window.__vd?.step === 'function', null, { timeout: 30000 });
   await page.evaluate(() => window.__vd.startTown?.());
 
@@ -50,7 +55,8 @@ try {
       const friendly = ['knight', 'swordsman', 'archer'].includes(kind);
       const units = VIEWS.map((v, n) => {
         const x = c + 0.5;
-        const y = c + 3 + n * GAP;
+        // Out past the houses, so no building hides a copy.
+        const y = c + 9 + n * GAP;
         let u;
         if (kind === 'knight') {
           if (n > 0) return null;
@@ -81,7 +87,7 @@ try {
       x: Math.max(0, Math.min(...xs) - pad), y: Math.max(0, Math.min(...ys) - 150),
       width: Math.max(...xs) - Math.min(...xs) + pad * 2, height: Math.max(...ys) - Math.min(...ys) + 200,
     };
-    const path = `screenshots/lineup-${kind}.png`;
+    const path = `screenshots/lineup-${town ? `${town}-` : ''}${kind}.png`;
     await page.screenshot({ path, clip, scale: 'device' });
     console.log(path);
   }

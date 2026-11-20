@@ -2,47 +2,47 @@
 
 exports[`golden simulation fingerprints > planned defender with axes, seeds 1-3 1`] = `
 [
-  "status=won/null ticks=13919 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=6 level=7 knight=42.2610,43.3875,44.9000 hash=b59752f7",
-  "status=won/null ticks=12603 wave=10 kills={"zombie":81,"orc":47,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=451.0000 stars=2 standing=9 level=8 knight=39.8771,42.3606,125.0500 hash=202b6376",
-  "status=lost/knight ticks=14575 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4} coins=335.0000 stars=0 standing=2 level=8 knight=39.4108,46.6183,0.0000 hash=fdf11d6a",
+  "status=won/null ticks=13001 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=455.0000 stars=2 standing=8 level=8 knight=41.2686,46.0003,96.9000 hash=dfde60ea",
+  "status=won/null ticks=12238 wave=10 kills={"zombie":81,"orc":47,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=451.0000 stars=2 standing=10 level=8 knight=42.2709,43.4371,153.0000 hash=aee814e6",
+  "status=won/null ticks=13831 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=3 level=8 knight=39.5897,45.4079,4.8500 hash=df08b89f",
 ]
 `;
 
 exports[`golden simulation fingerprints > planned defender with flail, seeds 1-3 1`] = `
 [
-  "status=won/null ticks=15045 wave=10 kills={"zombie":81,"orc":55,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=439.0000 stars=1 standing=1 level=8 knight=36.6093,39.6046,30.7500 hash=d6590e1c",
-  "status=won/null ticks=13703 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=455.0000 stars=2 standing=9 level=8 knight=34.8306,40.8513,112.2500 hash=3106bd73",
-  "status=won/null ticks=13751 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"vampire":4,"brute":5,"warlord":1} coins=435.0000 stars=1 standing=2 level=8 knight=40.1701,43.5719,79.4000 hash=37a80241",
+  "status=won/null ticks=13812 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=4 level=8 knight=43.0574,43.3417,128.0000 hash=79fc8fef",
+  "status=won/null ticks=12689 wave=10 kills={"zombie":81,"orc":47,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=451.0000 stars=2 standing=10 level=7 knight=35.3565,42.5113,79.7000 hash=ca15c024",
+  "status=won/null ticks=14332 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"vampire":4,"brute":5,"warlord":1} coins=435.0000 stars=1 standing=2 level=8 knight=43.3403,44.7317,39.6500 hash=3fdd6f78",
 ]
 `;
 
 exports[`golden simulation fingerprints > planned defender with hammer, seeds 1-3 1`] = `
 [
-  "status=won/null ticks=13925 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=2 level=8 knight=42.7148,39.7817,106.9000 hash=a4379345",
-  "status=won/null ticks=13887 wave=10 kills={"zombie":81,"orc":55,"skeleton":15,"ghost":8,"vampire":4,"brute":5,"warlord":1} coins=459.0000 stars=2 standing=8 level=8 knight=36.2425,32.9666,70.2000 hash=4f693a62",
-  "status=won/null ticks=13446 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=3 level=9 knight=43.7359,40.1943,88.9000 hash=5ced3c19",
+  "status=won/null ticks=13589 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=5 level=8 knight=42.9354,43.0695,116.2000 hash=8d43517e",
+  "status=won/null ticks=12695 wave=10 kills={"zombie":81,"orc":47,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=451.0000 stars=2 standing=9 level=7 knight=43.3746,44.5368,104.8000 hash=b6df9647",
+  "status=won/null ticks=13500 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=4 level=9 knight=46.9074,37.8444,106.0000 hash=2b24cf95",
 ]
 `;
 
 exports[`golden simulation fingerprints > planned defender with spear, seeds 1-3 1`] = `
 [
-  "status=won/null ticks=13610 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=4 level=8 knight=35.6357,40.7421,84.9000 hash=f8d68e95",
-  "status=won/null ticks=12845 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=455.0000 stars=2 standing=10 level=8 knight=31.9931,35.9955,123.8500 hash=a6495be7",
-  "status=lost/knight ticks=11440 wave=10 kills={"zombie":80,"orc":47,"skeleton":15,"brute":4,"ghost":8,"vampire":4} coins=325.0000 stars=0 standing=2 level=8 knight=42.9543,41.5987,0.0000 hash=916f5f0d",
+  "status=won/null ticks=14148 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=3 level=8 knight=36.4870,43.3975,128.0000 hash=4322221c",
+  "status=won/null ticks=12205 wave=10 kills={"zombie":81,"orc":47,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=471.0000 stars=3 standing=11 level=8 knight=31.4763,35.9747,145.5500 hash=210dd1c3",
+  "status=won/null ticks=13791 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=2 level=8 knight=39.6405,41.5507,53.5500 hash=38dbc582",
 ]
 `;
 
 exports[`golden simulation fingerprints > planned defender with sword, seeds 1-3 1`] = `
 [
-  "status=won/null ticks=14178 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"vampire":4,"brute":5,"warlord":1} coins=435.0000 stars=1 standing=2 level=8 knight=37.4856,43.0530,47.0000 hash=ed9a51e2",
-  "status=won/null ticks=13993 wave=10 kills={"zombie":81,"orc":55,"skeleton":15,"ghost":8,"vampire":4,"brute":5,"warlord":1} coins=459.0000 stars=2 standing=8 level=8 knight=35.8342,32.9482,11.9500 hash=473aa4e9",
-  "status=won/null ticks=14200 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"vampire":4,"brute":5,"warlord":1} coins=435.0000 stars=1 standing=1 level=8 knight=42.5614,43.3691,66.8500 hash=1d6b4229",
+  "status=won/null ticks=13820 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=4 level=8 knight=40.8383,37.5343,129.1500 hash=06f3b64c",
+  "status=won/null ticks=12480 wave=10 kills={"zombie":81,"orc":47,"skeleton":15,"brute":5,"ghost":8,"vampire":4,"warlord":1} coins=451.0000 stars=2 standing=9 level=8 knight=44.8741,43.0943,112.6500 hash=1ec9efee",
+  "status=won/null ticks=13429 wave=10 kills={"zombie":81,"orc":51,"skeleton":15,"ghost":8,"brute":5,"vampire":4,"warlord":1} coins=435.0000 stars=1 standing=3 level=8 knight=39.6862,42.5438,116.2500 hash=23864e7c",
 ]
 `;
 
 exports[`golden simulation fingerprints > unplanned fighter with sword, seeds 4-5 1`] = `
 [
-  "status=lost/town ticks=12377 wave=10 kills={"skeleton":15,"zombie":81,"orc":45,"ghost":8,"brute":4,"vampire":4} coins=324.0000 stars=0 standing=0 level=8 knight=41.8547,39.8959,135.3000 hash=cc47c128",
-  "status=lost/town ticks=7724 wave=7 kills={"skeleton":10,"zombie":50,"orc":19,"ghost":5,"brute":1,"vampire":2} coins=163.0000 stars=0 standing=0 level=6 knight=39.7168,39.8037,130.0000 hash=86c1e0a5",
+  "status=lost/town ticks=12603 wave=10 kills={"skeleton":15,"zombie":81,"orc":47,"ghost":8,"brute":5,"vampire":4} coins=331.0000 stars=0 standing=0 level=8 knight=42.7557,38.3108,149.2333 hash=ea989fc5",
+  "status=lost/town ticks=7286 wave=7 kills={"skeleton":8,"zombie":42,"orc":13,"ghost":4,"brute":1} coins=139.0000 stars=0 standing=0 level=5 knight=40.7151,42.7996,144.0000 hash=f636ab07",
 ]
 `;

@@ -1,5 +1,6 @@
 // Towns (stages). "Town" is the playable map; "knight level" is the in-run XP level (decision 37).
 
+import type { MonsterKind } from './monsters';
 import type { MapOptions } from '../sim/map';
 import { TOWN1_WAVES, TOWN2_WAVES, TOWN3_WAVES, TOWN4_WAVES, type WaveDef } from './waves';
 
@@ -17,6 +18,11 @@ export interface TownDef {
   unlockStars: number;
   /** Name shown on the boss bar. */
   bossName: string;
+  /**
+   * Draws a monster kind with another body in this town (render3d/bodies.ts), so the everyday horde
+   * changes from town to town. Looks only: the kind, its stats and its kill count are unchanged.
+   */
+  looks?: Partial<Record<MonsterKind, string>>;
 }
 
 export const TOWNS: TownDef[] = [
@@ -28,16 +34,19 @@ export const TOWNS: TownDef[] = [
     id: 'riverside', name: 'Riverside Market',
     blurb: 'A river splits the town, but imps swim it and archers shoot over it. The River Troll wades in last.',
     planningPoints: 3, waves: TOWN2_WAVES, map: { river: true }, unlockStars: 1, bossName: 'River Troll',
+    looks: { zombie: 'drowned', orc: 'frogfolk' },
   },
   {
     id: 'graveyard', name: 'Haunted Hollow',
     blurb: 'Bone knights shrug off blows, banshees wail, and gravediggers tunnel under your defences. The Gravekeeper rises last.',
     planningPoints: 3, waves: TOWN3_WAVES, map: { theme: 'graveyard' }, unlockStars: 1, bossName: 'Gravekeeper',
+    looks: { orc: 'ghoul' },
   },
   {
     id: 'frostpeak', name: 'Frostpeak Mine',
     blurb: 'Frozen ponds send you skating, dwarves plant powder kegs, and shieldbearers ward the horde. The Frost Giant comes down the mountain last.',
     planningPoints: 3, waves: TOWN4_WAVES, map: { theme: 'frost' }, unlockStars: 1, bossName: 'Frost Giant',
+    looks: { zombie: 'frostThrall', orc: 'yeti' },
   },
 ];
 
