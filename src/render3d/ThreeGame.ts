@@ -2,9 +2,12 @@
 // GameController + ThreeRenderer per play session.
 //
 // Extra params: &stress=<monsters> (spawns them at once, implies god=1&plan=0, shows perf)
-//               &perf=1 (perf overlay) &shadows=0 &sil=0 (no occlusion silhouettes) &dpr=<max ratio>
-//               &lightning=0 (no lightning strikes in night towns) &lights=<n> (night point-light pool, default 8)
+//               &perf=1 (perf overlay) &shadows=0 &sil=0 (no occlusion silhouettes) &dpr=<max ratio> (fixed:
+//               without it the cap starts at 2 and steps down while frames stay slow, render3d/quality.ts)
+//               &lightning=0 (no lightning strikes in night towns)
 //               &dark=1 (every monster drawn as if out of the light) &eyes=1 (night eyes shown in the light too)
+//               Measuring (tools/measure3d.mjs): &nightdark=0 (no darkness patch) &pools=0 (no ground glow pools)
+//               &trees=0 (no trees or forest rim)
 
 import { SIDES } from '../sim/map';
 import type { MonsterKind } from '../data/monsters';
@@ -15,6 +18,7 @@ import { createSession, getProfile, type SessionData } from '../game/session';
 import type { World } from '../sim/world';
 import { ModelLibrary } from './assets';
 import { preloadModels } from './preload';
+import { PixelRatioGovernor } from './quality';
 import { Stage } from './Stage';
 import { ThreeRenderer, type RenderPerf } from './ThreeRenderer';
 
@@ -23,10 +27,12 @@ export async function startThreeGame(root: HTMLElement) {
   const stress = Number(q.get('stress') ?? 0);
   const silhouettes = q.get('sil') !== '0';
   const lightning = q.get('lightning') !== '0';
-  const lights = q.has('lights') ? Number(q.get('lights')) : undefined;
   const forceDark = q.get('dark') === '1';
   const eyesAlways = q.get('eyes') === '1';
+  const measure = { nightDark: q.get('nightdark') !== '0', pools: q.get('pools') !== '0', trees: q.get('trees') !== '0' };
   const stage = new Stage(root, { shadows: q.get('shadows') !== '0', maxPixelRatio: Number(q.get('dpr') ?? 2) });
+  // Weak GPUs on high-DPI screens: fewer pixels once frames stay slow (an explicit &dpr= stays as given).
+  const governor = q.has('dpr') ? null : new PixelRatioGovernor(2, devicePixelRatio);
   const library = new ModelLibrary();
   // Sounds load in the background while the models load; sessions share the decoded files.
   const sound = new WebAudioBackend();
@@ -47,7 +53,7 @@ export async function startThreeGame(root: HTMLElement) {
     const audio = new GameAudio(sound);
     // Thunder: the slam sound, quieter and an octave down.
     const onThunder = () => audio.play('bossSlam', { volume: 0.35, detune: -1200 });
-    renderer = new ThreeRenderer(stage, library, session.world, { silhouettes, lightning, onThunder, lights, forceDark, eyesAlways });
+    renderer = new ThreeRenderer(stage, library, session.world, { silhouettes, lightning, onThunder, forceDark, eyesAlways, ...measure });
     controller = new GameController({
       session, renderer, audio, profile: getProfile(), root,
       host: { restart: (d) => { pendingRestart = d; } },
@@ -67,6 +73,11 @@ export async function startThreeGame(root: HTMLElement) {
     // A session that failed to start has thrown already; don't throw again every frame.
     if (!controller || !renderer || !world) return;
     const t0 = performance.now();
+    const cap = document.hidden ? null : governor?.frame(now - last);
+    if (cap) {
+      stage.setMaxPixelRatio(cap);
+      console.info(`Frames are slow: pixel ratio capped at ${cap}`);
+    }
     controller.update(now - last);
     meter.frame(now - last, performance.now() - t0, renderer.perf(), world);
     last = now;

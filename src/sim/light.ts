@@ -79,8 +79,8 @@ function glowRadius(m: Unit): number {
   return MONSTERS[m.kind as MonsterKind].light ?? 0;
 }
 
-/** Windows of standing buildings and lit, standing lamp posts. */
-function staticSpots(w: Lightable, out: LightSpot[]) {
+/** Windows of standing buildings and lit, standing lamp posts (blackout or not: the renderer fades them itself). */
+export function staticSpots(w: Lightable, out: LightSpot[]) {
   for (const b of w.buildings) {
     if (b.ruined) continue;
     const { x, y } = windowSpot(b.cells);

@@ -1,8 +1,9 @@
-// Night towns (Lanternwick): darkness by wave, light sources, the light pool and lightning.
+// Night towns (Lanternwick): darkness by wave, light sources, the warm-light map and lightning.
 
 import { describe, expect, it } from 'vitest';
 import {
-  approach, LIGHT_POOL, LIGHTNING, lightningFlash, lightSources, LightSlots, nightLevel, pickLights, type LightSource,
+  approach, DUSK_LIGHT, duskLight, LIGHT_REACH, LIGHT_SHINE, LIGHTNING, lightningFlash, lightSources, linearRgb, nightLevel,
+  pointFalloff, staticLightSources, upsampleInto, WARM_MAP, warmMapValues, type LightSource,
 } from '../../src/render3d/nightLights';
 import { NIGHT } from '../../src/data/night';
 import { mapFromAscii } from '../helpers/mapBuilder';
@@ -76,74 +77,102 @@ describe('lightSources', () => {
   });
 });
 
-describe('pickLights', () => {
-  const lantern = src('lantern', 50, 50, 'lantern');
-  const near = [src('a', 1, 0), src('b', 2, 0), src('c', 3, 0), src('d', 4, 0)];
-
-  it('always picks the lantern first, then the nearest to the centre', () => {
-    const picked = pickLights([...near].reverse().concat(lantern), { x: 0, z: 0 }, 3);
-    expect(picked.map((s) => s.key)).toEqual(['lantern', 'a', 'b']);
-  });
-
-  it('keeps one of the n for the lantern even while there is none', () => {
-    expect(pickLights(near, { x: 0, z: 0 }, 3).map((s) => s.key)).toEqual(['a', 'b']);
-  });
-
-  it('favours sources that already hold a slot, so slots do not flicker between neighbours', () => {
-    const close = [src('a', 1, 0), src('b', 2, 0), src('c', 2.2, 0)];
-    expect(pickLights(close, { x: 0, z: 0 }, 3).map((s) => s.key)).toEqual(['a', 'b']);
-    expect(pickLights(close, { x: 0, z: 0 }, 3, new Set(['c'])).map((s) => s.key)).toEqual(['a', 'c']);
+describe('staticLightSources', () => {
+  it('lists windows and lit lamps only, and keeps them through a blackout (the renderer fades them)', () => {
+    const { world } = litWorld(7, 4, [[5, 5]]);
+    world.blackout = 3;
+    expect(lightSources(world).map((l) => l.kind)).toEqual(['lantern']);
+    expect(staticLightSources(world).map((l) => l.key)).toEqual(['b0', 'b1', 'b2', 'l0']);
   });
 });
 
-describe('LightSlots', () => {
-  it('gives the lantern slot 0 and fades the nearest sources in', () => {
-    const slots = new LightSlots(3, 4);
-    const all = [src('lantern', 0, 0, 'lantern'), src('far', 9, 0), src('a', 1, 0), src('b', 2, 0)];
-    slots.update(all, { x: 0, z: 0 }, 0.1);
-    expect(slots.slots.map((s) => s.source?.key)).toEqual(['lantern', 'a', 'b']);
-    expect(slots.weightOf('a')).toBe(0);
-    for (let k = 0; k < 2; k++) slots.update(all, { x: 0, z: 0 }, 0.1);
-    expect(slots.weightOf('lantern')).toBe(1);
-    expect(slots.weightOf('a')).toBeCloseTo(0.8);
-    expect(slots.weightOf('far')).toBe(0);
+describe('pointFalloff', () => {
+  it("is three.js's physical falloff: inverse power of distance, faded to nothing at the cutoff", () => {
+    expect(pointFalloff(1, 1.5, 100)).toBeCloseTo(1, 3);
+    expect(pointFalloff(2, 2, 100)).toBeCloseTo(0.25, 3);
+    expect(pointFalloff(5, 1.5, 5)).toBe(0);
+    expect(pointFalloff(6, 1.5, 5)).toBe(0);
+    // Never blows up right at the light.
+    expect(pointFalloff(0, 1.5, 5)).toBe(100);
+  });
+});
+
+describe('warmMapValues', () => {
+  const N = 12;
+  const res = WARM_MAP.res;
+  const n = N * res;
+  /** Texel index (RGBA offset) nearest world (x, z). */
+  const texel = (x: number, z: number) => (Math.round((z + 0.5) * res - 0.5) * n + Math.round((x + 0.5) * res - 0.5)) * 4;
+  /** Decoded light arriving (red channel) at world (x, z). */
+  const at = (v: Uint8Array, x: number, z: number) => (v[texel(x, z)] / 255) ** 2 * WARM_MAP.scale;
+  /** Decoded direction to the light at world (x, z): [x, up, z]. */
+  const dirAt = (v: Uint8Array, x: number, z: number) => {
+    const t = texel(x, z);
+    return [v[t] / 127.5 - 1, v[t + 2] / 255, v[t + 1] / 127.5 - 1];
+  };
+
+  it("bakes a lamp's light as its real light would give it: brightest under it, none past its reach", () => {
+    const lamp = src('l', 6, 6);
+    const { color } = warmMapValues([lamp], N);
+    expect(color).toHaveLength(n * n * 4);
+    const under = at(color, 6.25, 6.25);
+    const d = Math.hypot(0.25, 0.25, lamp.y);
+    expect(under).toBeCloseTo(LIGHT_SHINE.lamp.intensity * pointFalloff(d, LIGHT_SHINE.lamp.decay, lamp.radius * LIGHT_REACH), 1);
+    expect(at(color, 8, 6)).toBeLessThan(under);
+    expect(at(color, 6 + lamp.radius * LIGHT_REACH + 0.5, 6)).toBe(0);
+    expect(color[3]).toBe(255);
   });
 
-  it('hands a slot to a newly near source only after the old one has faded out', () => {
-    const slots = new LightSlots(2, 4);
-    const sources = [src('a', 1, 0), src('b', 20, 0)];
-    for (let k = 0; k < 5; k++) slots.update(sources, { x: 0, z: 0 }, 0.1);
-    expect(slots.slots[1].source?.key).toBe('a');
-    // The centre moves next to b: a fades out first...
-    slots.update(sources, { x: 20, z: 0 }, 0.1);
-    expect(slots.slots[1]).toMatchObject({ source: { key: 'a' } });
-    expect(slots.weightOf('a')).toBeCloseTo(0.6);
-    slots.update(sources, { x: 20, z: 0 }, 0.1);
-    expect(slots.slots[1].source?.key).toBe('a');
-    // ...then b takes the slot the moment it is free, and fades in.
-    slots.update(sources, { x: 20, z: 0 }, 0.1);
-    expect(slots.slots[1]).toMatchObject({ source: { key: 'b' }, weight: 0 });
-    slots.update(sources, { x: 20, z: 0 }, 0.1);
-    expect(slots.weightOf('b')).toBeCloseTo(0.4);
+  it('records where the light comes from: towards the lamp, and from higher up the nearer it is', () => {
+    const { dir } = warmMapValues([src('l', 6, 6)], N);
+    const east = dirAt(dir, 8.25, 6.25);
+    expect(east[0]).toBeLessThan(-0.5);
+    expect(Math.abs(east[2])).toBeLessThan(0.2);
+    const south = dirAt(dir, 6.25, 3.75);
+    expect(south[2]).toBeGreaterThan(0.5);
+    expect(dirAt(dir, 6.25, 6.25)[1]).toBeGreaterThan(dirAt(dir, 8.25, 6.25)[1]);
+    // Lights on both sides: the directions cancel, leaving light from all round (a short vector).
+    const both = warmMapValues([src('a', 4.25, 6.25), src('b', 8.25, 6.25)], N).dir;
+    expect(Math.abs(dirAt(both, 6.25, 6.25)[0])).toBeLessThan(0.02);
   });
 
-  it('keeps a constant number of slots however many sources there are', () => {
-    const slots = new LightSlots();
-    const many = Array.from({ length: 40 }, (_, k) => src(`s${k}`, k, 0));
-    slots.update(many, { x: 0, z: 0 }, 1);
-    expect(slots.slots).toHaveLength(LIGHT_POOL);
-    expect(slots.slots.slice(1).every((s) => s.source)).toBe(true);
-    // No lantern: slot 0 stays empty rather than going to a lamp.
-    expect(slots.slots[0].source).toBeNull();
+  it('adds overlapping lights, in their own (linear) colour', () => {
+    const one = warmMapValues([src('a', 5, 6)], N).color;
+    const two = warmMapValues([src('a', 5, 6), src('b', 7, 6)], N).color;
+    expect(at(two, 6, 6)).toBeGreaterThan(at(one, 6, 6));
+    const warm = warmMapValues([{ ...src('w', 6, 6, 'window'), color: 0xff8000 }], N).color;
+    const t = texel(6, 6);
+    expect(warm[t]).toBeGreaterThan(warm[t + 1]);
+    expect(warm[t + 2]).toBe(0);
   });
 
-  it('follows a moving source (the walking knight)', () => {
-    const { world, knight } = litWorld();
-    const slots = new LightSlots(4);
-    slots.update(lightSources(world), { x: knight.x, z: knight.y }, 0.1);
-    knight.x += 2;
-    slots.update(lightSources(world), { x: knight.x, z: knight.y }, 0.1);
-    expect(slots.slots[0].source?.x).toBe(knight.x);
+  it('is empty with no lights', () => {
+    const { color } = warmMapValues([], N);
+    expect(color.filter((_, k) => k % 4 !== 3).every((x) => x === 0)).toBe(true);
+  });
+});
+
+describe('upsampleInto', () => {
+  it('upsamples a per-cell map so bilinear sampling still gives its surface: values at cell edges are kept', () => {
+    // A lit/dark edge between cells 1 and 2 (2/3 → 1/3, as the light map's blur leaves it).
+    const values = new Uint8Array([170, 170, 85, 85]);
+    const out = new Uint8Array(2 * 4 * 4).fill(7);
+    upsampleInto(values, 4, 2, out, 3);
+    const alpha = Array.from({ length: 8 }, (_, t) => out[t * 4 + 3]);
+    // Texels 3 and 4 sit a quarter cell either side of the edge at 1.5: mean = the edge's value.
+    expect((alpha[3] + alpha[4]) / 2).toBeCloseTo(127.5, 0);
+    expect(alpha[0]).toBe(170);
+    expect(alpha[7]).toBe(85);
+    expect(out[0]).toBe(7);
+  });
+});
+
+describe('linearRgb and duskLight', () => {
+  it('converts sRGB hex to linear like three.js, and lights are dimmer at dusk', () => {
+    expect(linearRgb(0xffffff)).toEqual([1, 1, 1]);
+    expect(linearRgb(0x808080)[0]).toBeCloseTo(0.2159, 3);
+    expect(duskLight(0)).toBe(DUSK_LIGHT);
+    expect(duskLight(1)).toBe(1);
   });
 });
 

@@ -25,6 +25,9 @@ const NIGHT_GRADE = {
   fog: { near: 58, far: 122 },
 };
 
+/** Sun/moon shadow map size (texels a side). */
+const SHADOW_MAP = { day: 2048, night: 1024 };
+
 export interface DrawInfo {
   calls: number;
   triangles: number;
@@ -49,6 +52,7 @@ export class Stage {
   private readonly harvestMix = new THREE.Color();
   private readonly harvestTo = new THREE.Color();
   private shakeLeft = 0;
+  private frame = 0;
   private shakeIntensity = 0;
 
   constructor(private readonly parent: HTMLElement, opts: StageOptions) {
@@ -65,11 +69,17 @@ export class Stage {
     this.scene.add(this.ambient);
     // Upper-left of the screen and slightly in front, like the Sketch tiles and the bake.
     this.sun.castShadow = opts.shadows;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(SHADOW_MAP.day, SHADOW_MAP.day);
     this.sun.shadow.bias = -0.0015;
     this.scene.add(this.sun, this.sun.target);
 
     addEventListener('resize', this.resize);
+    this.resize();
+  }
+
+  /** Caps the pixel ratio (the automatic quality step-down). */
+  setMaxPixelRatio(max: number) {
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, max));
     this.resize();
   }
 
@@ -80,6 +90,13 @@ export class Stage {
   /** Lighting and backdrop for a town's look (meadow by day, graveyard at dusk, frost on a cold bright morning, night by moonlight). */
   setTheme(theme: Theme) {
     this.night = theme === 'night';
+    // By moonlight shadows only show inside the lamps' light, and softly: a quarter of the shadow map does.
+    const shadowSize = this.night ? SHADOW_MAP.night : SHADOW_MAP.day;
+    if (this.sun.shadow.mapSize.x !== shadowSize) {
+      this.sun.shadow.mapSize.set(shadowSize, shadowSize);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
     if (theme === 'night') {
       this.scene.fog = new THREE.Fog(NIGHT_GRADE.night.sky, NIGHT_GRADE.fog.near, NIGHT_GRADE.fog.far);
       this.setNight(0, 0);
@@ -143,6 +160,10 @@ export class Stage {
 
   render(dt = 0): DrawInfo {
     this.applyShake(dt);
+    // By moonlight the shadow map is redrawn every other frame (a moving shadow lags a frame, unseen in the dark).
+    this.frame++;
+    this.renderer.shadowMap.autoUpdate = !this.night;
+    if (this.night) this.renderer.shadowMap.needsUpdate = this.frame % 2 === 1;
     this.renderer.info.reset();
     this.renderer.render(this.scene, this.camera);
     return { calls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles };

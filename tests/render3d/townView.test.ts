@@ -101,3 +101,24 @@ describe('TownView at night', () => {
     expect(windowMeshes(view, b.id)).toHaveLength(0);
   });
 });
+
+describe('TownView decor', () => {
+  it('instances trees and rocks by model (one batch per model, however many), but keeps lamp posts their own', () => {
+    const calls: { model: string; count: number; castShadow: boolean }[] = [];
+    let clones = 0;
+    const library = {
+      clone: () => { clones++; return fakeLibrary.clone('x'); },
+      instanced: (model: string, ts: THREE.Matrix4[], castShadow = false) => { calls.push({ model, count: ts.length, castShadow }); return new THREE.Group(); },
+    } as unknown as ModelLibrary;
+    const { world } = aWorld().withTownMap(generateTown(1, { theme: 'night' })).build();
+    clones = 0;
+    new TownView(library, world.map, new Particles());
+    const trees = world.map.decor.filter((d) => d.kind === 'tree').length;
+    const lamps = world.map.decor.filter((d) => d.kind === 'lamp').length;
+    expect(trees).toBeGreaterThan(30);
+    const decorCalls = calls.filter((c) => c.castShadow);
+    expect(decorCalls.reduce((a, c) => a + c.count, 0)).toBeGreaterThanOrEqual(trees);
+    expect(new Set(decorCalls.map((c) => c.model)).size).toBe(decorCalls.length);
+    expect(clones).toBe(lamps);
+  });
+});

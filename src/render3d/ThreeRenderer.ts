@@ -28,7 +28,7 @@ import type { Stage } from './Stage';
 import { TownView } from './TownView';
 import { FrostView } from './FrostView';
 import { PumpkinView } from './PumpkinView';
-import { installNightDark } from './nightDark';
+import { disableNightDark, installNightDark } from './nightDark';
 import { NightView } from './NightView';
 import { TrapView } from './TrapView';
 import { CHAR_HEIGHT, CHAR_SCALE, HALO_ROOKIE, UnitBatches } from './UnitBatches';
@@ -66,12 +66,14 @@ export interface ThreeRendererOptions {
   lightning?: boolean;
   /** Night towns: called for the thunder after a lightning strike. */
   onThunder?: () => void;
-  /** Night towns: size of the real point-light pool (`&lights=<n>`; default 8). */
-  lights?: number;
   /** Debug (`&dark=1`): every monster drawn as if out of the light. */
   forceDark?: boolean;
   /** Debug (`&eyes=1`): night eyes shown in the light too. */
   eyesAlways?: boolean;
+  /** Measuring: `&nightdark=0` leaves the darkness patch out, `&pools=0` the glow pools, `&trees=0` the trees. */
+  nightDark?: boolean;
+  pools?: boolean;
+  trees?: boolean;
 }
 
 /** Per-frame cost, for the perf overlay and tools/measure3d.mjs. */
@@ -104,7 +106,7 @@ export class ThreeRenderer implements Renderer {
   private readonly frost: FrostView;
   /** The Pumpkin King's pumpkins in flight and the fires they leave. */
   private readonly pumpkins: PumpkinView;
-  /** Night towns only (Lanternwick): moonlight, real lights, glow pools and lightning. */
+  /** Night towns only (Lanternwick): moonlight, night light, glow pools and lightning. */
   private readonly night: NightView | null;
   private readonly labels: Labels;
   private debug: DebugOverlay3D | null = null;
@@ -119,13 +121,14 @@ export class ThreeRenderer implements Renderer {
 
   constructor(private readonly stage: Stage, library: ModelLibrary, world: World, opts: ThreeRendererOptions) {
     // Real darkness (night towns) patches every lit material once, before anything compiles.
+    if (opts.nightDark === false) disableNightDark();
     installNightDark();
     const theme = world.map.theme ?? 'meadow';
     stage.setTheme(theme);
     this.dustColor = DASH_DUST[theme];
     this.gear = knightGear(world);
     stage.setView(fitView(world.map));
-    this.town = new TownView(library, world.map, this.particles);
+    this.town = new TownView(library, world.map, this.particles, { trees: opts.trees });
     this.units = new UnitBatches(library, {
       silhouettes: opts.silhouettes, nightEyes: theme === 'night', forceDark: opts.forceDark, eyesAlways: opts.eyesAlways,
     });
@@ -135,7 +138,7 @@ export class ThreeRenderer implements Renderer {
     this.knight = new KnightVisuals(this.particles, this.effects, this.dustColor);
     this.townFx = new TownVisuals(this.particles);
     this.labels = new Labels(stage, stage.canvas.parentElement!);
-    this.night = theme === 'night' ? new NightView(stage, world, { lightning: opts.lightning ?? true, onThunder: opts.onThunder, lights: opts.lights }) : null;
+    this.night = theme === 'night' ? new NightView(stage, world, { lightning: opts.lightning ?? true, onThunder: opts.onThunder, pools: opts.pools }) : null;
     // Faceted sapphire, as in the sprite renderer.
     this.gems = new THREE.InstancedMesh(
       new THREE.OctahedronGeometry(0.1),

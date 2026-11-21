@@ -4,8 +4,10 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { NIGHT } from '../../src/data/night';
-import { applyNightDark, lanternLight, LightMap, lightMapValues, MAX_GLOWS, NIGHT_UNIFORMS, glowCircles, setGlows } from '../../src/render3d/nightDark';
-import { BLACKOUT_FX, BlackoutFlicker } from '../../src/render3d/nightLights';
+import {
+  applyNightDark, glowCircles, lanternLight, LightMap, lightMapValues, lightsBeginSkippingDarkShadows, MAX_GLOWS, NIGHT_UNIFORMS, setGlows, SUN_SHADOW_TEST,
+} from '../../src/render3d/nightDark';
+import { BLACKOUT_FX, BlackoutFlicker, DUSK_LIGHT, LIGHT_SHINE, WARM_MAP } from '../../src/render3d/nightLights';
 import { igniteFire } from '../../src/sim/fire';
 import { isLit } from '../../src/sim/light';
 import { fieldRows } from '../helpers/mapBuilder';
@@ -65,9 +67,13 @@ describe('LightMap', () => {
     const w = lampWorld();
     const map = new LightMap(N);
     map.update(w, camera(), 0.7);
+    // The lit map rides in the alpha of the (finer) direction map.
     const rgba = map.texture.image.data as Uint8Array;
-    expect(rgba[(10 * N + 10) * 4]).toBe(255);
-    expect(rgba[(2 * N + 2) * 4]).toBe(0);
+    const n = N * WARM_MAP.res;
+    const lit = (i: number, j: number) => rgba[((j * WARM_MAP.res) * n + i * WARM_MAP.res) * 4 + 3];
+    expect(map.texture.image.width).toBe(n);
+    expect(lit(10, 10)).toBe(255);
+    expect(lit(2, 2)).toBe(0);
     expect(NIGHT_UNIFORMS.vdLightMap.value).toBe(map.texture);
     expect(NIGHT_UNIFORMS.vdLantern.value.toArray()).toEqual([N - 1, N - 1, NIGHT.radius.lantern, N]);
     expect(NIGHT_UNIFORMS.vdNight.value.x).toBe(0.7);
@@ -78,32 +84,77 @@ describe('LightMap', () => {
     w.players[0].state = 'dead';
     map.update(w, camera(), 1);
     expect(map.texture.version).toBeGreaterThan(v0);
-    expect(rgba[(10 * N + 10) * 4]).toBe(0);
+    expect(lit(10, 10)).toBe(0);
     expect(NIGHT_UNIFORMS.vdLantern.value.z).toBe(0);
 
     map.dispose();
     expect(NIGHT_UNIFORMS.vdNight.value.x).toBe(0);
+    expect(NIGHT_UNIFORMS.vdWarm.value.y).toBe(0);
+  });
+
+  it("bakes the lamps' warm light, rebuilt only when a light comes or goes, and dims every light at dusk", () => {
+    const w = lampWorld();
+    const map = new LightMap(N);
+    map.update(w, camera(), 1, 1, 0, undefined, 0);
+    const n = N * WARM_MAP.res;
+    const warm = map.warmTexture.image.data as Uint8Array;
+    const texel = (i: number, j: number) => warm[((j * WARM_MAP.res) * n + i * WARM_MAP.res) * 4];
+    expect(texel(10, 10)).toBeGreaterThan(100);
+    expect(texel(2, 2)).toBe(0);
+    expect(NIGHT_UNIFORMS.vdWarmMap.value).toBe(map.warmTexture);
+    // On in a night town; the light map's brightness is the dusk dimming × the blackout flicker.
+    expect(NIGHT_UNIFORMS.vdWarm.value.toArray()).toEqual([DUSK_LIGHT, 1, 0]);
+    expect(NIGHT_UNIFORMS.vdLanternColor.value.x).toBeCloseTo(LIGHT_SHINE.lantern.intensity * DUSK_LIGHT, 4);
+
+    const v0 = map.warmTexture.version;
+    map.update(w, camera(), 1);
+    expect(map.warmTexture.version).toBe(v0);
+    w.debugSetLamp(0, false);
+    map.update(w, camera(), 1);
+    expect(map.warmTexture.version).toBeGreaterThan(v0);
+    expect(texel(10, 10)).toBe(0);
+    map.dispose();
   });
 });
 
 describe('applyNightDark', () => {
   const shader = (fragment: string) => ({ uniforms: {}, vertexShader: '', fragmentShader: fragment }) as unknown as THREE.WebGLProgramParametersWithUniforms;
 
-  it('darkens the light a lit material receives, not its glow', () => {
-    const s = shader('#include <common>\nvoid main() {\n#include <lights_fragment_end>\n}');
+  const lit = () => shader('#include <common>\nvoid main() {\n#include <lights_fragment_begin>\n#include <lights_fragment_end>\n}');
+
+  it('lights a lit material with the warm light and darkens what it receives, not its glow', () => {
+    const s = lit();
     applyNightDark(s);
+    expect(s.fragmentShader).toContain('reflectedLight.directDiffuse += vdWarmLight * BRDF_Lambert(material.diffuseColor)');
     expect(s.fragmentShader).toContain('reflectedLight.directDiffuse *= vdK');
     expect(s.fragmentShader).not.toContain('totalEmissiveRadiance *=');
-    expect(Object.keys(s.uniforms)).toEqual(expect.arrayContaining(['vdLightMap', 'vdLantern', 'vdNight', 'vdViewInverse']));
+    expect(Object.keys(s.uniforms)).toEqual(expect.arrayContaining(['vdLightMap', 'vdWarmMap', 'vdLantern', 'vdNight', 'vdWarm', 'vdViewInverse']));
+  });
+
+  it('works out the world position per vertex, not per pixel', () => {
+    const s = lit();
+    s.vertexShader = '#include <common>\nvoid main() {\n#include <project_vertex>\n}';
+    applyNightDark(s);
+    expect(s.vertexShader).toContain('vdWorldPos = (vdViewInverse * mvPosition).xyz;');
+    expect(s.fragmentShader).toContain('vdNightLight(vdWorldPos, normal, vdK, vdWarmLight)');
+  });
+
+  it("skips the moon's shadow lookup where it is too dark to see", () => {
+    expect(THREE.ShaderChunk.lights_fragment_begin).toContain(SUN_SHADOW_TEST);
+    expect(lightsBeginSkippingDarkShadows()).toContain('( directLight.visible && receiveShadow && vdShadow ) ? getShadow( directionalShadowMap[ i ]');
+    const s = lit();
+    applyNightDark(s);
+    expect(s.fragmentShader).toContain('bool vdShadow = vdK > ');
+    expect(s.fragmentShader).not.toContain('#include <lights_fragment_begin>');
   });
 
   it('leaves unlit materials alone, and honours a per-fragment exemption', () => {
     const basic = shader('#include <common>\nvoid main() {\n#include <opaque_fragment>\n}');
     applyNightDark(basic);
-    expect(basic.fragmentShader).not.toContain('vdDarkness');
-    const unit = shader('#include <common>\nvoid main() {\n#include <lights_fragment_end>\n}');
+    expect(basic.fragmentShader).not.toContain('vdNightLight');
+    const unit = lit();
     applyNightDark(unit, 'vUnitFx.z < -0.5');
-    expect(unit.fragmentShader).toContain('(vUnitFx.z < -0.5) ? 1.0 : vdDarkness(geometryPosition)');
+    expect(unit.fragmentShader).toContain('if (vUnitFx.z < -0.5) vdK = 1.0;');
   });
 });
 
@@ -113,8 +164,13 @@ describe("will-o'-wisps in the light map", () => {
       .withMonster('wisp', 5, 5).withMonster('wisp', 8, 9).withMonster('zombie', 3, 3).build();
     monsters[1].state = 'dead';
     const slots = Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4(9, 9, 9, 9));
-    setGlows(slots, glowCircles(world), world.players[0]);
+    const colors = Array.from({ length: MAX_GLOWS }, () => new THREE.Vector3(9, 9, 9));
+    expect(setGlows(slots, glowCircles(world), world.players[0], colors, 0.5)).toBe(1);
     expect(slots[0].toArray()).toEqual([5, 5, NIGHT.radius.wisp, 1]);
+    // Its light: the wisp's colour × intensity × strength × dusk; spare slots give none.
+    expect(colors[0].y).toBeGreaterThan(colors[0].x);
+    expect(Math.max(colors[0].x, colors[0].y, colors[0].z)).toBeLessThanOrEqual(LIGHT_SHINE.wisp.intensity * 0.5);
+    expect(colors[1].toArray()).toEqual([0, 0, 0]);
     for (const s of slots.slice(1)) expect(s.z).toBe(0);
     expect(isLit(world, 5 + NIGHT.radius.wisp - 0.2, 5)).toBe(true);
   });
@@ -154,7 +210,7 @@ describe("the Pumpkin King's fires and blackout in the light map", () => {
     const sh = { uniforms: {}, vertexShader: '', fragmentShader: '#include <common>\n#include <lights_fragment_end>' } as unknown as THREE.WebGLProgramParametersWithUniforms;
     applyNightDark(sh);
     expect(sh.fragmentShader).toContain('* vdNight.z');
-    expect(sh.fragmentShader).toContain('* vdGlows[i].w');
+    expect(sh.fragmentShader).toContain('* g.w');
   });
 });
 

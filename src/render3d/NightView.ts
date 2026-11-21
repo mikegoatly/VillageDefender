@@ -1,9 +1,9 @@
-// Night towns (Lanternwick): the moonlight grade as night falls wave by wave, a fixed pool of real
-// point lights handed to the light sources nearest the knight (nightLights.ts), soft glow pools on
-// the ground under every window and lamp so far-off lights still read as lit, glowing lamp heads, and
-// lightning. In the Pumpkin King's fight: the harvest-moon grade, the blackout (windows, lamps and wisps
-// stutter, go out and stutter back, following the sim's blackout) and his fires' flickering light.
-// Only built for night towns; the light count never changes, so shaders never recompile.
+// Night towns (Lanternwick): the moonlight grade as night falls wave by wave, the night light (warm
+// light and real darkness, drawn by the shader patch in nightDark.ts: no real lights), soft glow pools
+// on the ground under every window and lamp, glowing lamp heads, and lightning. In the Pumpkin King's
+// fight: the harvest-moon grade, the blackout (windows, lamps and wisps stutter, go out and stutter
+// back, following the sim's blackout) and his fires' flickering light.
+// Only built for night towns; nothing here changes the shaders, so they never recompile.
 
 import * as THREE from 'three';
 import type { World } from '../sim/world';
@@ -13,34 +13,20 @@ import { LightMap, REAL_DARK } from './nightDark';
 import { LAMP } from './buildings';
 import { CAMERA_DIR } from './camera';
 import {
-  approach, BlackoutFlicker, fireLight, LIGHT_POOL, LIGHTNING, lightningFlash, lightSources, LightSlots, nightLevel, type LightKind, type LightSource,
+  approach, BlackoutFlicker, fireLight, LIGHTNING, lightningFlash, lightSources, nightLevel, type LightSource,
 } from './nightLights';
 import type { Stage } from './Stage';
 
 /** How fast the shown night level follows the wave (level per second): a third of the way takes ~3 s. */
 const NIGHT_RATE = 0.12;
-/**
- * Real lights by kind: peak intensity and decay (three.js physical units). Lights are dimmer at dusk
- * (`dusk` × at level 0, full at level 1).
- */
-const LIGHTS: Record<LightKind, { intensity: number; decay: number }> = {
-  lantern: { intensity: 5, decay: 1.4 },
-  window: { intensity: 2.6, decay: 1.5 },
-  lamp: { intensity: 4, decay: 1.5 },
-  wisp: { intensity: 2.2, decay: 1.6 },
-  fire: { intensity: 7, decay: 1.4 },
-};
 /** The harvest moon comes up over this many seconds once the boss wave starts; the dark is this much less deep under it. */
 const HARVEST = { rate: 0.25, floorLift: 0.4 };
-const DUSK_LIGHT = 0.55;
-/** A real light reaches this × the sim's lit radius, so it is still clearly bright at the lit edge. */
-const LIGHT_REACH = 1.35;
 /**
  * Ground glow under every window and lamp (additive, unlit): `size` × the source's (sim) radius across,
- * so the glow's visible edge sits about where the light stops counting; weaker at dusk, and mostly
- * handed over to the real light where one is lit (`real` of it fades).
+ * so the glow's visible edge sits about where the light stops counting; weaker at dusk, and `lit` of it
+ * left on top of the warm light the shader already gives the ground there.
  */
-const POOL = { size: 2.5, y: 0.025, dusk: 0.22, night: 0.5, real: 0.6 };
+const POOL = { size: 2.5, y: 0.025, dusk: 0.22, night: 0.5, lit: 0.4 };
 /** Planning: a ring on the ground at each dark post's light radius (gold once oil lights it, white when selected). */
 const RING = { y: 0.04, width: 0.08, dark: 0x8fa6d8, lit: 0xffc860, selected: 0xffffff, opacity: 0.85 };
 /** Lamp heads: a small glowing core and a camera-facing halo. */
@@ -48,18 +34,16 @@ const LAMP_GLOW = { color: 0xffe0a0, core: 0.085, halo: 0.75, haloColor: 0xffc07
 const POOL_CAPACITY = 256;
 
 export interface NightViewOptions {
-  /** Real point lights in the pool (default LIGHT_POOL; `&lights=<n>`, at least 1 for the lantern). */
-  lights?: number;
   /** Random lightning strikes (`&lightning=0` turns them off, for screenshots). */
   lightning: boolean;
   /** Called a moment after each strike (a low thunder rumble). */
   onThunder?: () => void;
+  /** Measuring (`&pools=0`): no ground glow pools. */
+  pools?: boolean;
 }
 
 export class NightView {
   readonly root = new THREE.Group();
-  private readonly slots: LightSlots;
-  private readonly lights: THREE.PointLight[];
   private readonly pools: THREE.InstancedMesh;
   private readonly heads: THREE.InstancedMesh;
   private readonly halos: THREE.InstancedMesh;
@@ -89,14 +73,7 @@ export class NightView {
   private readonly c = new THREE.Color();
 
   constructor(private readonly stage: Stage, world: World, private readonly opts: NightViewOptions) {
-    this.slots = new LightSlots(Math.max(1, Math.round(opts.lights ?? LIGHT_POOL)));
     this.nextStrike = randomBetween(...LIGHTNING.every);
-    this.lights = Array.from({ length: this.slots.size }, () => {
-      const l = new THREE.PointLight(0xffffff, 0, 1, 1.5);
-      l.castShadow = false;
-      this.root.add(l);
-      return l;
-    });
 
     const glowTex = this.own(radialTexture());
     const additive = (color = 0xffffff) => this.own(new THREE.MeshBasicMaterial({
@@ -106,6 +83,7 @@ export class NightView {
     this.pools.frustumCulled = false;
     this.pools.renderOrder = 1;
     this.pools.count = 0;
+    this.pools.visible = opts.pools !== false;
 
     // Lamp heads: one per post, hidden while the post is dark or knocked over (syncLamps).
     const lamps = world.lamps;
@@ -165,33 +143,14 @@ export class NightView {
       this.fireLights.set(`f${f.id}`, fireLight(PUMPKIN_KING.fire.time - left, left, this.clock, f.id));
     }
     const kindK = (s: LightSource) => (s.kind === 'fire' ? this.fireLights.get(s.key) ?? 0 : s.kind === 'lantern' ? 1 : staticK);
-
     const sources = lightSources(world);
-    const k = world.players[0];
-    const centre = k && k.state !== 'dead' ? { x: k.x, z: k.y } : { x: world.map.centre, z: world.map.centre };
-    this.slots.update(sources, centre, dt);
-    const dusk = DUSK_LIGHT + (1 - DUSK_LIGHT) * this.level;
-    this.slots.slots.forEach((slot, i) => {
-      const light = this.lights[i];
-      const s = slot.source;
-      if (!s || slot.weight <= 0) {
-        light.intensity = 0;
-        return;
-      }
-      const spec = LIGHTS[s.kind];
-      light.position.set(s.x, s.y, s.z);
-      light.color.setHex(s.color);
-      light.distance = s.radius * LIGHT_REACH;
-      light.decay = spec.decay;
-      light.intensity = spec.intensity * slot.weight * dusk * kindK(s);
-    });
     this.syncPools(sources, kindK);
     this.syncLamps(world);
     this.headMat.color.copy(this.headColor).multiplyScalar(staticK);
     this.haloMat.color.setScalar(staticK);
     // Real darkness comes in with the sim's darkness rules (wave 3), eased with the shown night level.
     const floor = REAL_DARK.floor * (1 + HARVEST.floorLift * this.harvest);
-    this.lightMap.update(world, this.stage.camera, darknessStrength(this.level), staticK, this.clock, floor);
+    this.lightMap.update(world, this.stage.camera, darknessStrength(this.level), staticK, this.clock, floor, this.level);
   }
 
   /** Debug/screenshots: hold the lightning at full flash (true) or let it go (false). */
@@ -246,13 +205,13 @@ export class NightView {
     }
   }
 
-  /** A warm pool on the ground under every window and lamp, weaker where a real light already shines. */
+  /** A warm pool on the ground under every window and lamp (the shader lights the ground there too). */
   private syncPools(sources: readonly LightSource[], kindK: (s: LightSource) => number) {
     const strength = POOL.dusk + (POOL.night - POOL.dusk) * this.level;
     let n = 0;
     for (const s of sources) {
       if (s.kind === 'lantern' || n >= POOL_CAPACITY) continue;
-      const w = (1 - POOL.real * this.slots.weightOf(s.key)) * kindK(s);
+      const w = POOL.lit * kindK(s);
       this.pools.setMatrixAt(n, this.m.compose(this.v.set(s.x, POOL.y, s.z), this.q.identity(), this.s.setScalar(s.radius * POOL.size)));
       this.pools.setColorAt(n, this.c.setHex(s.color).multiplyScalar(strength * w));
       n++;

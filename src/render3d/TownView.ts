@@ -146,7 +146,7 @@ export class TownView {
   private readonly windowMat: THREE.MeshBasicMaterial | null;
   private readonly windowLit = new THREE.Color(WINDOW_GLOW.color);
 
-  constructor(private readonly library: ModelLibrary, private readonly map: TownMap, private readonly particles: Particles) {
+  constructor(private readonly library: ModelLibrary, private readonly map: TownMap, private readonly particles: Particles, private readonly opts: { trees?: boolean } = {}) {
     this.windowMat = map.theme === 'night' ? this.own(new THREE.MeshBasicMaterial({ color: WINDOW_GLOW.color })) : null;
     this.makeGround();
     this.makeDecor();
@@ -460,16 +460,43 @@ export class TownView {
     out.get(model)!.push(t);
   }
 
+  /**
+   * Trees, rocks and the like: instanced, one draw call per model part however many there are (the
+   * night town's forest rim alone is ~70 trees). Lamp posts stay their own objects, so a knocked-over
+   * one can be tipped.
+   */
   private makeDecor() {
-    const rockGeo = this.own(new THREE.DodecahedronGeometry(0.35));
-    const rockMat = this.own(new THREE.MeshStandardMaterial({ color: 0x9a948c, flatShading: true }));
-    markOccluder(rockMat);
+    const byModel = new Map<string, THREE.Matrix4[]>();
+    const holder = new THREE.Object3D();
     for (const d of this.map.decor) {
+      if (d.kind === 'tree' && this.opts.trees === false) continue;
       const p = decorPiece(d, this.map.theme);
-      const o = p.model === ROCK ? new THREE.Mesh(rockGeo, rockMat) : this.library.clone(p.model);
-      o.castShadow = true;
-      this.root.add(this.place(o, p));
-      if (d.kind === 'lamp') this.lampPosts.set(`${d.i},${d.j}`, o);
+      if (d.kind === 'lamp') {
+        const o = this.library.clone(p.model);
+        o.castShadow = true;
+        this.root.add(this.place(o, p));
+        this.lampPosts.set(`${d.i},${d.j}`, o);
+        continue;
+      }
+      holder.position.set(0, 0, 0);
+      holder.scale.setScalar(1);
+      this.place(holder, p).updateMatrix();
+      if (!byModel.has(p.model)) byModel.set(p.model, []);
+      byModel.get(p.model)!.push(holder.matrix.clone());
+    }
+    for (const [model, transforms] of byModel) {
+      if (model !== ROCK) {
+        this.addInstanced(model, transforms, true);
+        continue;
+      }
+      const rockMat = this.own(new THREE.MeshStandardMaterial({ color: 0x9a948c, flatShading: true }));
+      markOccluder(rockMat);
+      const rocks = new THREE.InstancedMesh(this.own(new THREE.DodecahedronGeometry(0.35)), rockMat, transforms.length);
+      transforms.forEach((t, k) => rocks.setMatrixAt(k, t));
+      rocks.castShadow = true;
+      rocks.receiveShadow = true;
+      this.instanced.push(rocks);
+      this.root.add(rocks);
     }
   }
 
