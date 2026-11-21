@@ -80,6 +80,8 @@ const NIGHT_SCATTER: [string, number, number][] = [
  */
 const WINDOW_GLOW = {
   color: 0xffb85c,
+  /** Unlit glass (the Pumpkin King's blackout). */
+  dark: 0x1c1a26,
   stone: { x: 0.47, y: 0.5, w: 0.42, h: 0.38, cross: 0.035 },
   wood: { x: 0.503, y: 0.5, w: 0.3, h: 0.34, cross: 0 },
 };
@@ -142,6 +144,7 @@ export class TownView {
 
   /** Night only: the lit-window material (shared by every building's merged panes). */
   private readonly windowMat: THREE.MeshBasicMaterial | null;
+  private readonly windowLit = new THREE.Color(WINDOW_GLOW.color);
 
   constructor(private readonly library: ModelLibrary, private readonly map: TownMap, private readonly particles: Particles) {
     this.windowMat = map.theme === 'night' ? this.own(new THREE.MeshBasicMaterial({ color: WINDOW_GLOW.color })) : null;
@@ -216,6 +219,11 @@ export class TownView {
   topOf(id: number): { x: number; y: number; z: number } {
     const v = this.views[id];
     return { x: v.cx, y: wallLevels(v.def, v.look?.role ?? null) + 1.05, z: v.cz };
+  }
+
+  /** Night: how bright the lit windows are, 0..1 (the blackout puts them out and they stutter back). */
+  setWindowLight(k: number) {
+    this.windowMat?.color.setHex(WINDOW_GLOW.dark).lerp(this.windowLit, k);
   }
 
   /** Planning shows auras strongly; during play they stay faint. */

@@ -138,6 +138,19 @@ export interface Lamp {
   snuffed?: boolean;
 }
 
+/** A burning patch where a Pumpkin King's pumpkin landed: hurts friendlies in it and is a light (night towns). */
+export interface Fire {
+  id: number;
+  x: number;
+  y: number;
+  /** Friendlies within this (plus their own radius) are burnt. */
+  radius: number;
+  /** World time it burns out. */
+  until: number;
+  /** Seconds until the next burn. */
+  pulseIn: number;
+}
+
 /** A set trap (decision 52): hurts monsters in its radius until its damage budget is spent. */
 export interface Trap {
   id: number;
@@ -208,8 +221,12 @@ export type SimEvent =
   | { type: 'bossSlamWarn'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'bossSlam'; unit: number; x: number; y: number; radius: number }
   | { type: 'bossCharge'; unit: number; building: number }
-  | { type: 'bossBoulderWarn'; unit: number; x: number; y: number; radius: number; time: number }
-  | { type: 'bossBoulder'; unit: number; x: number; y: number; radius: number }
+  | { type: 'bossBoulderWarn'; unit: number; x: number; y: number; radius: number; time: number; pumpkin?: true }
+  | { type: 'bossBoulder'; unit: number; x: number; y: number; radius: number; pumpkin?: true }
+  | { type: 'fireStart'; fire: number; x: number; y: number; radius: number; time: number }
+  | { type: 'blackoutWarn'; unit: number; time: number }
+  | { type: 'blackout'; time: number }
+  | { type: 'lightsBack' }
   | { type: 'bossSummon'; unit: number; count: number; side: Side }
   | { type: 'wailWarn'; unit: number; x: number; y: number; radius: number; time: number }
   | { type: 'wail'; unit: number; x: number; y: number; radius: number }

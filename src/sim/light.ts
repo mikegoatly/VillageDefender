@@ -2,9 +2,10 @@
 // posts can be lit with oil while planning and get knocked over by big monsters. Everywhere else
 // (and at dusk, before NIGHT.darkFrom) everything counts as lit, so other towns are untouched.
 //
-// Sources: the knight's lantern and each living will-o'-wisp (moving: checked exactly, every call),
-// each standing building's window light and each lit lamp post (stamped into a per-cell grid, rebuilt
-// only when one changes).
+// Sources: the knight's lantern, each living will-o'-wisp and each fire the Pumpkin King's pumpkins
+// leave (moving or short-lived: checked exactly, every call), each standing building's window light and
+// each lit lamp post (stamped into a per-cell grid, rebuilt only when one changes). During the Pumpkin
+// King's blackout (world.blackout) only the lantern and the fires give light.
 // render3d/nightLights.ts draws the same list, so what looks lit is what is lit.
 
 import { MONSTERS, type MonsterKind } from '../data/monsters';
@@ -12,7 +13,7 @@ import { NIGHT, nightLevel } from '../data/night';
 import type { Lamp, Unit } from './model';
 import type { World } from './world';
 
-export type LightKind = 'lantern' | 'window' | 'lamp' | 'wisp';
+export type LightKind = 'lantern' | 'window' | 'lamp' | 'wisp' | 'fire';
 
 export interface LightSpot {
   /** Stable id while the source exists. */
@@ -26,7 +27,7 @@ export interface LightSpot {
 }
 
 /** The world state that light depends on. */
-export type Lightable = Pick<World, 'players' | 'buildings' | 'lamps' | 'map' | 'glows'>;
+export type Lightable = Pick<World, 'players' | 'buildings' | 'lamps' | 'map' | 'glows' | 'fires' | 'blackout'>;
 
 /** True in night towns. */
 export function isNight(w: Pick<World, 'map'>): boolean {
@@ -54,15 +55,22 @@ export function windowSpot(cells: readonly (readonly [number, number])[]): { x: 
   return { x: maxI + NIGHT.windowOut, y: maxJ + NIGHT.windowOut };
 }
 
-/** Every light source right now: the knight's lantern first (while he lives), wisps, windows, lit lamps. */
+/**
+ * Every light source right now: the knight's lantern first (while he lives), wisps, fires, windows, lit
+ * lamps. In a blackout only the lantern and the fires.
+ */
 export function lightSpots(w: Lightable): LightSpot[] {
   const out: LightSpot[] = [];
   const k = w.players[0];
   if (k && k.state !== 'dead') out.push({ key: 'lantern', kind: 'lantern', x: k.x, y: k.y, radius: NIGHT.radius.lantern });
-  for (const m of w.glows) {
-    if (m.state !== 'dead') out.push({ key: `m${m.id}`, kind: 'wisp', x: m.x, y: m.y, radius: glowRadius(m) });
+  const dark = w.blackout > 0;
+  if (!dark) {
+    for (const m of w.glows) {
+      if (m.state !== 'dead') out.push({ key: `m${m.id}`, kind: 'wisp', x: m.x, y: m.y, radius: glowRadius(m) });
+    }
   }
-  staticSpots(w, out);
+  for (const f of w.fires) out.push({ key: `f${f.id}`, kind: 'fire', x: f.x, y: f.y, radius: NIGHT.radius.fire });
+  if (!dark) staticSpots(w, out);
   return out;
 }
 
@@ -139,6 +147,8 @@ export function isLit(w: World, x: number, y: number): boolean {
 export function litBySources(w: World, x: number, y: number): boolean {
   const k = w.players[0];
   if (k && k.state !== 'dead' && Math.hypot(k.x - x, k.y - y) <= NIGHT.radius.lantern) return true;
+  for (const f of w.fires) if (Math.hypot(f.x - x, f.y - y) <= NIGHT.radius.fire) return true;
+  if (w.blackout > 0) return false;
   for (const m of w.glows) if (m.state !== 'dead' && Math.hypot(m.x - x, m.y - y) <= glowRadius(m)) return true;
   const i = Math.round(x);
   const j = Math.round(y);

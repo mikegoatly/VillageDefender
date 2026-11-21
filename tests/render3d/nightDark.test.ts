@@ -4,7 +4,9 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { NIGHT } from '../../src/data/night';
-import { applyNightDark, lanternLight, LightMap, lightMapValues, MAX_GLOWS, NIGHT_UNIFORMS, setGlows } from '../../src/render3d/nightDark';
+import { applyNightDark, lanternLight, LightMap, lightMapValues, MAX_GLOWS, NIGHT_UNIFORMS, glowCircles, setGlows } from '../../src/render3d/nightDark';
+import { BLACKOUT_FX, BlackoutFlicker } from '../../src/render3d/nightLights';
+import { igniteFire } from '../../src/sim/fire';
 import { isLit } from '../../src/sim/light';
 import { fieldRows } from '../helpers/mapBuilder';
 import { aWorld } from '../helpers/worldBuilder';
@@ -111,8 +113,8 @@ describe("will-o'-wisps in the light map", () => {
       .withMonster('wisp', 5, 5).withMonster('wisp', 8, 9).withMonster('zombie', 3, 3).build();
     monsters[1].state = 'dead';
     const slots = Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4(9, 9, 9, 9));
-    setGlows(slots, world.glows, world.players[0]);
-    expect(slots[0].toArray()).toEqual([5, 5, NIGHT.radius.wisp, 0]);
+    setGlows(slots, glowCircles(world), world.players[0]);
+    expect(slots[0].toArray()).toEqual([5, 5, NIGHT.radius.wisp, 1]);
     for (const s of slots.slice(1)) expect(s.z).toBe(0);
     expect(isLit(world, 5 + NIGHT.radius.wisp - 0.2, 5)).toBe(true);
   });
@@ -122,7 +124,7 @@ describe("will-o'-wisps in the light map", () => {
     for (let k = 0; k < MAX_GLOWS + 2; k++) b.withMonster('wisp', N - 1 - k, N - 1 - k);
     const { world } = b.build();
     const slots = Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4());
-    setGlows(slots, world.glows, world.players[0]);
+    setGlows(slots, glowCircles(world), world.players[0]);
     expect(Math.max(...slots.map((s) => s.x))).toBe(N - 1 - 2);
   });
 
@@ -131,5 +133,48 @@ describe("will-o'-wisps in the light map", () => {
     applyNightDark(sh);
     expect(sh.fragmentShader).toContain(`uniform vec4 vdGlows[${MAX_GLOWS}]`);
     expect(Object.keys(sh.uniforms)).toContain('vdGlows');
+  });
+});
+
+describe("the Pumpkin King's fires and blackout in the light map", () => {
+  it('a fire lights a circle of its sim radius; in a blackout the wisps and the light map go, the fire stays', () => {
+    const { world } = aWorld().withMap(fieldRows(N)).noRookies().atNight(9).withKnightAt(N - 1, N - 1).withMonster('wisp', 5, 5).build();
+    igniteFire(world, 12, 12);
+    world.fires[0].until = world.time + 4; // well past flaring up, not yet dying down
+    const lit = glowCircles(world, 1, 0);
+    expect(lit.map((c) => [c.x, c.y, c.radius])).toEqual([[5, 5, NIGHT.radius.wisp], [12, 12, NIGHT.radius.fire]]);
+    expect(lit[1].strength).toBeGreaterThan(0.5);
+    world.blackout = 3;
+    expect(glowCircles(world, 0, 0).map((c) => [c.x, c.y])).toEqual([[12, 12]]);
+    new LightMap(N).update(world, camera(), 1, 0);
+    expect(NIGHT_UNIFORMS.vdNight.value.z).toBe(0);
+  });
+
+  it('the shader scales the light map by the blackout and each glow by its strength', () => {
+    const sh = { uniforms: {}, vertexShader: '', fragmentShader: '#include <common>\n#include <lights_fragment_end>' } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    applyNightDark(sh);
+    expect(sh.fragmentShader).toContain('* vdNight.z');
+    expect(sh.fragmentShader).toContain('* vdGlows[i].w');
+  });
+});
+
+describe('blackout flicker (render)', () => {
+  const run = (f: BlackoutFlicker, w: { blackoutWarn: number; blackout: number }, seconds: number) => {
+    const seen: number[] = [];
+    for (let t = 0; t < seconds; t += 1 / 60) seen.push(f.update(w, 1.5, 1 / 60));
+    return seen;
+  };
+
+  it('steady when nothing is happening; stutters through the warning; out in the blackout; stutters back, then steady', () => {
+    let r = 0;
+    const f = new BlackoutFlicker(() => (r = (r + 0.37) % 1));
+    expect(new Set(run(f, { blackoutWarn: 0, blackout: 0 }, 1))).toEqual(new Set([1]));
+    const warn = run(f, { blackoutWarn: 1, blackout: 0 }, 1);
+    expect(Math.min(...warn)).toBeLessThan(0.2);
+    expect(Math.max(...warn)).toBe(1);
+    expect(run(f, { blackoutWarn: 0, blackout: 3 }, 1).at(-1)).toBe(0);
+    const back = run(f, { blackoutWarn: 0, blackout: 0 }, BLACKOUT_FX.back);
+    expect(Math.min(...back)).toBeLessThan(0.2);
+    expect(run(f, { blackoutWarn: 0, blackout: 0 }, 0.5).every((v) => v === 1)).toBe(true);
   });
 });

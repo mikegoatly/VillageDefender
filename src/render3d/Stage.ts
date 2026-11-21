@@ -19,6 +19,8 @@ export interface StageOptions {
 const NIGHT_GRADE = {
   dusk: { sky: 0x4a3558, ambient: 0xc0a8d8, ambientI: 1.05, moon: 0xffa66e, moonI: 1.35 },
   night: { sky: 0x0b1226, ambient: 0x6a80c8, ambientI: 0.52, moon: 0xa8c0ff, moonI: 0.75 },
+  /** The Pumpkin King's harvest moon: a big low orange moon, warmer and a little brighter than full night. */
+  harvest: { sky: 0x2a1418, ambient: 0xc89070, ambientI: 0.62, moon: 0xffa050, moonI: 1.0 },
   flash: { color: 0xd4e0ff, ambientI: 2.1, moonI: 2.6 },
   fog: { near: 58, far: 122 },
 };
@@ -44,6 +46,8 @@ export class Stage {
   private readonly gradeA = new THREE.Color();
   private readonly gradeB = new THREE.Color();
   private readonly flashColor = new THREE.Color(NIGHT_GRADE.flash.color);
+  private readonly harvestMix = new THREE.Color();
+  private readonly harvestTo = new THREE.Color();
   private shakeLeft = 0;
   private shakeIntensity = 0;
 
@@ -100,12 +104,18 @@ export class Stage {
   }
 
   /**
-   * Night towns only: grades the light between dusk (0) and full night (1), and lifts it with a
-   * lightning flash (0..1). Called every frame by the night view.
+   * Night towns only: grades the light between dusk (0) and full night (1), turns full night towards
+   * the harvest moon (0..1, the Pumpkin King's fight), and lifts it with a lightning flash (0..1).
+   * Called every frame by the night view.
    */
-  setNight(level: number, flash: number) {
+  setNight(level: number, flash: number, harvest = 0) {
     if (!this.night) return;
-    const { dusk, night, flash: f } = NIGHT_GRADE;
+    const { dusk, night: full, harvest: h, flash: f } = NIGHT_GRADE;
+    const mix = (a: number, b: number) => a + (b - a) * harvest;
+    const night = {
+      sky: this.harvestColor(full.sky, h.sky, harvest), ambient: this.harvestColor(full.ambient, h.ambient, harvest),
+      moon: this.harvestColor(full.moon, h.moon, harvest), ambientI: mix(full.ambientI, h.ambientI), moonI: mix(full.moonI, h.moonI),
+    };
     const sky = this.gradeA.setHex(dusk.sky).lerp(this.gradeB.setHex(night.sky), level).lerp(this.flashColor, flash * 0.35);
     this.renderer.setClearColor(sky);
     (this.scene.fog as THREE.Fog).color.copy(sky);
@@ -113,6 +123,10 @@ export class Stage {
     this.ambient.intensity = dusk.ambientI + (night.ambientI - dusk.ambientI) * level + (f.ambientI - night.ambientI) * flash;
     this.sun.color.setHex(dusk.moon).lerp(this.gradeB.setHex(night.moon), level).lerp(this.flashColor, flash);
     this.sun.intensity = dusk.moonI + (night.moonI - dusk.moonI) * level + (f.moonI - night.moonI) * flash;
+  }
+
+  private harvestColor(from: number, to: number, t: number): number {
+    return t <= 0 ? from : this.harvestMix.setHex(from).lerp(this.harvestTo.setHex(to), t).getHex();
   }
 
   /** Frames this ground area (a new town). */

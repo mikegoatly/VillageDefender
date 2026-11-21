@@ -67,6 +67,10 @@ export function planFor(events: readonly SimEvent[]): PlannedSound[] {
       case 'freezeWarn': out.push({ id: 'bossSlamWarn', volume: 0.4 }); break;
       case 'freeze': out.push({ id: 'hitHeavy', volume: 0.6 }); break;
       case 'monsterSplit': out.push({ id: 'hit', volume: 0.4 }); break;
+      // Pumpkin King: the lights stutter (a warning drone), go out (a low boom), and come back.
+      case 'blackoutWarn': out.push({ id: 'bossSlamWarn' }); break;
+      case 'blackout': out.push({ id: 'bossArrive', volume: 0.7 }); break;
+      case 'lightsBack': out.push({ id: 'uiClick', volume: 0.6 }); break;
       case 'levelEnd': out.push({ id: e.won ? 'win' : 'lose' }); break;
       default: break;
     }

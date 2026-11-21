@@ -12,6 +12,7 @@ import { TOWN1_WAVES, type WaveDef } from '../data/waves';
 import { rankedWeapon, type WeaponDef, type WeaponKind } from '../data/weapons';
 import type { RunResult } from '../data/achievements';
 import { debugAddRookie, debugEnd, debugGiveUpgrade, debugGiveXp, debugHealKnight, debugSetLamp, debugSetWeapon, debugInfo, debugJumpToWave, debugKillAll, debugSetBuildingHp, debugSpawn } from './debug';
+import { updateBlackout, updateFires } from './fire';
 import { FlowField } from './flowField';
 import { updateGems } from './gems';
 import { makeKnight, updateKnight, updateRally } from './knight';
@@ -33,8 +34,8 @@ import type { InputState } from './types';
 import { centreOf } from './units';
 import { addMonster, pickSides, updateWaves } from './waves';
 
-export type { BuildingState, Gem, Lamp, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, UnitKind, UnitState, WorldOptions } from './model';
-import type { BuildingState, Gem, Lamp, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, WorldOptions } from './model';
+export type { BuildingState, Fire, Gem, Lamp, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, UnitKind, UnitState, WorldOptions } from './model';
+import type { BuildingState, Fire, Gem, Lamp, PendingWave, Projectile, SimEvent, Trap, TrapRunner, Unit, WorldOptions } from './model';
 
 export class World implements UpgradeHost {
   readonly map: TownMap;
@@ -72,6 +73,11 @@ export class World implements UpgradeHost {
   readonly lampOil: number;
   /** Night towns: cells lit by windows and lamps (sim/light.ts). @internal */
   readonly light: LightGrid;
+  /** Burning patches left by the Pumpkin King's pumpkins (sim/fire.ts): they hurt, and they are lights. */
+  readonly fires: Fire[] = [];
+  /** Pumpkin King's blackout: seconds of warning left (lights flicker, still lit), then seconds of dark left. */
+  blackoutWarn = 0;
+  blackout = 0;
   /** 'planning' until start(); the sim only advances while 'running'. */
   phase: 'planning' | 'running';
   readonly planningPoints: number;
@@ -364,6 +370,8 @@ export class World implements UpgradeHost {
     updateWaves(this);
     for (const m of this.monsters) updateMonster(this, m);
     updateProjectiles(this);
+    updateFires(this);
+    updateBlackout(this);
     updateTown(this);
 
     separate(this);

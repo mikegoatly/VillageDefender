@@ -1,6 +1,6 @@
 // Boss-only state, kept on the unit. A leaf module so model and waves need not import the boss AI.
 
-import { BOSS, FROST_GIANT, GRAVEKEEPER, TROLL, type BossKind } from '../data/monsters';
+import { BOSS, FROST_GIANT, GRAVEKEEPER, PUMPKIN_KING, TROLL, type BossKind } from '../data/monsters';
 
 /** Boss-only state, kept on the unit. One shape for every boss; each uses the fields it needs. */
 export interface BossState {
@@ -27,6 +27,9 @@ export interface BossState {
   raised: number;
   // Frost Giant (also uses boulderIn/boulderTarget, and slamX/slamY for where the stomp lands)
   stompIn: number;
+  // Pumpkin King (pumpkins use boulderIn/boulderTarget)
+  /** Seconds until the next blackout warning. */
+  blackoutIn: number;
 }
 
 export function newBossState(kind: BossKind = 'warlord'): BossState {
@@ -37,5 +40,7 @@ export function newBossState(kind: BossKind = 'warlord'): BossState {
     boulderIn: TROLL.boulder.every * 0.5, boulderTarget: -1,
     tollIn: GRAVEKEEPER.toll.every * 0.4, tollX: 0, tollY: 0, raiseIn: GRAVEKEEPER.raise.first, raised: 0,
     stompIn: FROST_GIANT.stomp.first,
+    blackoutIn: PUMPKIN_KING.blackout.first,
+    ...(kind === 'pumpkinKing' ? { boulderIn: PUMPKIN_KING.pumpkin.first } : {}),
   };
 }

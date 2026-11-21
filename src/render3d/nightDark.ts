@@ -9,14 +9,17 @@
 // The light map is a texture, one texel per cell, built from the sim's lit grid (sim/light.ts) and
 // softened by a 3×3 blur, which keeps the 0.5 contour on the sim's cell edges; bilinear sampling
 // smooths it further. The knight's lantern moves every frame, so it is a circle in the shader with a
-// soft edge centred on the sim's radius; so is each will-o'-wisp (up to MAX_GLOWS, a uniform array). The patch is installed once, before any material compiles,
-// and is inert (one uniform test) until a night town turns it on.
+// soft edge centred on the sim's radius; so is each will-o'-wisp and each pumpkin fire (up to MAX_GLOWS,
+// a uniform array, each with its own strength). During the Pumpkin King's blackout the light map and
+// the wisps are scaled down to nothing (vdNight.z) while the lantern and the fires stay. The patch is
+// installed once, before any material compiles, and is inert (one uniform test) until a night town turns it on.
 
 import * as THREE from 'three';
 import type { Lightable } from '../sim/light';
 import { NIGHT } from '../data/night';
-import type { Unit, World } from '../sim/world';
-import { MONSTERS, type MonsterKind } from '../data/monsters';
+import type { World } from '../sim/world';
+import { MONSTERS, PUMPKIN_KING, type MonsterKind } from '../data/monsters';
+import { fireLight } from './nightLights';
 
 /** How dark it gets outside the light at full night (a faint moon), and the lantern's soft edge (cells, each side). */
 export const REAL_DARK = { floor: 0.1, lanternFeather: 0.5 };
@@ -30,7 +33,7 @@ function blankTexture(): THREE.DataTexture {
   return blank;
 }
 
-/** Will-o'-wisps lighting the ground in the shader at once (nearest the knight first; the rest are still lit in the sim). */
+/** Wisps and fires lighting the ground in the shader at once (nearest the knight first; the rest are still lit in the sim). */
 export const MAX_GLOWS = 8;
 
 /** Shared uniform objects: every patched material holds these same objects, so one write updates all. */
@@ -39,9 +42,9 @@ export const NIGHT_UNIFORMS = {
   vdViewInverse: { value: new THREE.Matrix4() },
   /** Lantern x, z, radius (0 = none), and the map size in cells. */
   vdLantern: { value: new THREE.Vector4(0, 0, 0, 1) },
-  /** Strength 0..1 (0 = off: other towns, dusk), and the floor at full strength. */
-  vdNight: { value: new THREE.Vector2(0, REAL_DARK.floor) },
-  /** Moving lights besides the lantern (wisps): x, z, radius (0 = unused slot). */
+  /** Strength 0..1 (0 = off: other towns, dusk), the floor at full strength, and how bright the light map is (0 in a blackout). */
+  vdNight: { value: new THREE.Vector3(0, REAL_DARK.floor, 1) },
+  /** Moving lights besides the lantern (wisps, fires): x, z, radius (0 = unused slot), strength 0..1. */
   vdGlows: { value: Array.from({ length: MAX_GLOWS }, () => new THREE.Vector4(0, 0, 0, 0)) },
 };
 
@@ -49,7 +52,7 @@ const FRAGMENT_PARS = /* glsl */ `
 uniform sampler2D vdLightMap;
 uniform mat4 vdViewInverse;
 uniform vec4 vdLantern;
-uniform vec2 vdNight;
+uniform vec3 vdNight;
 uniform vec4 vdGlows[${MAX_GLOWS}];
 float vdCircle(vec2 w, vec2 c, float r) {
   return 1.0 - smoothstep(r - ${REAL_DARK.lanternFeather.toFixed(2)}, r + ${REAL_DARK.lanternFeather.toFixed(2)}, distance(w, c));
@@ -57,10 +60,10 @@ float vdCircle(vec2 w, vec2 c, float r) {
 float vdDarkness(vec3 viewPos) {
   if (vdNight.x <= 0.0) return 1.0;
   vec2 w = (vdViewInverse * vec4(viewPos, 1.0)).xz;
-  float lit = texture2D(vdLightMap, (w + 0.5) / vdLantern.w).r;
+  float lit = texture2D(vdLightMap, (w + 0.5) / vdLantern.w).r * vdNight.z;
   if (vdLantern.z > 0.0) lit = max(lit, vdCircle(w, vdLantern.xy, vdLantern.z));
   for (int i = 0; i < ${MAX_GLOWS}; i++) {
-    if (vdGlows[i].z > 0.0) lit = max(lit, vdCircle(w, vdGlows[i].xy, vdGlows[i].z));
+    if (vdGlows[i].z > 0.0) lit = max(lit, vdCircle(w, vdGlows[i].xy, vdGlows[i].z) * vdGlows[i].w);
   }
   return mix(1.0, mix(vdNight.y, 1.0, lit), vdNight.x);
 }
@@ -151,8 +154,12 @@ export class LightMap {
     this.texture.needsUpdate = true;
   }
 
-  /** `strength`: 0..1, how far real darkness has come in (eased with the night level). */
-  update(world: World & Lightable, camera: THREE.Camera, strength: number) {
+  /**
+   * `strength`: 0..1, how far real darkness has come in (eased with the night level). `staticLight`:
+   * 0..1, how bright windows, lamps and wisps are (the blackout's flicker); `clock` flickers the fires;
+   * `floor`: how dark the dark is (the harvest moon lifts it a little).
+   */
+  update(world: World & Lightable, camera: THREE.Camera, strength: number, staticLight = 1, clock = 0, floor = REAL_DARK.floor) {
     this.grid = world.light.get(world);
     if (!sameBytes(this.grid, this.lastGrid)) {
       this.lastGrid.set(this.grid);
@@ -172,29 +179,50 @@ export class LightMap {
     const k = world.players[0];
     const on = k && k.state !== 'dead';
     u.vdLantern.value.set(on ? k.x : 0, on ? k.y : 0, on ? NIGHT.radius.lantern : 0, this.size);
-    u.vdNight.value.set(strength, REAL_DARK.floor);
-    setGlows(u.vdGlows.value, world.glows, on ? k : null);
+    u.vdNight.value.set(strength, floor, staticLight);
+    setGlows(u.vdGlows.value, glowCircles(world, staticLight, clock), on ? k : null);
   }
 
   /** Turns the darkness off again (the town is left; materials are shared across sessions). */
   dispose() {
-    NIGHT_UNIFORMS.vdNight.value.set(0, REAL_DARK.floor);
+    NIGHT_UNIFORMS.vdNight.value.set(0, REAL_DARK.floor, 1);
     for (const g of NIGHT_UNIFORMS.vdGlows.value) g.set(0, 0, 0, 0);
     NIGHT_UNIFORMS.vdLightMap.value = blankTexture();
     this.texture.dispose();
   }
 }
 
+/** A soft circle of light in the shader besides the lantern: a wisp or a fire. */
+export interface GlowCircle { x: number; y: number; radius: number; strength: number }
+
 /**
- * Fills the glow slots with the living wisps (nearest `near` first when there are more than slots),
- * the rest cleared. Exported for tests.
+ * The moving and short-lived lights: living wisps (none in a blackout; `staticLight` dims them in its
+ * flicker) and burning fires (flickering, flaring up and dying down). Exported for tests.
  */
-export function setGlows(slots: THREE.Vector4[], glows: readonly Unit[], near: { x: number; y: number } | null) {
-  let list = glows.filter((m) => m.state !== 'dead');
+export function glowCircles(world: Pick<World, 'glows' | 'fires' | 'blackout' | 'time'>, staticLight = 1, clock = 0): GlowCircle[] {
+  const out: GlowCircle[] = [];
+  if (world.blackout <= 0) {
+    for (const m of world.glows) {
+      if (m.state !== 'dead') out.push({ x: m.x, y: m.y, radius: MONSTERS[m.kind as MonsterKind].light ?? 0, strength: staticLight });
+    }
+  }
+  for (const f of world.fires) {
+    const left = f.until - world.time;
+    out.push({ x: f.x, y: f.y, radius: NIGHT.radius.fire, strength: fireLight(PUMPKIN_KING.fire.time - left, left, clock, f.id) });
+  }
+  return out;
+}
+
+/**
+ * Fills the glow slots with the circles (nearest `near` first when there are more than slots), the
+ * rest cleared. Exported for tests.
+ */
+export function setGlows(slots: THREE.Vector4[], circles: readonly GlowCircle[], near: { x: number; y: number } | null) {
+  let list = [...circles];
   if (list.length > slots.length && near) list = list.sort((a, b) => Math.hypot(a.x - near.x, a.y - near.y) - Math.hypot(b.x - near.x, b.y - near.y));
   slots.forEach((s, i) => {
-    const m = list[i];
-    if (m) s.set(m.x, m.y, MONSTERS[m.kind as MonsterKind].light ?? 0, 0);
+    const c = list[i];
+    if (c) s.set(c.x, c.y, c.radius, c.strength);
     else s.set(0, 0, 0, 0);
   });
 }

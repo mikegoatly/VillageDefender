@@ -75,6 +75,8 @@ export function hitStopFor(world: World, e: SimEvent): number {
     }
     case 'bossBoulder':
       return 0.06;
+    case 'blackout':
+      return 0.08;
     case 'bossSlam':
       return 0.09;
     case 'explosion':

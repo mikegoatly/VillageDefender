@@ -8,10 +8,10 @@ export type MonsterKind =
   | 'boneKnight' | 'banshee' | 'gravedigger'
   | 'kobold' | 'powderKeg' | 'shieldbearer' | 'frostShaman' | 'iceGolem' | 'iceShard' | 'iceling'
   | 'shade' | 'gloomMoth' | 'wisp'
-  | 'warlord' | 'troll' | 'gravekeeper' | 'frostGiant';
+  | 'warlord' | 'troll' | 'gravekeeper' | 'frostGiant' | 'pumpkinKing';
 
 /** Boss ability sets (sim/boss.ts). */
-export type BossKind = 'warlord' | 'troll' | 'gravekeeper' | 'frostGiant';
+export type BossKind = 'warlord' | 'troll' | 'gravekeeper' | 'frostGiant' | 'pumpkinKing';
 
 /**
  * - nearest: chases the nearest knight/rookie within aggroRange, otherwise the nearest building
@@ -352,6 +352,27 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
     damage: 22, buildingDamage: 32, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.3,
     knockbackResist: 1, corpseTime: 3, xp: 60, coins: 80, boss: 'frostGiant', name: 'Frost Giant', swatsBlockers: true,
   },
+  pumpkinKing: {
+    // Town 5 boss: lobs flaming pumpkins at buildings (they leave fires that burn and light the dark),
+    // and blacks out every light but the knight's lantern while shades come in. A wide scythe sweep.
+    sheet: 'pumpkinKing', scale: 2.6, tint: 0xffffff, alpha: 1, target: 'buildings', aggroRange: 0,
+    radius: 0.56, hp: 1500, speed: 0.78, speedJitter: 0,
+    damage: 24, buildingDamage: 32, attackWindup: 1.0, attackCooldown: 1.8, attackReach: 0.4,
+    knockbackResist: 1, corpseTime: 3, xp: 65, coins: 90, boss: 'pumpkinKing', name: 'Pumpkin King', swatsBlockers: true,
+  },
+};
+
+/** Pumpkin King abilities. */
+export const PUMPKIN_KING = {
+  /** Lobs a flaming pumpkin at a standing building in range (the River Troll's throw), first after `first` s. */
+  pumpkin: { first: 3, every: 5, range: 9, telegraph: 1.2, radius: 1.3, buildingDamage: 75, unitDamage: 12 },
+  /** Where a pumpkin lands it leaves a fire: hurts friendlies inside every `pulse` s for `dps`, and is a light (NIGHT.radius.fire). */
+  fire: { radius: 1.5, time: 8, dps: 10, pulse: 0.5 },
+  /**
+   * Blackout: lamps and windows flicker for `telegraph` s, then for `time` s nothing gives light but
+   * the knight's lantern and fires, and `shades` come in from the edges. First at `first` s, then every `every` s.
+   */
+  blackout: { first: 10, every: 18, telegraph: 1.5, time: 5, shades: 4 },
 };
 
 /** Frost Giant abilities. */

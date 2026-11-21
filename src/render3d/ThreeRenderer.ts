@@ -27,6 +27,7 @@ import { Particles } from './Particles';
 import type { Stage } from './Stage';
 import { TownView } from './TownView';
 import { FrostView } from './FrostView';
+import { PumpkinView } from './PumpkinView';
 import { installNightDark } from './nightDark';
 import { NightView } from './NightView';
 import { TrapView } from './TrapView';
@@ -101,6 +102,8 @@ export class ThreeRenderer implements Renderer {
   private readonly townFx: TownVisuals;
   private readonly traps = new TrapView();
   private readonly frost: FrostView;
+  /** The Pumpkin King's pumpkins in flight and the fires they leave. */
+  private readonly pumpkins: PumpkinView;
   /** Night towns only (Lanternwick): moonlight, real lights, glow pools and lightning. */
   private readonly night: NightView | null;
   private readonly labels: Labels;
@@ -128,6 +131,7 @@ export class ThreeRenderer implements Renderer {
     });
     this.effects = new Effects(library);
     this.frost = new FrostView(library);
+    this.pumpkins = new PumpkinView(this.particles);
     this.knight = new KnightVisuals(this.particles, this.effects, this.dustColor);
     this.townFx = new TownVisuals(this.particles);
     this.labels = new Labels(stage, stage.canvas.parentElement!);
@@ -140,7 +144,7 @@ export class ThreeRenderer implements Renderer {
     );
     this.gems.frustumCulled = false;
     this.gems.count = 0;
-    this.root.add(this.town.root, this.units.root, this.effects.root, this.traps.root, this.frost.root, this.gems, this.particles.root);
+    this.root.add(this.town.root, this.units.root, this.effects.root, this.traps.root, this.frost.root, this.pumpkins.root, this.gems, this.particles.root);
     if (this.night) this.root.add(this.night.root);
     stage.scene.add(this.root);
     stage.canvas.addEventListener('pointerdown', this.onPointerDown);
@@ -159,11 +163,15 @@ export class ThreeRenderer implements Renderer {
     this.effects.update(dt, world.projectiles);
     this.traps.sync(world.traps);
     this.frost.sync(world, dt);
+    this.pumpkins.sync(world, dt);
     this.syncFlail(world);
     this.syncAxeTrails(world);
     this.syncGems(world);
     this.syncLabels(world);
-    this.night?.sync(world, dt);
+    if (this.night) {
+      this.night.sync(world, dt);
+      this.town.setWindowLight(this.night.staticLight);
+    }
     this.labels.layout();
     const draw = this.stage.render(dt);
     this.lastPerf = { renderMs: performance.now() - t0, calls: draw.calls, triangles: draw.triangles, units: this.units.size, particles: this.particles.live };
@@ -173,6 +181,7 @@ export class ThreeRenderer implements Renderer {
   onEvent(world: World, e: SimEvent) {
     this.townFx.onEvent(world, e);
     this.frost.onEvent(world, e);
+    this.pumpkins.onEvent(world, e);
     switch (e.type) {
       case 'hit': {
         this.units.flash(e.unit, 0.08);
@@ -203,8 +212,8 @@ export class ThreeRenderer implements Renderer {
         this.effects.telegraph(e.x, e.y, e.radius, e.time);
         return;
       case 'bossBoulder':
-        this.effects.shockwave(e.x, e.y, e.radius, 0x8a7a6a);
-        this.particles.burst(e.x, 0.3, e.y, 12, 0x9a8a7a, 0.3, 1.8, 1);
+        this.effects.shockwave(e.x, e.y, e.radius, e.pumpkin ? 0xff8a2a : 0x8a7a6a);
+        if (!e.pumpkin) this.particles.burst(e.x, 0.3, e.y, 12, 0x9a8a7a, 0.3, 1.8, 1);
         this.stage.shake(260, 0.01);
         return;
       case 'bossSlam':
@@ -226,6 +235,12 @@ export class ThreeRenderer implements Renderer {
         this.effects.shockwave(e.x, e.y, e.radius, 0x9fd8ff);
         this.particles.burst(e.x, 0.4, e.y, 12, 0xdff4ff, 0.3, 1.6, 1);
         return;
+      case 'blackout': {
+        this.stage.shake(300, 0.006);
+        const k = world.players[0];
+        if (k) this.labels.floatText(k.x, HEAD.knight, k.y, 'Lights out!', '#ffb040');
+        return;
+      }
       case 'iceStomp':
         this.particles.burst(e.x, 0.2, e.y, 16, 0xe8f6ff, 0.35, 2, 1.2);
         return;
@@ -394,6 +409,7 @@ export class ThreeRenderer implements Renderer {
     this.effects.dispose();
     this.traps.dispose();
     this.frost.dispose();
+    this.pumpkins.dispose();
     this.night?.dispose();
     this.debug?.dispose();
     this.labels.destroy();

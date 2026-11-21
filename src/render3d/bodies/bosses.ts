@@ -5,7 +5,7 @@
 //
 // Rigs: the warlord and the frost giant keep mini-dungeon/character-orc (legs from y 0.176 at x ±0.084,
 // shoulders y 0.288 at x ±0.10, hands near ±0.37, neck y 0.343); the troll is on graveyard/character-zombie
-// (its hunched lurch) and the gravekeeper on graveyard/character-keeper (legs from y 0.223 at x ±0.074,
+// (its hunched lurch) and the gravekeeper and pumpkin king on graveyard/character-keeper (legs from y 0.223 at x ±0.074,
 // shoulders y 0.373 at x ±0.125, hands near ±0.39, neck y 0.447). Weapons are poles held in the right
 // hand (heldPole): upright beside the body at rest and raised in the swing.
 
@@ -252,6 +252,71 @@ export const FROST_GIANT: BodySpec = {
   ],
 };
 
+// ---------------------------------------------------------------------------------------------
+// Pumpkin King (Town 5)
+
+const PK_SKIN = [0xffa040, 0xe0661e] as const;
+const PK_LOBE = [0xff9434, 0xd65a1a] as const;
+const PK_GLOW = 0xffd040;
+const PK_STALK = [0x7a9a48, 0x4a6a30] as const;
+const ROBE = [0x6a4a8e, 0x34244e] as const;
+const ROBE_DARK = [0x4a3466, 0x241a36] as const;
+const STRAW_GOLD = [0xffe27a, 0xe0a83a] as const;
+const CROWN_GOLD = [0xffd86a, 0xc88a2a] as const;
+const SCYTHE_EDGE = 0xfff0c0;
+
+const SCYTHE_GRIP: V3 = [-0.39, GY_SHOULDER, 0.02];
+const SCYTHE = heldPole(SCYTHE_GRIP, 0.86, 0.04, 0.0, 1.2, PALETTE.brown, 0.045);
+/** Big harvest scythe: a long haft with a dark iron collar, and a blade reaching forward off the top, stepping down to its point, with a bright edge. */
+const SCYTHE_PIECES: BodyPiece[] = [
+  SCYTHE.piece,
+  { bone: 'arm-right', shape: 'rbox', size: [0.08, 0.07, 0.08], at: SCYTHE.place(SCYTHE.top - 0.02), rot: SCYTHE.rot, color: PALETTE.charcoal },
+  { bone: 'arm-right', shape: 'box', size: [0.03, 0.11, 0.3], at: SCYTHE.place(SCYTHE.top - 0.03, 0.17), rot: SCYTHE.rot, color: PALETTE.steel },
+  { bone: 'arm-right', shape: 'box', size: [0.03, 0.09, 0.2], at: SCYTHE.place(SCYTHE.top - 0.07, 0.4), rot: SCYTHE.rot, color: PALETTE.steel },
+  { bone: 'arm-right', shape: 'cone', size: [0.03, 0.16, 0.07], at: SCYTHE.place(SCYTHE.top - 0.15, 0.53), rot: SCYTHE.rotDown, color: PALETTE.steel, sides: 3 },
+  { bone: 'arm-right', shape: 'box', size: [0.035, 0.022, 0.48], at: SCYTHE.place(SCYTHE.top - 0.095, 0.29), rot: SCYTHE.rot, color: SCYTHE_EDGE, glow: true },
+];
+
+/** Pumpkin King: a giant scarecrow king, a huge carved jack-o'-lantern head glowing from inside under a battered gold crown, a tattered purple robe bursting with straw, and a harvest scythe. */
+export const PUMPKIN_KING: BodySpec = {
+  note: "Pumpkin King: a giant scarecrow king with a huge orange carved jack-o'-lantern head whose triangle eyes, nose and jagged grin glow bright yellow-orange, a green stalk and leaf, a battered gold crown tipped on top, a tattered dark-purple robe with straw bursting from the collar, cuffs and hem, and a big harvest scythe.",
+  pieces: [
+    // Thin dark legs on stilts, straw bursting from the trouser hems.
+    { bone: 'leg-left', shape: 'rbox', size: [0.1, 0.18, 0.11], at: [0.074, 0.14, 0], color: PALETTE.ink, mirror: true },
+    { bone: 'leg-left', shape: 'cone', size: [0.14, 0.09, 0.14], at: [0.074, 0.035, 0.01], rot: [Math.PI, 0, 0], color: STRAW_GOLD, sides: 5, mirror: true },
+    // Robe: a narrow body flaring into a ragged skirt with tattered points, a rope belt, a high collar cape and a gold clasp.
+    { bone: 'torso', shape: 'rbox', size: [0.3, 0.24, 0.23], at: [0, 0.35, 0], color: ROBE },
+    { bone: 'torso', shape: 'cone', size: [0.44, 0.3, 0.38], at: [0, 0.24, -0.01], color: ROBE_DARK, sides: 7 },
+    { bone: 'torso', shape: 'cone', size: [0.1, 0.12, 0.05], at: [0.13, 0.08, 0.12], rot: [Math.PI, 0, 0.15], color: ROBE_DARK, sides: 3, mirror: true },
+    { bone: 'torso', shape: 'cone', size: [0.12, 0.14, 0.05], at: [0.07, 0.07, -0.16], rot: [Math.PI, 0, -0.1], color: ROBE_DARK, sides: 3, mirror: true },
+    { bone: 'torso', shape: 'rbox', size: [0.32, 0.035, 0.25], at: [0, 0.28, 0], color: PALETTE.tan },
+    { bone: 'torso', shape: 'rbox', size: [0.4, 0.2, 0.08], at: [0, 0.48, -0.12], rot: [-0.25, 0, 0], color: ROBE_DARK },
+    { bone: 'torso', shape: 'rbox', size: [0.07, 0.07, 0.03], at: [0, 0.41, 0.12], color: CROWN_GOLD },
+    // Straw bursting out of the collar.
+    { bone: 'torso', shape: 'cone', size: [0.11, 0.14, 0.09], at: [0.1, 0.48, 0.06], rot: [0.3, 0, -0.6], color: STRAW_GOLD, sides: 4, mirror: true },
+    { bone: 'torso', shape: 'cone', size: [0.11, 0.13, 0.09], at: [0, 0.485, 0.1], rot: [0.6, 0, 0], color: STRAW_GOLD, sides: 4 },
+    // Long sleeves, straw hands bursting from ragged cuffs.
+    { bone: 'arm-left', shape: 'rbox', size: [0.22, 0.13, 0.13], at: [0.23, GY_SHOULDER, 0], color: ROBE, mirror: true },
+    { bone: 'arm-left', shape: 'rbox', size: [0.06, 0.16, 0.16], at: [0.34, GY_SHOULDER, 0], color: ROBE_DARK, mirror: true },
+    { bone: 'arm-left', shape: 'cone', size: [0.12, 0.13, 0.12], at: [0.41, GY_SHOULDER, 0], rot: [0, 0, -Math.PI / 2], color: STRAW_GOLD, sides: 5, mirror: true },
+    // The jack-o'-lantern: three ribbed lobes, carved triangle eyes and nose and a jagged grin glowing from inside.
+    { bone: 'head', shape: 'sphere', size: [0.36, 0.42, 0.44], at: [0, 0.64, 0.02], color: PK_SKIN, sides: 10 },
+    { bone: 'head', shape: 'sphere', size: [0.3, 0.39, 0.4], at: [0.13, 0.635, 0.015], color: PK_LOBE, sides: 9, mirror: true },
+    { bone: 'head', shape: 'cone', size: [0.11, 0.1, 0.04], at: [0.085, 0.69, 0.215], rot: [-Math.PI / 2, 0, 0], color: PK_GLOW, sides: 3, glow: true, mirror: true },
+    { bone: 'head', shape: 'cone', size: [0.06, 0.05, 0.04], at: [0, 0.625, 0.235], rot: [-Math.PI / 2, 0, 0], color: PK_GLOW, sides: 3, glow: true },
+    { bone: 'head', shape: 'box', size: [0.26, 0.05, 0.04], at: [0, 0.555, 0.21], color: PK_GLOW, glow: true },
+    { bone: 'head', shape: 'cone', size: [0.07, 0.05, 0.04], at: [0.065, 0.52, 0.205], rot: [Math.PI, 0, 0], color: PK_GLOW, sides: 3, glow: true, mirror: true },
+    // Stalk and a curling leaf, a battered gold crown tipped over to one side.
+    { bone: 'head', shape: 'cylinder', size: [0.06, 0.12, 0.06], at: [0, 0.88, 0.01], rot: [0.15, 0, -0.2], color: PK_STALK, sides: 5 },
+    { bone: 'head', shape: 'sphere', size: [0.15, 0.03, 0.09], at: [-0.08, 0.87, 0.06], rot: [0.2, 0.5, 0.35], color: PK_STALK, sides: 5 },
+    { bone: 'head', shape: 'cylinder', size: [0.28, 0.07, 0.26], at: [0.04, 0.85, 0.0], rot: [0.05, 0, -0.22], color: CROWN_GOLD, sides: 8 },
+    { bone: 'head', shape: 'cone', size: [0.07, 0.13, 0.07], at: [0.12, 0.9, 0.08], rot: [0.2, 0, -0.35], color: CROWN_GOLD, sides: 4, mirror: true },
+    { bone: 'head', shape: 'cone', size: [0.07, 0.11, 0.07], at: [0.1, 0.9, -0.1], rot: [-0.2, 0, -0.1], color: CROWN_GOLD, sides: 4 },
+    // Harvest scythe.
+    ...SCYTHE_PIECES,
+  ],
+};
+
 /**
  * The held weapon or tool of each boss, by sheet, and where the hand grips it (model space, rest
  * pose): tests check it never passes through the head in idle, walk or attack.
@@ -261,4 +326,5 @@ export const HELD_ITEMS: Record<string, { grip: V3; pieces: readonly BodyPiece[]
   troll: { grip: CLUB_GRIP, pieces: CLUB_PIECES },
   gravekeeper: { grip: SHOVEL_GRIP, pieces: SHOVEL_PIECES },
   frostGiant: { grip: ICE_CLUB_GRIP, pieces: ICE_CLUB_PIECES },
+  pumpkinKing: { grip: SCYTHE_GRIP, pieces: SCYTHE_PIECES },
 };

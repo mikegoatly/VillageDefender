@@ -5,8 +5,8 @@
 import type { MonsterKind } from './monsters';
 
 export const NIGHT = {
-  /** Reach of each light (cells): a unit closer than this to a source stands in its light (wisp: a will-o'-wisp's own glow). */
-  radius: { lantern: 4.5, window: 3.5, lamp: 3.5, wisp: 2 },
+  /** Reach of each light (cells): a unit closer than this to a source stands in its light (wisp: a will-o'-wisp's own glow; fire: a burning patch the Pumpkin King's pumpkins leave). */
+  radius: { lantern: 4.5, window: 3.5, lamp: 3.5, wisp: 2, fire: 2.5 },
   /** Window light spills onto the street this far outside a building's camera-facing corner. */
   windowOut: 1,
   /** Darkness rules apply once nightLevel(wave) reaches this: wave 3 (waves 1–2 are dusk, all lit). */

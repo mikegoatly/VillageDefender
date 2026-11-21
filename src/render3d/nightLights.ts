@@ -28,6 +28,8 @@ export const NIGHT_LIGHT: Record<LightKind, { y: number; color: number }> = {
   lamp: { y: 1.25, color: 0xffd08a },
   // A will-o'-wisp: a cold green-blue glow at the height it floats.
   wisp: { y: 0.6, color: 0x9affd8 },
+  // A pumpkin fire on the ground: hot orange, low.
+  fire: { y: 0.7, color: 0xff8a30 },
 };
 
 /** Real point lights in the pool (constant, so shaders never recompile). Slot 0 is the knight's lantern. */
@@ -138,4 +140,58 @@ export function lightningFlash(t: number): number {
   // Two spikes: a sharp first one and a slightly weaker echo, each falling off fast.
   const spike = (at: number, peak: number, fall: number) => (t < at ? 0 : peak * Math.exp(-(t - at) / fall));
   return Math.min(1, spike(0, 1, 0.035) + spike(0.12, 0.85, 0.04));
+}
+
+/**
+ * The Pumpkin King's blackout as it looks (render only; the sim's `blackoutWarn` / `blackout` decide
+ * what is lit): how bright windows, lamps and wisps are, 0..1. While the warning runs they stutter,
+ * dark more and more often as it runs out; in the blackout they are out (eased down over `fall` s);
+ * for `back` s after it they stutter back on. Steps every `step` s, `random` picks each step.
+ */
+export const BLACKOUT_FX = { step: 0.07, low: 0.08, fall: 0.25, back: 0.9 };
+
+export class BlackoutFlicker {
+  /** 0..1, the brightness of every light the blackout puts out. */
+  value = 1;
+  private stepLeft = 0;
+  private sinceBack = Infinity;
+  private wasOut = false;
+  private stuttering = 1;
+
+  constructor(private readonly random: () => number = Math.random) {}
+
+  update(world: { blackoutWarn: number; blackout: number }, telegraph: number, dt: number): number {
+    const fx = BLACKOUT_FX;
+    const out = world.blackout > 0;
+    if (this.wasOut && !out) this.sinceBack = 0;
+    this.wasOut = out;
+    this.sinceBack += dt;
+    if (out) {
+      this.value = Math.max(0, this.value - dt / fx.fall);
+      return this.value;
+    }
+    // Chance of a dark step: rises through the warning; falls away as the lights come back.
+    let dark = 0;
+    if (world.blackoutWarn > 0) dark = 0.2 + 0.6 * (1 - world.blackoutWarn / Math.max(telegraph, 1e-6));
+    else if (this.sinceBack < fx.back) dark = 0.7 * (1 - this.sinceBack / fx.back);
+    if (dark <= 0) {
+      this.value = 1;
+      return 1;
+    }
+    this.stepLeft -= dt;
+    if (this.stepLeft <= 0) {
+      this.stepLeft = fx.step;
+      this.stuttering = this.random() < dark ? fx.low : 1;
+    }
+    this.value = this.stuttering;
+    return this.value;
+  }
+}
+
+/** A fire's light, 0..1: flares up over 0.3 s, flickers, and dies down over its last second. */
+export function fireLight(age: number, left: number, clock: number, seed: number): number {
+  const grow = Math.min(1, Math.max(0, age / 0.3));
+  const die = Math.min(1, Math.max(0, left));
+  const flicker = 0.82 + 0.1 * Math.sin(clock * 17 + seed) + 0.08 * Math.sin(clock * 29.3 + seed * 2.1);
+  return grow * die * flicker;
 }

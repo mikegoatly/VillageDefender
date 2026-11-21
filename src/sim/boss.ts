@@ -1,11 +1,12 @@
 // Boss abilities, run from the monster update. Which set a boss uses comes from its MonsterDef.boss:
 // Orc Warlord (Town 1, decision 41), River Troll (Town 2, decision 46), Gravekeeper (Town 3, decision 51)
-// and Frost Giant (Town 4, decision 54).
+// Frost Giant (Town 4, decision 54) and Pumpkin King (Town 5).
 
 import { DT } from '../data/balance';
-import { BOSS, FROST_GIANT, GRAVEKEEPER, MONSTERS, TROLL } from '../data/monsters';
+import { BOSS, FROST_GIANT, GRAVEKEEPER, MONSTERS, PUMPKIN_KING, TROLL } from '../data/monsters';
 import type { BossState } from './bossState';
 import { applyKnockback, damageBuilding, hurtFriendliesInRadius, hurtFriendly, stunFriendliesInRadius } from './combat';
+import { igniteFire, warnBlackout } from './fire';
 import { Ground, isWalkable, SIDES } from './map';
 import type { BuildingState, Unit } from './model';
 import { adjacentBuilding, nearestFriendly, nearestOf } from './queries';
@@ -17,6 +18,7 @@ import type { World } from './world';
 export function updateBoss(w: World, m: Unit, s: BossState): boolean {
   if (s.kind === 'gravekeeper') return updateGravekeeper(w, m, s);
   if (s.kind === 'frostGiant') return updateFrostGiant(w, m, s);
+  if (s.kind === 'pumpkinKing') return lobBoulder(w, m, s, PUMPKIN_KING.pumpkin, true);
   return s.kind === 'troll' ? updateTroll(w, m, s) : updateWarlord(w, m, s);
 }
 
@@ -28,6 +30,16 @@ export function tickBossTimers(w: World, m: Unit, s: BossState) {
   if (s.kind === 'frostGiant') {
     s.stompIn -= DT;
     s.boulderIn -= DT;
+    return;
+  }
+  if (s.kind === 'pumpkinKing') {
+    s.boulderIn -= DT;
+    // The blackout is called whatever he is doing (mid-swing too); the world runs it from there.
+    s.blackoutIn -= DT;
+    if (s.blackoutIn <= 0) {
+      s.blackoutIn = PUMPKIN_KING.blackout.every;
+      warnBlackout(w, m);
+    }
     return;
   }
   if (s.kind !== 'gravekeeper') return;
@@ -155,11 +167,16 @@ function updateTroll(w: World, m: Unit, s: BossState): boolean {
   return lobBoulder(w, m, s, TROLL.boulder);
 }
 
-/** Boulder throw shared by the River Troll and the Frost Giant (callers run boulderIn down). True while it controls the boss. */
+/**
+ * Boulder throw shared by the River Troll, the Frost Giant and the Pumpkin King (callers run boulderIn
+ * down). True while it controls the boss. `pumpkin`: a flaming pumpkin, which leaves a fire where it lands.
+ */
 function lobBoulder(
   w: World, m: Unit, s: BossState,
   bd: { every: number; range: number; telegraph: number; radius: number; buildingDamage: number; unitDamage: number },
+  pumpkin = false,
 ): boolean {
+  const tag = pumpkin ? { pumpkin: true as const } : {};
 
   if (s.ability === 'boulderWindup') {
     s.abilityTime += DT;
@@ -170,9 +187,14 @@ function lobBoulder(
     const b = w.buildings[s.boulderTarget];
     if (b && !b.ruined) {
       const [cx, cy] = centreOf(b.cells);
-      w.events.push({ type: 'bossBoulder', unit: m.id, x: cx, y: cy, radius: bd.radius });
+      w.events.push({ type: 'bossBoulder', unit: m.id, x: cx, y: cy, radius: bd.radius, ...tag });
       damageBuilding(w, b, bd.buildingDamage, m);
       hurtFriendliesInRadius(w, cx, cy, bd.radius, bd.unitDamage);
+      if (pumpkin) {
+        // The fire catches on the ground beside the house, on the side he threw from.
+        const [fx, fy] = besideBuilding(w, b, m.x, m.y) ?? [cx, cy];
+        igniteFire(w, fx, fy);
+      }
     }
     return true;
   }
@@ -196,12 +218,31 @@ function lobBoulder(
       s.abilityTime = 0;
       s.boulderTarget = best;
       m.facing = { x: (cx - m.x) / bestD, y: (cy - m.y) / bestD };
-      w.events.push({ type: 'bossBoulderWarn', unit: m.id, x: cx, y: cy, radius: bd.radius, time: bd.telegraph });
+      w.events.push({ type: 'bossBoulderWarn', unit: m.id, x: cx, y: cy, radius: bd.radius, time: bd.telegraph, ...tag });
       return true;
     }
     s.boulderIn = 1;
   }
   return false;
+}
+
+/** The walkable cell next to a building nearest a point, or null when it is walled in. */
+function besideBuilding(w: World, b: BuildingState, x: number, y: number): [number, number] | null {
+  let best: [number, number] | null = null;
+  let bestD = Infinity;
+  for (const [i, j] of b.cells) {
+    for (const [di, dj] of GRAVE_SIDES) {
+      const ni = i + di;
+      const nj = j + dj;
+      if (!isWalkable(w.map, ni, nj)) continue;
+      const d = Math.hypot(ni - x, nj - y);
+      if (d < bestD) {
+        bestD = d;
+        best = [ni, nj];
+      }
+    }
+  }
+  return best;
 }
 
 /**

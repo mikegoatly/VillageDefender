@@ -38,6 +38,8 @@ export const CHARACTER_MODELS: Record<string, string> = {
   warlord: 'mini-dungeon/character-orc',
   troll: 'graveyard/character-zombie',
   frostGiant: 'mini-dungeon/character-orc',
+  // The Pumpkin King: the gravekeeper's tall, stately rig (the horde's scarecrows shamble on the zombie's).
+  pumpkinKing: 'graveyard/character-keeper',
   // Lanternwick's night monsters float, so they ride the ghost's rig (no legs; the moth's wings on its arms).
   shade: 'graveyard/character-ghost',
   gloomMoth: 'graveyard/character-ghost',

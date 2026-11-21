@@ -83,7 +83,7 @@ export const TOWN4_WAVES: WaveDef[] = [
  * Town 5 (Lanternwick): scarecrows and werewolves (the town's looks for zombies and orcs) with the
  * night monsters brought in one at a time as the dark comes on: will-o'-wisps luring rookies out at
  * dusk (2), gloom moths putting out the lamps as real darkness starts (3), shades stalking the knight
- * unseen (4). Wave 10's boss is the Gravekeeper standing in until the Pumpkin King (phase 4) replaces him.
+ * unseen (4). The Pumpkin King comes with wave 10, under a harvest moon.
  */
 export const TOWN5_WAVES: WaveDef[] = [
   { monsters: { zombie: 8, orc: 4, skeleton: 2 }, sides: 1 },
@@ -95,8 +95,7 @@ export const TOWN5_WAVES: WaveDef[] = [
   { monsters: { zombie: 12, orc: 8, wisp: 4, shade: 4, banshee: 2, brute: 2 }, sides: 3 },
   { monsters: { zombie: 13, orc: 9, gloomMoth: 6, shade: 4, vampire: 2, ghost: 3, brute: 1 }, sides: 3 },
   { monsters: { zombie: 14, orc: 9, shade: 5, gloomMoth: 6, wisp: 4, brute: 2, vampire: 2 }, sides: 3 },
-  // Stand-in boss: phase 4 replaces the Gravekeeper with the Pumpkin King.
-  { monsters: { gravekeeper: 1, zombie: 8, orc: 6, shade: 4, gloomMoth: 5, wisp: 3, vampire: 2 }, sides: 3 },
+  { monsters: { pumpkinKing: 1, zombie: 8, orc: 6, shade: 4, gloomMoth: 5, wisp: 3, vampire: 2 }, sides: 3 },
 ];
 
 /** Flattens a wave into a spawn order that mixes kinds rather than sending them in blocks. */

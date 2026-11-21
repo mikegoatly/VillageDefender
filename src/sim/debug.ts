@@ -106,6 +106,9 @@ export function debugInfo(w: World) {
       ...litCoverage(w),
       lamps: { lit: w.lamps.filter((l) => l.lit && l.hp > 0).length, broken: w.lamps.filter((l) => l.hp <= 0).length, total: w.lamps.length },
       oilLeft: w.lampOilLeft,
+      /** Pumpkin King: seconds of blackout (or its warning) left, and fires burning. */
+      blackout: w.blackout || w.blackoutWarn ? { warn: w.blackoutWarn, dark: w.blackout } : null,
+      fires: w.fires.length,
     } : null,
   };
 }
